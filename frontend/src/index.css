@@ -1,1 +1,181 @@
 @import "tailwindcss";
+
+.hero-shell {
+	isolation: isolate;
+}
+
+.hero-slide {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	opacity: 0;
+	transform: scale(1.08);
+	transition: opacity 900ms ease, transform 900ms ease;
+	filter: saturate(1.05) contrast(1.05);
+}
+
+.hero-slide--active {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.hero-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background:
+		linear-gradient(180deg, rgba(4, 12, 24, 0.28) 0%, rgba(4, 12, 24, 0.48) 55%, rgba(4, 12, 24, 0.72) 100%),
+		linear-gradient(120deg, rgba(14, 165, 233, 0.14), rgba(59, 130, 246, 0.08) 35%, rgba(15, 23, 42, 0));
+}
+
+.hero-orb {
+	position: absolute;
+	border-radius: 9999px;
+	filter: blur(10px);
+	opacity: 0.55;
+	animation: heroFloat 10s ease-in-out infinite;
+	z-index: 2;
+	pointer-events: none;
+}
+
+.hero-orb--one {
+	width: 18rem;
+	height: 18rem;
+	top: 12%;
+	left: -4rem;
+	background: radial-gradient(circle, rgba(56, 189, 248, 0.32), rgba(56, 189, 248, 0));
+}
+
+.hero-orb--two {
+	width: 20rem;
+	height: 20rem;
+	right: -5rem;
+	bottom: 6%;
+	background: radial-gradient(circle, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0));
+	animation-delay: -4s;
+}
+
+.hero-kicker,
+.hero-title,
+.hero-subtitle,
+.hero-badge {
+	position: relative;
+	z-index: 3;
+}
+
+.hero-kicker {
+	animation: heroRise 700ms ease both;
+}
+
+.hero-title {
+	text-wrap: balance;
+	animation: heroRise 850ms ease both;
+}
+
+.hero-subtitle {
+	animation: heroRise 1000ms ease both;
+}
+
+.hero-badge {
+	animation: heroRise 1150ms ease both;
+}
+
+.hero-search-card {
+	box-shadow: 0 24px 80px rgba(15, 23, 42, 0.15);
+}
+
+.auth-hero-image {
+	opacity: 0;
+	animation: authHeroFade 900ms ease forwards;
+	transition: opacity 900ms ease, transform 900ms ease;
+	transform: scale(1.05);
+	filter: saturate(1.05) contrast(1.05);
+}
+
+.auth-hero-overlay {
+	background:
+		linear-gradient(180deg, rgba(2, 6, 23, 0.18) 0%, rgba(2, 6, 23, 0.5) 50%, rgba(2, 6, 23, 0.78) 100%),
+		linear-gradient(120deg, rgba(14, 165, 233, 0.18), rgba(37, 99, 235, 0.12) 35%, rgba(15, 23, 42, 0));
+}
+
+.auth-hero-orb {
+	position: absolute;
+	border-radius: 9999px;
+	filter: blur(12px);
+	opacity: 0.55;
+	z-index: 1;
+	pointer-events: none;
+	animation: heroFloat 10s ease-in-out infinite;
+}
+
+.auth-hero-orb--one {
+	top: 8%;
+	right: -6rem;
+	width: 18rem;
+	height: 18rem;
+	background: radial-gradient(circle, rgba(56, 189, 248, 0.28), rgba(56, 189, 248, 0));
+}
+
+.auth-hero-orb--two {
+	left: -5rem;
+	bottom: 8%;
+	width: 16rem;
+	height: 16rem;
+	background: radial-gradient(circle, rgba(59, 130, 246, 0.24), rgba(59, 130, 246, 0));
+	animation-delay: -4s;
+}
+
+.auth-hero-image,
+.auth-hero-overlay,
+.auth-hero-orb {
+	will-change: transform, opacity;
+}
+
+@keyframes heroRise {
+	from {
+		opacity: 0;
+		transform: translateY(18px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes heroFloat {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+
+	50% {
+		transform: translate3d(0, -18px, 0) scale(1.05);
+	}
+}
+
+@keyframes authHeroFade {
+	from {
+		opacity: 0;
+		transform: scale(1.08);
+	}
+
+	to {
+		opacity: 1;
+		transform: scale(1.05);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.hero-slide,
+	.hero-orb,
+	.hero-kicker,
+	.hero-title,
+	.hero-subtitle,
+	.hero-badge {
+		animation: none;
+		transition: none;
+	}
+}
