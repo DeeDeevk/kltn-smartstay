@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import vikaLogo from '../../assets/icon/icon.png';
 
 export default function AuthHero() {
   const heroSlides = [
@@ -31,41 +32,38 @@ export default function AuthHero() {
       <div className="auth-hero-orb auth-hero-orb--two" />
 
       <div className="relative z-10 flex h-full w-full flex-col justify-between p-12">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-white/12 p-3 shadow-2xl backdrop-blur-md ring-1 ring-white/15">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-              <path d="M3 3v18h18" />
-              <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" />
-            </svg>
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[1.1rem] bg-white/10 shadow-2xl backdrop-blur-md ring-1 ring-white/15">
+            <img src={vikaLogo} alt="Vika Hotel" className="h-9 w-9 object-contain drop-shadow-[0_6px_18px_rgba(0,0,0,0.28)]" />
           </div>
           <div>
-            <span className="block text-sm uppercase tracking-[0.35em] text-white/70">Welcome back</span>
-            <span className="text-2xl font-bold tracking-tight">VIKA HOTEL</span>
+            <span className="block text-xs uppercase tracking-[0.45em] text-white/65">Welcome back</span>
+            <span className="block text-2xl font-bold tracking-tight text-white drop-shadow-[0_8px_20px_rgba(0,0,0,0.28)]">VIKA HOTEL</span>
           </div>
         </div>
 
-        <div className="max-w-lg space-y-6">
-          <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/85 backdrop-blur-md">
+        <div className="max-w-lg space-y-5">
+          <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/85 backdrop-blur-md shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
             Quản lý lưu trú chuyên nghiệp
           </span>
-          <h1 className="text-5xl font-bold leading-tight drop-shadow-[0_10px_35px_rgba(0,0,0,0.35)]">
+          <h1 className="text-5xl font-bold leading-[1.05] tracking-[-0.02em] drop-shadow-[0_10px_35px_rgba(0,0,0,0.45)]">
             Trải nghiệm dịch vụ <br />
             <span className="text-sky-300">Đẳng cấp 5 Sao</span>
           </h1>
-          <p className="max-w-md text-lg leading-relaxed text-white/80">
+          <p className="max-w-md text-lg leading-8 text-white/85 drop-shadow-md">
             Chào mừng bạn đến với không gian đăng nhập mang cảm giác khách sạn sang trọng, hiện đại và giàu tính chuyên nghiệp.
           </p>
 
-          <div className="grid grid-cols-3 gap-3 pt-2 text-sm text-white/80">
-            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-md">
+          <div className="grid grid-cols-3 gap-4 pt-3 text-sm text-white/80">
+            <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-md shadow-[0_16px_40px_rgba(0,0,0,0.16)]">
               <div className="text-xl font-bold text-white">24/7</div>
               <div>Hỗ trợ hệ thống</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-md">
+            <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-md shadow-[0_16px_40px_rgba(0,0,0,0.16)]">
               <div className="text-xl font-bold text-white">5★</div>
               <div>Trải nghiệm cao cấp</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-md">
+            <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-md shadow-[0_16px_40px_rgba(0,0,0,0.16)]">
               <div className="text-xl font-bold text-white">∞</div>
               <div>Đồng bộ dịch vụ</div>
             </div>
