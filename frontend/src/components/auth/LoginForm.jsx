@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Loader2, ShieldCheck, Sparkles, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ShieldCheck, User } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -41,23 +41,18 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-lg px-6 py-12 lg:px-10">
-      <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm">
-        <Sparkles size={16} />
-        Đăng nhập khu quản trị
-      </div>
-
-      <div className="w-full rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
-        <div className="mb-8">
-          <h2 className="mb-3 text-4xl font-bold tracking-tight text-slate-900">Chào mừng trở lại</h2>
-          <p className="max-w-md text-sm leading-6 text-slate-500">
+    <div className="flex h-full w-full items-center justify-center px-6 py-12 lg:px-10">
+      <div className="w-full max-w-[480px] rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
+        <div className="mb-8 space-y-2">
+          <h2 className="text-[2rem] font-bold tracking-tight text-slate-900 md:text-[2.25rem]">Chào mừng trở lại</h2>
+          <p className="max-w-md text-[15px] leading-7 text-slate-500">
             Vui lòng nhập thông tin để truy cập hệ thống quản lý Vika Hotel.
           </p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-700">Tên đăng nhập</label>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Tên đăng nhập</label>
             <div className="relative">
               <input
                 type="text"
@@ -70,8 +65,8 @@ export default function LoginForm() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-slate-700">Mật khẩu</label>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Mật khẩu</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -97,11 +92,11 @@ export default function LoginForm() {
                 type="checkbox"
                 checked={formData.rememberMe}
                 onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
-                className="h-4 w-4 cursor-pointer rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-sky-500 focus:ring-sky-500"
               />
-              <span className="text-sm text-slate-500 transition-colors group-hover:text-slate-700">Ghi nhớ đăng nhập</span>
+              <span className="text-sm leading-none text-slate-500 transition-colors group-hover:text-slate-700">Ghi nhớ đăng nhập</span>
             </label>
-            <a href="#" className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-500 hover:underline">
+            <a href="#" className="text-sm font-semibold leading-none text-blue-600 transition-colors hover:text-blue-500 hover:underline">
               Quên mật khẩu?
             </a>
           </div>
@@ -136,7 +131,7 @@ export default function LoginForm() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50">
+            <button type="button" className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm">
               <svg className="h-5 w-5" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -146,7 +141,7 @@ export default function LoginForm() {
               Google
             </button>
 
-            <button type="button" className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50">
+            <button type="button" className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm">
               <svg className="h-5 w-5 fill-current text-blue-600" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>
