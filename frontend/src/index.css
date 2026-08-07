@@ -96,8 +96,8 @@
 
 .auth-hero-overlay {
 	background:
-		linear-gradient(180deg, rgba(2, 6, 23, 0.18) 0%, rgba(2, 6, 23, 0.5) 50%, rgba(2, 6, 23, 0.78) 100%),
-		linear-gradient(120deg, rgba(14, 165, 233, 0.18), rgba(37, 99, 235, 0.12) 35%, rgba(15, 23, 42, 0));
+		linear-gradient(180deg, rgba(2, 6, 23, 0.28) 0%, rgba(2, 6, 23, 0.58) 50%, rgba(2, 6, 23, 0.82) 100%),
+		linear-gradient(120deg, rgba(14, 165, 233, 0.22), rgba(37, 99, 235, 0.14) 35%, rgba(15, 23, 42, 0));
 }
 
 .auth-hero-orb {
