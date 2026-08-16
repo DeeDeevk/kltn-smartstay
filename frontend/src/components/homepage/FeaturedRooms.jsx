@@ -54,7 +54,7 @@ export default function FeaturedRooms() {
                 {/* Image */}
                 <div className="relative h-64 overflow-hidden">
                   <img
-                    src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2070&auto=format&fit=crop'}
+                    src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2070&auto=format&fit=crop'}
                     alt={room.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />

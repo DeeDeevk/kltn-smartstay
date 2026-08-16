@@ -3,7 +3,7 @@ import vikaLogo from '../../assets/icon/icon.png';
 
 export default function AuthHero() {
   const heroSlides = [
-    'https://images.unsplash.com/photo-1501117716987-c8e1ecb210c6?q=80&w=2070&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2070&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=2070&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1571896349842-33c89424de2d?q=80&w=2070&auto=format&fit=crop',
   ];
