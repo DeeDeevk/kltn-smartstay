@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Menu, X, User, LogOut } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { NAV_LINKS } from '../../data/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logoIcon from '../../assets/icon/icon.png';
+import UserMenu from './UserMenu';
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, logout, isAuthenticated } = useAuth();
+  const { logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -57,24 +58,7 @@ export default function Header() {
           {/* RIGHT: AUTH BUTTONS */}
           <div className="hidden md:flex items-center gap-4 flex-shrink-0">
             {isAuthenticated ? (
-              <div className="flex items-center gap-4">
-                <div
-                  onClick={() => navigate('/user/historybooking')}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-full border cursor-pointer hover:bg-gray-100 transition-colors"
-                >
-                  <User size={16} className="text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">
-                    {user?.name}
-                  </span>
-                </div>
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-1.5 text-sm font-semibold text-red-600 hover:text-red-700 transition-colors"
-                >
-                  <LogOut size={16} />
-                  <span>Đăng xuất</span>
-                </button>
-              </div>
+              <UserMenu />
             ) : (
               <>
                 <button
@@ -116,12 +100,20 @@ export default function Header() {
               </button>
             ))}
             {isAuthenticated && (
-              <button
-                onClick={() => handleNavClick('/user/historybooking')}
-                className="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
-              >
-                Lịch sử đặt phòng
-              </button>
+              <>
+                <button
+                  onClick={() => handleNavClick('/user/profile')}
+                  className="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
+                >
+                  Hồ sơ của tôi
+                </button>
+                <button
+                  onClick={() => handleNavClick('/user/historybooking')}
+                  className="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
+                >
+                  Lịch sử đặt phòng
+                </button>
+              </>
             )}
             {!isAuthenticated && (
               <div className="mt-4 flex flex-col gap-3">

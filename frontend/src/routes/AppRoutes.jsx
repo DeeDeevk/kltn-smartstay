@@ -1,16 +1,39 @@
+<<<<<<< Updated upstream
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useMemo } from 'react'
+=======
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { toast } from 'react-toastify'
+>>>>>>> Stashed changes
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
 import PromoSection from '../components/homepage/PromoSection'
+<<<<<<< Updated upstream
 import AuthHero from '../components/auth/AuthHero'
 import LoginForm from '../components/auth/LoginForm'
 import RegisterForm from '../components/auth/RegisterForm'
 import BookingCard from '../components/room/BookingCard'
 import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
+=======
+import AuthHero from '../components/admin/auth/AuthHero'
+import LoginForm from '../components/admin/auth/LoginForm'
+import RegisterForm from '../components/admin/auth/RegisterForm'
+import GeneralInfoRoom from '../components/room/GeneralInfoRoom'
+import RoomGallery from '../components/room/RoomGallery'
+import RoomInfo from '../components/room/RoomInfo'
+import RoomAmenities from '../components/room/RoomAmenities'
+import BookingCard from '../components/room/BookingCard'
+import RoomReviews from '../components/room/RoomReviews'
+import RoomCard from '../components/searchroom/RoomCard'
+import OrderSummaryCard from '../components/booking/OrderSummaryCard'
+import ProfilePage from '../components/user/ProfilePage'
+>>>>>>> Stashed changes
 import { roomTypeApi } from '../services/roomType'
 import AdminRoute from '../components/admin/routesadmin/AdminRoute'
 
@@ -29,11 +52,21 @@ function HomePage() {
 }
 
 function AuthPage({ mode }) {
+  const navigate = useNavigate()
+
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-gray-50">
       <AuthHero />
-      <div className="flex items-center justify-center py-12">
-        {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+      <div className="flex flex-col">
+        <button
+          onClick={() => navigate('/')}
+          className="lg:hidden inline-flex items-center gap-1.5 px-6 pt-6 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors w-fit"
+        >
+          <ArrowLeft size={16} /> Về trang chủ
+        </button>
+        <div className="flex flex-1 items-center justify-center py-8 lg:py-12">
+          {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+        </div>
       </div>
     </div>
   )
@@ -155,6 +188,7 @@ export default function AppRoutes() {
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/searchrooms" element={<SearchResultsPage />} />
         <Route path="/rooms/:id" element={<RoomDetailPage />} />
+        <Route path="/user/profile" element={<ProfilePage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/admin" element={<AdminHome />} />
         <Route path="/admin/checkout" element={<CheckoutPage />} />

@@ -47,7 +47,14 @@ export function AuthProvider({ children }) {
     }
 
     const role = username.toLowerCase().includes('admin') ? 'admin' : 'user'
-    const nextUser = { username, role }
+    // Preserve any profile data (name, email, phone, avatar) already stored for this username
+    // instead of resetting it, so logging back in doesn't wipe out a previously saved profile.
+    const existing = readStoredUser()
+    const nextUser = {
+      ...(existing?.username === username ? existing : {}),
+      username,
+      role,
+    }
     localStorage.setItem(STORAGE_KEYS.token, createMockToken(nextUser))
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
     setUser(nextUser)
@@ -59,8 +66,23 @@ export function AuthProvider({ children }) {
       throw new Error('Vui lòng nhập đầy đủ thông tin đăng ký')
     }
 
-    const nextUser = { username: payload.username, role: payload.role || 'user' }
+    const nextUser = {
+      username: payload.username,
+      role: payload.role || 'user',
+      name: payload.name || '',
+      email: payload.email || '',
+      phone: payload.phone_number || payload.phone || '',
+      avatar: '',
+    }
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
+    return nextUser
+  }
+
+  const updateProfile = async (updates) => {
+    const current = user || readStoredUser() || {}
+    const nextUser = { ...current, ...updates }
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
+    setUser(nextUser)
     return nextUser
   }
 
@@ -75,6 +97,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(user),
     login,
     register,
+    updateProfile,
     logout,
   }), [user])
 
