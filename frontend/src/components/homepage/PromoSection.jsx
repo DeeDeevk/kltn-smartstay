@@ -12,8 +12,8 @@ export default function PromoSection() {
             <span className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
               Ưu đãi độc quyền
             </span>
-            <h2 className="text-4xl md:text-5xl font-bold leading-tight">
-              Mùa Hè Rực Rỡ <br/> 
+            <h2 className="font-display text-4xl md:text-5xl font-semibold leading-tight">
+              Mùa Hè Rực Rỡ <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Giảm Tới 20%</span>
             </h2>
             <p className="text-gray-300 text-lg">
@@ -26,9 +26,9 @@ export default function PromoSection() {
           
           <div className="relative">
              <div className="absolute -inset-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur-lg opacity-50"></div>
-             <img 
-               src="https://images.unsplash.com/photo-1540541338287-41700207dee6?q=80&w=2070&auto=format&fit=crop" 
-               alt="Spa Promotion" 
+             <img
+               src="https://images.unsplash.com/photo-1618773928121-c32242e63f39?q=80&w=2070&auto=format&fit=crop"
+               alt="Phòng nghỉ sang trọng tại Vika Hotel"
                className="relative rounded-2xl shadow-2xl w-full object-cover transform rotate-2 hover:rotate-0 transition-all duration-500"
              />
           </div>

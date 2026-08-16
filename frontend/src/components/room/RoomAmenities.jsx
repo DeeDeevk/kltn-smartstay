@@ -1,50 +1,43 @@
 import { useState } from "react";
-
+import { Wifi, Snowflake, Tv, UtensilsCrossed, WashingMachine, CircleParking, Waves } from "lucide-react";
 import TienIch from "./tienich.jsx";
+
+const defaultAmenities = [
+  { icon: Wifi, name: "WiFi miễn phí" },
+  { icon: Snowflake, name: "Điều hòa" },
+  { icon: Tv, name: "TV màn hình phẳng" },
+  { icon: UtensilsCrossed, name: "Bếp nhỏ" },
+  { icon: WashingMachine, name: "Máy giặt" },
+  { icon: CircleParking, name: "Bãi đỗ xe" },
+  { icon: Waves, name: "Hồ bơi" },
+];
+
+const MAX_VISIBLE = 6;
+
 export default function RoomAmenities({ amenities: propsAmenities = [] }) {
-  const defaultAmenities = [
-    { url: "https://picsum.photos/200?1", name: "WiFi" },
-    { url: "https://picsum.photos/200?2", name: "Điều hòa" },
-    { url: "https://picsum.photos/200?3", name: "TV" },
-    { url: "https://picsum.photos/200?4", name: "Bếp" },
-    { url: "https://picsum.photos/200?5", name: "Máy giặt" },
-    { url: "https://picsum.photos/200?6", name: "Bãi đỗ xe" },
-    { url: "https://picsum.photos/200?7", name: "Hồ bơi" },
-  ];
-
   const amenities = propsAmenities.length > 0 ? propsAmenities : defaultAmenities;
-
-  const MAX = 6;
   const [showAll, setShowAll] = useState(false);
 
-  const visibleAmenities = showAll
-    ? amenities
-    : amenities.slice(0, MAX);
+  const visibleAmenities = showAll ? amenities : amenities.slice(0, MAX_VISIBLE);
+
   return (
-    <div className="h-fit rounded-xl border-2 border-dashed border-purple-300 flex flex-col p-4">
-      <div className="">
-        <h1 className="font-bold">Tiện nghi nổi bật</h1>
-      </div>
-      {/* Grid 3 cột */}
-      <div className="grid grid-cols-3 gap-2 mt-2">
+    <div className="h-fit rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="font-bold text-xl text-gray-900 mb-4">Tiện nghi nổi bật</h2>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {visibleAmenities.map((item, index) => (
           <TienIch key={index} {...item} />
         ))}
       </div>
 
-
-      {/* Button xem tất cả */}
-      {amenities.length > MAX && (
+      {amenities.length > MAX_VISIBLE && (
         <button
           onClick={() => setShowAll(!showAll)}
-          className="mt-3 text-sm font-medium text-blue-600 hover:underline"
+          className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
         >
-          {showAll
-            ? "Thu gọn"
-            : `Xem tất cả ${amenities.length} tiện nghi`}
+          {showAll ? "Thu gọn" : `Xem tất cả ${amenities.length} tiện nghi`}
         </button>
       )}
-
     </div>
-  )
+  );
 }

@@ -2,10 +2,17 @@ import React, { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { vi } from 'date-fns/locale';
-import { Calendar, Bed, Search, Loader2 } from 'lucide-react';
+import { Calendar, Bed, Search, Loader2, Wifi, Waves, Sparkles, PlaneTakeoff, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchAvailabilityMutation } from '../../services/availability';
 import { toast } from 'react-toastify';
+
+const highlights = [
+  { icon: Wifi, label: 'Wifi tốc độ cao miễn phí' },
+  { icon: Waves, label: 'Hồ bơi vô cực view biển' },
+  { icon: Sparkles, label: 'Spa & chăm sóc 5 sao' },
+  { icon: PlaneTakeoff, label: 'Đưa đón sân bay' },
+];
 
 export default function HeroSection() {
   const heroSlides = [
@@ -88,13 +95,27 @@ export default function HeroSection() {
           <span className="text-white/90 text-xs md:text-sm uppercase tracking-[0.35em] mb-4 hero-kicker">
             Chào mừng đến với Vika Hotel
           </span>
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight max-w-4xl drop-shadow-lg hero-title">
+          <h1 className="font-display text-4xl md:text-6xl font-semibold text-white mb-6 leading-tight max-w-4xl drop-shadow-lg hero-title">
             Trải nghiệm kỳ nghỉ tuyệt vời <br /> nhất của bạn
           </h1>
-          <p className="text-gray-100/90 text-base md:text-lg max-w-2xl mb-10 hidden md:block hero-subtitle">
+          <p className="text-gray-100/90 text-base md:text-lg max-w-2xl mb-8 hidden md:block hero-subtitle">
             Tận hưởng không gian sang trọng, dịch vụ đẳng cấp 5 sao và view biển tuyệt đẹp ngay tại trung tâm thành phố.
           </p>
+
+          <div className="hero-badge">
+            <a
+              href="#phong-nghi"
+              className="inline-flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-100 px-7 py-3 rounded-full font-bold text-sm md:text-base shadow-lg transition-transform hover:-translate-y-0.5"
+            >
+              Khám phá phòng nghỉ
+            </a>
+          </div>
         </div>
+
+        <ChevronDown
+          size={28}
+          className="hero-scroll-cue absolute bottom-6 left-1/2 -translate-x-1/2 z-10 text-white/70 hidden md:block"
+        />
       </div>
 
       {/* Floating Search Bar */}
@@ -168,6 +189,17 @@ export default function HeroSection() {
             {isLoading ? 'Đang tìm...' : 'Tìm kiếm'}
           </button>
 
+        </div>
+
+        <div className="mt-6 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border border-white/60 px-6 py-4 flex flex-wrap justify-center md:justify-between gap-x-8 gap-y-3">
+          {highlights.map(({ icon: Icon, label }) => (
+            <div key={label} className="flex items-center gap-2 text-gray-700">
+              <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Icon size={16} />
+              </span>
+              <span className="text-sm font-medium whitespace-nowrap">{label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
