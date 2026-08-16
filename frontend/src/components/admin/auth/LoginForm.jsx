@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Loader2, ShieldCheck, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2, User } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -113,10 +113,7 @@ export default function LoginForm() {
                 Đang đăng nhập...
               </>
             ) : (
-              <>
-                <ShieldCheck size={18} />
-                Đăng nhập
-              </>
+              'Đăng nhập'
             )}
           </button>
 

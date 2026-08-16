@@ -4,7 +4,7 @@ import Logo from "../../assets/icon/icon.png";
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-950 text-gray-300 pt-20 pb-8 relative overflow-hidden">
+    <footer id="lien-he" className="bg-gray-950 text-gray-300 pt-20 pb-8 relative overflow-hidden scroll-mt-20">
       {/* Decorative glow */}
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-80 w-[36rem] rounded-full bg-blue-600/20 blur-3xl" />
 

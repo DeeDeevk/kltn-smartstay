@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function PromoSection() {
   return (
-    <section className="py-20 bg-gray-900 text-white relative overflow-hidden">
+    <section id="uu-dai" className="py-20 bg-gray-900 text-white relative overflow-hidden scroll-mt-20">
       {/* Background Effect */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-blue-600/20 blur-3xl rounded-full translate-x-1/2"></div>
       

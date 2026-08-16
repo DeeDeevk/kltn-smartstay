@@ -4,6 +4,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
 
+const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
+const labelClass = "mb-1.5 block text-sm font-semibold text-slate-700";
+const iconClass = "absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none";
+
 export default function RegisterForm() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,7 +71,7 @@ export default function RegisterForm() {
 
   return (
     <div className="flex h-full w-full items-center justify-center px-6 py-8 lg:px-10">
-      <div className="w-full max-w-[480px] rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
+      <div className="w-full max-w-[560px] rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
         <div className="mb-8 space-y-2">
           <h2 className="text-[2rem] font-bold tracking-tight text-slate-900 md:text-[2.25rem]">Tạo tài khoản mới</h2>
           <p className="max-w-md text-[15px] leading-7 text-slate-500">
@@ -75,10 +79,10 @@ export default function RegisterForm() {
           </p>
         </div>
 
-        <form className="w-full space-y-4" onSubmit={handleSubmit}>
-          {/* Full Name Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Họ và tên</label>
+        <form className="space-y-5" onSubmit={handleSubmit}>
+          {/* Full Name */}
+          <div>
+            <label className={labelClass}>Họ và tên</label>
             <div className="relative">
               <input
                 type="text"
@@ -86,16 +90,50 @@ export default function RegisterForm() {
                 required
                 value={formData.name}
                 onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                className={inputClass}
                 placeholder="Nguyễn Văn A"
               />
-              <User className="absolute right-3 top-2.5 text-gray-400" size={20} />
+              <User className={iconClass} size={18} />
             </div>
           </div>
 
-          {/* Username Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Tên đăng nhập</label>
+          {/* Phone + Email */}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>Số điện thoại</label>
+              <div className="relative">
+                <input
+                  type="tel"
+                  name="phone_number"
+                  required
+                  value={formData.phone_number}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="0912345678"
+                />
+                <Phone className={iconClass} size={18} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Email</label>
+              <div className="relative">
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  value={formData.email}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="name@example.com"
+                />
+                <Mail className={iconClass} size={18} />
+              </div>
+            </div>
+          </div>
+
+          {/* Username */}
+          <div>
+            <label className={labelClass}>Tên đăng nhập</label>
             <div className="relative">
               <input
                 type="text"
@@ -103,90 +141,57 @@ export default function RegisterForm() {
                 required
                 value={formData.username}
                 onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                className={inputClass}
                 placeholder="username123"
               />
-              <User className="absolute right-3 top-2.5 text-gray-400" size={20} />
+              <User className={iconClass} size={18} />
             </div>
           </div>
 
-          {/* Email Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Email</label>
-            <div className="relative">
-              <input
-                type="email"
-                name="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="name@example.com"
-              />
-              <Mail className="absolute right-3 top-2.5 text-gray-400" size={20} />
+          {/* Password + Confirm Password */}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>Mật khẩu</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Phone Number Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Số điện thoại</label>
-            <div className="relative">
-              <input
-                type="tel"
-                name="phone_number"
-                required
-                value={formData.phone_number}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="0912345678"
-              />
-              <Phone className="absolute right-3 top-2.5 text-gray-400" size={20} />
-            </div>
-          </div>
-
-          {/* Password Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Mật khẩu</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 focus:outline-none"
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Confirm Password Field */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700 block">Nhập lại mật khẩu</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="confirmPassword"
-                required
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="••••••••"
-              />
-              <Lock className="absolute right-3 top-2.5 text-gray-400" size={20} />
+            <div>
+              <label className={labelClass}>Nhập lại mật khẩu</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="••••••••"
+                />
+                <Lock className={iconClass} size={18} />
+              </div>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium">
+            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
               {error}
             </div>
           )}
@@ -195,7 +200,7 @@ export default function RegisterForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-sm shadow-blue-200 transition-all transform active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 font-bold text-white shadow-[0_18px_45px_rgba(37,99,235,0.28)] transition-all hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? (
               <>
@@ -208,13 +213,13 @@ export default function RegisterForm() {
           </button>
 
           {/* Sign In Link */}
-          <div className="text-center mt-6">
-            <p className="text-sm text-gray-500">
+          <div className="text-center pt-2">
+            <p className="text-sm text-slate-500">
               Đã có tài khoản?{' '}
               <button
                 type="button"
                 onClick={() => navigate('/login', { state: location.state })}
-                className="font-bold text-blue-600 hover:text-blue-500 hover:underline"
+                className="font-bold text-blue-600 transition-colors hover:text-blue-500 hover:underline"
               >
                 Đăng nhập ngay
               </button>

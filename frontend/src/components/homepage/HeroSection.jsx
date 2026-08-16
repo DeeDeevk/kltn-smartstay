@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { vi } from 'date-fns/locale';
@@ -17,16 +17,25 @@ const highlights = [
 export default function HeroSection() {
   const heroSlides = [
     {
+      type: 'image',
       src: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2069&auto=format&fit=crop',
       alt: 'Beach resort at sunset',
     },
     {
+      type: 'image',
       src: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=2069&auto=format&fit=crop',
       alt: 'Luxury hotel pool',
     },
     {
+      type: 'image',
       src: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2069&auto=format&fit=crop',
       alt: 'Ocean view suite',
+    },
+    {
+      type: 'video',
+      src: 'https://assets.mixkit.co/videos/34613/34613-720.mp4',
+      poster: 'https://assets.mixkit.co/videos/34613/34613-thumb-720-0.jpg',
+      alt: 'Video giới thiệu hành lang khách sạn Vika Hotel',
     },
   ];
 
@@ -46,14 +55,26 @@ export default function HeroSection() {
 
   const [searchAvailability, { isLoading }] = useSearchAvailabilityMutation();
   const [activeSlide, setActiveSlide] = useState(0);
+  const videoRef = useRef(null);
+
+  const goToNextSlide = () => {
+    setActiveSlide((current) => (current + 1) % heroSlides.length);
+  };
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveSlide((current) => (current + 1) % heroSlides.length);
-    }, 6000);
+    // Video slides advance on their own via onEnded; only image slides use a timer.
+    if (heroSlides[activeSlide].type === 'video') {
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.currentTime = 0;
+        videoEl.play().catch(() => {});
+      }
+      return;
+    }
 
-    return () => window.clearInterval(intervalId);
-  }, [heroSlides.length]);
+    const timeoutId = window.setTimeout(goToNextSlide, 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeSlide]);
 
   const handleSearch = async () => {
     try {
@@ -78,14 +99,27 @@ export default function HeroSection() {
     <div className="relative pt-20 overflow-hidden">
       {/* Background Hero */}
       <div className="hero-shell h-[680px] md:h-[760px] relative overflow-hidden">
-        {heroSlides.map((slide, index) => (
-          <img
-            key={slide.src}
-            src={slide.src}
-            alt={slide.alt}
-            className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
-          />
-        ))}
+        {heroSlides.map((slide, index) =>
+          slide.type === 'video' ? (
+            <video
+              key={slide.src}
+              ref={videoRef}
+              src={slide.src}
+              poster={slide.poster}
+              muted
+              playsInline
+              onEnded={goToNextSlide}
+              className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
+            />
+          ) : (
+            <img
+              key={slide.src}
+              src={slide.src}
+              alt={slide.alt}
+              className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
+            />
+          )
+        )}
 
         <div className="hero-overlay" />
         <div className="hero-orb hero-orb--one" />

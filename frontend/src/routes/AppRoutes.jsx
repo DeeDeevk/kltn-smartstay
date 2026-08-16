@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
@@ -32,6 +32,33 @@ const paymentMethods = [
   { value: 'cash', label: 'Thanh toán khi nhận phòng', icon: Banknote },
   { value: 'online', label: 'Thanh toán online (PayOS)', icon: CreditCard },
 ]
+
+// React Router doesn't reset scroll position on navigation by default, so
+// clicking a link while scrolled down leaves the next page scrolled down too.
+function ScrollToTop() {
+  const { pathname, hash } = useLocation()
+
+  useEffect(() => {
+    if (!hash) {
+      window.scrollTo(0, 0)
+      return
+    }
+
+    // Wait a frame so the target page/section has rendered before scrolling to it.
+    const id = requestAnimationFrame(() => {
+      const el = document.getElementById(hash.slice(1))
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else {
+        window.scrollTo(0, 0)
+      }
+    })
+
+    return () => cancelAnimationFrame(id)
+  }, [pathname, hash])
+
+  return null
+}
 
 function HomePage() {
   return (
@@ -378,6 +405,7 @@ function AdminHome() {
 export default function AppRoutes() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
