@@ -1,1 +1,6 @@
-export const NAV_LINKS = ["Trang chủ", "Phòng nghỉ", "Ưu đãi", "Liên hệ"];
+export const NAV_LINKS = [
+  { label: "Trang chủ", to: "/" },
+  { label: "Phòng nghỉ", to: "/searchrooms" },
+  { label: "Ưu đãi", to: "/#uu-dai" },
+  { label: "Liên hệ", to: "/#lien-he" },
+];

@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useMemo, useState } from 'react'
-import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
@@ -8,9 +8,9 @@ import Footer from '../components/layout/Footer'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
 import PromoSection from '../components/homepage/PromoSection'
-import AuthHero from '../components/auth/AuthHero'
-import LoginForm from '../components/auth/LoginForm'
-import RegisterForm from '../components/auth/RegisterForm'
+import AuthHero from '../components/admin/auth/AuthHero'
+import LoginForm from '../components/admin/auth/LoginForm'
+import RegisterForm from '../components/admin/auth/RegisterForm'
 import GeneralInfoRoom from '../components/room/GeneralInfoRoom'
 import RoomGallery from '../components/room/RoomGallery'
 import RoomInfo from '../components/room/RoomInfo'
@@ -19,6 +19,7 @@ import BookingCard from '../components/room/BookingCard'
 import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
+import ProfilePage from '../components/user/ProfilePage'
 import { roomTypeApi } from '../services/roomType'
 import { useCreateBookingMutation } from '../services/booking'
 import { useAuth } from '../context/AuthContext'
@@ -31,6 +32,33 @@ const paymentMethods = [
   { value: 'cash', label: 'Thanh toán khi nhận phòng', icon: Banknote },
   { value: 'online', label: 'Thanh toán online (PayOS)', icon: CreditCard },
 ]
+
+// React Router doesn't reset scroll position on navigation by default, so
+// clicking a link while scrolled down leaves the next page scrolled down too.
+function ScrollToTop() {
+  const { pathname, hash } = useLocation()
+
+  useEffect(() => {
+    if (!hash) {
+      window.scrollTo(0, 0)
+      return
+    }
+
+    // Wait a frame so the target page/section has rendered before scrolling to it.
+    const id = requestAnimationFrame(() => {
+      const el = document.getElementById(hash.slice(1))
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else {
+        window.scrollTo(0, 0)
+      }
+    })
+
+    return () => cancelAnimationFrame(id)
+  }, [pathname, hash])
+
+  return null
+}
 
 function HomePage() {
   return (
@@ -47,11 +75,21 @@ function HomePage() {
 }
 
 function AuthPage({ mode }) {
+  const navigate = useNavigate()
+
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-gray-50">
       <AuthHero />
-      <div className="flex items-center justify-center py-12">
-        {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+      <div className="flex flex-col">
+        <button
+          onClick={() => navigate('/')}
+          className="lg:hidden inline-flex items-center gap-1.5 px-6 pt-6 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors w-fit"
+        >
+          <ArrowLeft size={16} /> Về trang chủ
+        </button>
+        <div className="flex flex-1 items-center justify-center py-8 lg:py-12">
+          {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+        </div>
       </div>
     </div>
   )
@@ -367,12 +405,14 @@ function AdminHome() {
 export default function AppRoutes() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/searchrooms" element={<SearchResultsPage />} />
         <Route path="/rooms/:id" element={<RoomDetailPage />} />
+        <Route path="/user/profile" element={<ProfilePage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/admin" element={<AdminHome />} />
         <Route path="/admin/checkout" element={<CheckoutPage />} />
