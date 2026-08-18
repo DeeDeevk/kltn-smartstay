@@ -19,9 +19,6 @@ export class User {
   @Column({ name: 'email', length: 100, unique: true })
   email!: string;
 
-  @Column({ name: 'password', length: 255 })
-  password!: string; // lưu dạng hash bcrypt
-
   @Column({ name: 'phone', length: 15, nullable: true })
   phone!: string;
 
