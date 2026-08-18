@@ -1,25 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { vi } from 'date-fns/locale';
-import { Calendar, Bed, Search, Loader2 } from 'lucide-react';
+import { Calendar, Bed, Search, Loader2, Wifi, Waves, Sparkles, PlaneTakeoff, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchAvailabilityMutation } from '../../services/availability';
 import { toast } from 'react-toastify';
 
+const highlights = [
+  { icon: Wifi, label: 'Wifi tốc độ cao miễn phí' },
+  { icon: Waves, label: 'Hồ bơi vô cực view biển' },
+  { icon: Sparkles, label: 'Spa & chăm sóc 5 sao' },
+  { icon: PlaneTakeoff, label: 'Đưa đón sân bay' },
+];
+
 export default function HeroSection() {
   const heroSlides = [
     {
-      src: 'https://images.unsplash.com/photo-1501117716987-c8e1ecb210c6?q=80&w=2069&auto=format&fit=crop',
+      type: 'image',
+      src: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2069&auto=format&fit=crop',
       alt: 'Beach resort at sunset',
     },
     {
+      type: 'image',
       src: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=2069&auto=format&fit=crop',
       alt: 'Luxury hotel pool',
     },
     {
+      type: 'image',
       src: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2069&auto=format&fit=crop',
       alt: 'Ocean view suite',
+    },
+    {
+      type: 'video',
+      src: 'https://assets.mixkit.co/videos/34613/34613-720.mp4',
+      poster: 'https://assets.mixkit.co/videos/34613/34613-thumb-720-0.jpg',
+      alt: 'Video giới thiệu hành lang khách sạn Vika Hotel',
     },
   ];
 
@@ -39,14 +55,26 @@ export default function HeroSection() {
 
   const [searchAvailability, { isLoading }] = useSearchAvailabilityMutation();
   const [activeSlide, setActiveSlide] = useState(0);
+  const videoRef = useRef(null);
+
+  const goToNextSlide = () => {
+    setActiveSlide((current) => (current + 1) % heroSlides.length);
+  };
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveSlide((current) => (current + 1) % heroSlides.length);
-    }, 6000);
+    // Video slides advance on their own via onEnded; only image slides use a timer.
+    if (heroSlides[activeSlide].type === 'video') {
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.currentTime = 0;
+        videoEl.play().catch(() => {});
+      }
+      return;
+    }
 
-    return () => window.clearInterval(intervalId);
-  }, [heroSlides.length]);
+    const timeoutId = window.setTimeout(goToNextSlide, 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeSlide]);
 
   const handleSearch = async () => {
     try {
@@ -71,14 +99,27 @@ export default function HeroSection() {
     <div className="relative pt-20 overflow-hidden">
       {/* Background Hero */}
       <div className="hero-shell h-[680px] md:h-[760px] relative overflow-hidden">
-        {heroSlides.map((slide, index) => (
-          <img
-            key={slide.src}
-            src={slide.src}
-            alt={slide.alt}
-            className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
-          />
-        ))}
+        {heroSlides.map((slide, index) =>
+          slide.type === 'video' ? (
+            <video
+              key={slide.src}
+              ref={videoRef}
+              src={slide.src}
+              poster={slide.poster}
+              muted
+              playsInline
+              onEnded={goToNextSlide}
+              className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
+            />
+          ) : (
+            <img
+              key={slide.src}
+              src={slide.src}
+              alt={slide.alt}
+              className={`hero-slide ${index === activeSlide ? 'hero-slide--active' : ''}`}
+            />
+          )
+        )}
 
         <div className="hero-overlay" />
         <div className="hero-orb hero-orb--one" />
@@ -88,13 +129,27 @@ export default function HeroSection() {
           <span className="text-white/90 text-xs md:text-sm uppercase tracking-[0.35em] mb-4 hero-kicker">
             Chào mừng đến với Vika Hotel
           </span>
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight max-w-4xl drop-shadow-lg hero-title">
+          <h1 className="font-display text-4xl md:text-6xl font-semibold text-white mb-6 leading-tight max-w-4xl drop-shadow-lg hero-title">
             Trải nghiệm kỳ nghỉ tuyệt vời <br /> nhất của bạn
           </h1>
-          <p className="text-gray-100/90 text-base md:text-lg max-w-2xl mb-10 hidden md:block hero-subtitle">
+          <p className="text-gray-100/90 text-base md:text-lg max-w-2xl mb-8 hidden md:block hero-subtitle">
             Tận hưởng không gian sang trọng, dịch vụ đẳng cấp 5 sao và view biển tuyệt đẹp ngay tại trung tâm thành phố.
           </p>
+
+          <div className="hero-badge">
+            <a
+              href="#phong-nghi"
+              className="inline-flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-100 px-7 py-3 rounded-full font-bold text-sm md:text-base shadow-lg transition-transform hover:-translate-y-0.5"
+            >
+              Khám phá phòng nghỉ
+            </a>
+          </div>
         </div>
+
+        <ChevronDown
+          size={28}
+          className="hero-scroll-cue absolute bottom-6 left-1/2 -translate-x-1/2 z-10 text-white/70 hidden md:block"
+        />
       </div>
 
       {/* Floating Search Bar */}
@@ -168,6 +223,17 @@ export default function HeroSection() {
             {isLoading ? 'Đang tìm...' : 'Tìm kiếm'}
           </button>
 
+        </div>
+
+        <div className="mt-6 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border border-white/60 px-6 py-4 flex flex-wrap justify-center md:justify-between gap-x-8 gap-y-3">
+          {highlights.map(({ icon: Icon, label }) => (
+            <div key={label} className="flex items-center gap-2 text-gray-700">
+              <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Icon size={16} />
+              </span>
+              <span className="text-sm font-medium whitespace-nowrap">{label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

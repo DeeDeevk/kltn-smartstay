@@ -12,7 +12,7 @@ export const sampleRoomTypes = [
     availableCount: 4,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=1200&auto=format&fit=crop",
+        url: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=1200&auto=format&fit=crop",
       },
     ],
   },
@@ -29,7 +29,7 @@ export const sampleRoomTypes = [
     tag: "Best seller",
     images: [
       {
-        url: "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=1200&auto=format&fit=crop",
+        url: "https://images.unsplash.com/photo-1591088398332-8a7791972843?q=80&w=1200&auto=format&fit=crop",
       },
     ],
   },
@@ -46,7 +46,7 @@ export const sampleRoomTypes = [
     discount: 10,
     images: [
       {
-        url: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=1200&auto=format&fit=crop",
+        url: "https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=1200&auto=format&fit=crop",
       },
     ],
   },

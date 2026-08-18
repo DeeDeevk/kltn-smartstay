@@ -18,12 +18,12 @@ export default function FeaturedRooms() {
   };
 
   return (
-    <section className="py-20 bg-gray-50">
+    <section id="phong-nghi" className="py-20 bg-gray-50 scroll-mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="flex justify-between items-end mb-12">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Phòng Nghỉ Nổi Bật</h2>
+            <h2 className="font-display text-3xl font-semibold text-gray-900 mb-2">Phòng Nghỉ Nổi Bật</h2>
             <p className="text-gray-500">Những lựa chọn được yêu thích nhất tại Vika Hotel</p>
           </div>
           <a href="/searchrooms" className="hidden md:flex items-center text-blue-600 font-semibold hover:gap-2 transition-all">
@@ -54,7 +54,7 @@ export default function FeaturedRooms() {
                 {/* Image */}
                 <div className="relative h-64 overflow-hidden">
                   <img
-                    src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2070&auto=format&fit=crop'}
+                    src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2070&auto=format&fit=crop'}
                     alt={room.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />

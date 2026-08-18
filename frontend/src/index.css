@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@theme {
+	--font-display: "Playfair Display", "Times New Roman", serif;
+	--font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+body {
+	font-family: var(--font-sans);
+}
+
 .hero-shell {
 	isolation: isolate;
 }
@@ -84,6 +93,41 @@
 
 .hero-search-card {
 	box-shadow: 0 24px 80px rgba(15, 23, 42, 0.15);
+}
+
+.hero-scroll-cue {
+	animation: heroScrollBounce 2.2s ease-in-out infinite;
+}
+
+@keyframes heroScrollBounce {
+
+	0%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.6;
+	}
+
+	50% {
+		transform: translateY(8px);
+		opacity: 1;
+	}
+}
+
+.dropdown-menu-in {
+	transform-origin: top right;
+	animation: dropdownIn 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes dropdownIn {
+	from {
+		opacity: 0;
+		transform: scale(0.96) translateY(-4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 
 .auth-hero-image {
@@ -174,7 +218,9 @@
 	.hero-kicker,
 	.hero-title,
 	.hero-subtitle,
-	.hero-badge {
+	.hero-badge,
+	.hero-scroll-cue,
+	.dropdown-menu-in {
 		animation: none;
 		transition: none;
 	}
