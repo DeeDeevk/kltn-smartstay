@@ -2,8 +2,10 @@ import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/entities/user.entity';
+import { Account } from '../auth/entities/account.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
+import { AuthProvider } from '../common/enums/auth-provider.enum';
 
 async function run() {
   const dataSource = new DataSource({
@@ -13,36 +15,47 @@ async function run() {
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    entities: [User],
+    entities: [User, Account],
   });
 
   await dataSource.initialize();
   const userRepo = dataSource.getRepository(User);
+  const accountRepo = dataSource.getRepository(Account);
 
   const email = 'admin@vikahotel.com'; // đổi email bạn muốn
   const plainPassword = 'Admin@123'; // đổi password bạn muốn
+  const hashed = await bcrypt.hash(plainPassword, 10);
 
-  const existed = await userRepo.findOne({ where: { email } });
-  if (existed) {
-    const hashed = await bcrypt.hash(plainPassword, 10);
-    existed.password = hashed;
-    await userRepo.save(existed);
-    console.log(`Đã cập nhật lại mật khẩu cho: ${email}`);
-    await dataSource.destroy();
-    return;
+  let user = await userRepo.findOne({ where: { email } });
+  if (!user) {
+    user = await userRepo.save(
+      userRepo.create({
+        email,
+        fullName: 'Administrator', // tự động, không cần nhập tay
+        role: UserRole.ADMIN,
+        status: UserStatus.ACTIVE,
+      }),
+    );
   }
 
-  const hashed = await bcrypt.hash(plainPassword, 10);
-  const admin = userRepo.create({
-    email,
-    password: hashed,
-    fullName: 'Administrator', // tự động, không cần nhập tay
-    role: UserRole.ADMIN,
-    status: UserStatus.ACTIVE,
+  let account = await accountRepo.findOne({
+    where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
   });
-  await userRepo.save(admin);
+  if (account) {
+    account.password = hashed;
+  } else {
+    account = accountRepo.create({
+      user,
+      provider: AuthProvider.LOCAL,
+      providerAccountId: user.email,
+      password: hashed,
+    });
+  }
+  await accountRepo.save(account);
 
-  console.log(`Đã tạo tài khoản Admin: ${email} / mật khẩu: ${plainPassword}`);
+  console.log(
+    `Đã tạo/cập nhật tài khoản Admin: ${email} / mật khẩu: ${plainPassword}`,
+  );
   await dataSource.destroy();
 }
 

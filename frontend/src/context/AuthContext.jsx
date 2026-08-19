@@ -1,19 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import apiClient from '../services/apiClient'
 
 const AuthContext = createContext(null)
 
 const STORAGE_KEYS = {
-  token: 'access_token',
+  accessToken: 'access_token',
+  refreshToken: 'refresh_token',
   user: 'auth_user',
-}
-
-const base64UrlEncode = (value) =>
-  btoa(unescape(encodeURIComponent(JSON.stringify(value))))
-
-const createMockToken = ({ username, role }) => {
-  const header = base64UrlEncode({ alg: 'HS256', typ: 'JWT' })
-  const payload = base64UrlEncode({ username, role })
-  return `${header}.${payload}.mock-signature`
 }
 
 const readStoredUser = () => {
@@ -25,70 +18,100 @@ const readStoredUser = () => {
   }
 }
 
+const persistTokens = ({ accessToken, refreshToken }) => {
+  localStorage.setItem(STORAGE_KEYS.accessToken, accessToken)
+  localStorage.setItem(STORAGE_KEYS.refreshToken, refreshToken)
+}
+
+const clearSession = () => {
+  localStorage.removeItem(STORAGE_KEYS.accessToken)
+  localStorage.removeItem(STORAGE_KEYS.refreshToken)
+  localStorage.removeItem(STORAGE_KEYS.user)
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readStoredUser())
 
+  // Khi app tải lại, lấy hồ sơ mới nhất từ backend thay vì tin vào bản lưu cũ trong localStorage.
+  // Nếu access token đã hết hạn/không hợp lệ thì coi như đã đăng xuất.
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.token)
-    if (token && !user) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        setUser({ username: payload.username, role: payload.role })
-      } catch {
-        localStorage.removeItem(STORAGE_KEYS.token)
-        localStorage.removeItem(STORAGE_KEYS.user)
-      }
-    }
-  }, [user])
+    const token = localStorage.getItem(STORAGE_KEYS.accessToken)
+    if (!token) return
 
-  const login = async ({ username, password }) => {
-    if (!username || !password) {
-      throw new Error('Vui lòng nhập đầy đủ thông tin đăng nhập')
-    }
+    apiClient
+      .get('/auth/me')
+      .then(({ data }) => {
+        const nextUser = { ...data, name: data.fullName }
+        localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
+        setUser(nextUser)
+      })
+      .catch(() => {
+        clearSession()
+        setUser(null)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    const role = username.toLowerCase().includes('admin') ? 'admin' : 'user'
-    // Preserve any profile data (name, email, phone, avatar) already stored for this username
-    // instead of resetting it, so logging back in doesn't wipe out a previously saved profile.
-    const existing = readStoredUser()
-    const nextUser = {
-      ...(existing?.username === username ? existing : {}),
-      username,
-      role,
-    }
-    localStorage.setItem(STORAGE_KEYS.token, createMockToken(nextUser))
+  // Token endpoints (login/verify-otp) chỉ trả user rút gọn {userId, email, role}
+  // nên sau khi lưu token, gọi thêm /auth/me để lấy đủ fullName, phone... ngay lập tức
+  // thay vì phải đợi F5 lại trang mới có.
+  const applySession = async (data) => {
+    persistTokens(data)
+    const { data: profile } = await apiClient.get('/auth/me')
+    const nextUser = { ...profile, name: profile.fullName }
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
     setUser(nextUser)
     return nextUser
   }
 
-  const register = async (payload) => {
-    if (!payload?.username || !payload?.password) {
-      throw new Error('Vui lòng nhập đầy đủ thông tin đăng ký')
-    }
-
-    const nextUser = {
-      username: payload.username,
-      role: payload.role || 'user',
-      name: payload.name || '',
-      email: payload.email || '',
-      phone: payload.phone_number || payload.phone || '',
-      avatar: '',
-    }
-    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
-    return nextUser
+  const login = async ({ email, password }) => {
+    const { data } = await apiClient.post('/auth/login', { email, password })
+    return applySession(data)
   }
 
-  const updateProfile = async (updates) => {
+  const register = async ({ fullName, email, phone, password }) => {
+    const { data } = await apiClient.post('/auth/register', {
+      fullName,
+      email,
+      phone,
+      password,
+    })
+    return data
+  }
+
+  const verifyOtp = async ({ email, otp }) => {
+    const { data } = await apiClient.post('/auth/verify-otp', { email, otp })
+    return applySession(data)
+  }
+
+  const resendOtp = async (email) => {
+    const { data } = await apiClient.post('/auth/resend-otp', { email })
+    return data
+  }
+
+  // avatar chỉ lưu cục bộ (User entity ở backend không có cột này), các field còn lại
+  // gửi lên backend qua PATCH /users/me để lưu thật.
+  const updateProfile = async ({ name, phone, idNumber, address, avatar }) => {
+    const { data } = await apiClient.patch('/users/me', {
+      fullName: name,
+      phone,
+      idNumber,
+      address,
+    })
     const current = user || readStoredUser() || {}
-    const nextUser = { ...current, ...updates }
+    const nextUser = { ...data, name: data.fullName, avatar: avatar ?? current.avatar ?? '' }
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
     setUser(nextUser)
     return nextUser
   }
 
   const logout = async () => {
-    localStorage.removeItem(STORAGE_KEYS.token)
-    localStorage.removeItem(STORAGE_KEYS.user)
+    try {
+      await apiClient.post('/auth/logout')
+    } catch {
+      // Kể cả gọi backend thất bại vẫn xoá phiên cục bộ để user thoát ra được.
+    }
+    clearSession()
     setUser(null)
   }
 
@@ -97,6 +120,8 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(user),
     login,
     register,
+    verifyOtp,
+    resendOtp,
     updateProfile,
     logout,
   }), [user])

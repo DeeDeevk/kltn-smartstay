@@ -232,9 +232,9 @@ function CheckoutPage() {
   const checkoutState = location.state
 
   const [guestInfo, setGuestInfo] = useState({
-    name: user?.username || '',
-    phone: '',
-    email: '',
+    name: user?.name || '',
+    phone: user?.phone || '',
+    email: user?.email || '',
   })
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [errors, setErrors] = useState({})
