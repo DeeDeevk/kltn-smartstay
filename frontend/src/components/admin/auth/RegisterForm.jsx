@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Mail, Eye, EyeOff, Loader2, User, Phone, Lock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Mail, Eye, EyeOff, Loader2, User, Phone, Lock, ShieldCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -8,15 +8,116 @@ const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-
 const labelClass = "mb-1.5 block text-sm font-semibold text-slate-700";
 const iconClass = "absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none";
 
+const RESEND_COOLDOWN_SECONDS = 30;
+
+function OtpStep({ email, onVerified }) {
+  const { verifyOtp, resendOtp } = useAuth();
+  const [otp, setOtp] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState(null);
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((s) => s - 1), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await verifyOtp({ email, otp });
+      onVerified();
+    } catch (err) {
+      setError(err.message || 'Mã OTP không đúng hoặc đã hết hạn');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError(null);
+    setResending(true);
+    try {
+      await resendOtp(email);
+      toast.success('Đã gửi lại mã OTP');
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(err.message || 'Không thể gửi lại mã OTP');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <form className="space-y-5" onSubmit={handleVerify}>
+      <div>
+        <label className={labelClass}>Mã OTP</label>
+        <div className="relative">
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            required
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+            className={`${inputClass} tracking-[0.4em] text-center font-bold`}
+            placeholder="------"
+          />
+          <ShieldCheck className={iconClass} size={18} />
+        </div>
+        <p className="mt-2 text-sm text-slate-500">
+          Mã gồm 6 số vừa được gửi tới <span className="font-semibold text-slate-700">{email}</span>, có hiệu lực trong 90 giây.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading || otp.length !== 6}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 font-bold text-white shadow-[0_18px_45px_rgba(37,99,235,0.28)] transition-all hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {loading ? (
+          <>
+            <Loader2 className="animate-spin" size={20} />
+            Đang xác minh...
+          </>
+        ) : (
+          'Xác minh tài khoản'
+        )}
+      </button>
+
+      <div className="text-center pt-1">
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={cooldown > 0 || resending}
+          className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-500 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline"
+        >
+          {resending ? 'Đang gửi lại...' : cooldown > 0 ? `Gửi lại mã sau ${cooldown}s` : 'Gửi lại mã OTP'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function RegisterForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register, login } = useAuth();
+  const { register } = useAuth();
+  const [step, setStep] = useState('form'); // 'form' | 'otp'
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -34,34 +135,28 @@ export default function RegisterForm() {
     }
 
     setLoading(true);
-
-    // Prepare payload with default values
-    const payload = {
-      ...formData,
-      role: 'user',
-      is_active: true,
-    };
-
     try {
-      await register(payload);
-      toast.success('Đăng ký tài khoản thành công!');
-
-      // Auto login after registration
-      await login({
-        username: formData.username,
-        password: formData.password
+      await register({
+        fullName: formData.name,
+        email: formData.email,
+        phone: formData.phone_number,
+        password: formData.password,
       });
-
-      // Redirect directly to checkout or fallback to home/history
-      const from = location.state?.from || '/';
-      const checkoutState = location.state?.checkoutState;
-      navigate(from, { state: checkoutState });
+      toast.success('Đã gửi mã OTP xác minh tới email của bạn');
+      setStep('otp');
     } catch (err) {
       console.error('Registration error:', err);
       setError(err.message || 'Có lỗi xảy ra khi đăng ký');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerified = () => {
+    toast.success('Đăng ký tài khoản thành công!');
+    const from = location.state?.from || '/';
+    const checkoutState = location.state?.checkoutState;
+    navigate(from, { state: checkoutState });
   };
 
   const handleChange = (e) => {
@@ -73,12 +168,19 @@ export default function RegisterForm() {
     <div className="flex h-full w-full items-center justify-center px-6 py-8 lg:px-10">
       <div className="w-full max-w-[560px] rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
         <div className="mb-8 space-y-2">
-          <h2 className="text-[2rem] font-bold tracking-tight text-slate-900 md:text-[2.25rem]">Tạo tài khoản mới</h2>
+          <h2 className="text-[2rem] font-bold tracking-tight text-slate-900 md:text-[2.25rem]">
+            {step === 'form' ? 'Tạo tài khoản mới' : 'Xác minh email'}
+          </h2>
           <p className="max-w-md text-[15px] leading-7 text-slate-500">
-            Tham gia cùng Vika Hotel để trải nghiệm những dịch vụ tốt nhất.
+            {step === 'form'
+              ? 'Tham gia cùng Vika Hotel để trải nghiệm những dịch vụ tốt nhất.'
+              : 'Chỉ còn một bước nữa để hoàn tất đăng ký.'}
           </p>
         </div>
 
+        {step === 'otp' ? (
+          <OtpStep email={formData.email} onVerified={handleVerified} />
+        ) : (
         <form className="space-y-5" onSubmit={handleSubmit}>
           {/* Full Name */}
           <div>
@@ -128,23 +230,6 @@ export default function RegisterForm() {
                 />
                 <Mail className={iconClass} size={18} />
               </div>
-            </div>
-          </div>
-
-          {/* Username */}
-          <div>
-            <label className={labelClass}>Tên đăng nhập</label>
-            <div className="relative">
-              <input
-                type="text"
-                name="username"
-                required
-                value={formData.username}
-                onChange={handleChange}
-                className={inputClass}
-                placeholder="username123"
-              />
-              <User className={iconClass} size={18} />
             </div>
           </div>
 
@@ -226,6 +311,7 @@ export default function RegisterForm() {
             </p>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

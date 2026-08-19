@@ -1,12 +1,23 @@
 import { useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Camera, Save, Loader2, User, Mail, Phone } from 'lucide-react';
+import { Camera, Save, Loader2, User, Mail, Phone, IdCard, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import { useAuth } from '../../context/AuthContext';
 
 const MAX_AVATAR_SIZE = 320;
+
+const ROLE_LABELS = {
+  CUSTOMER: 'Khách hàng',
+  STAFF: 'Nhân viên',
+  ADMIN: 'Quản trị viên',
+};
+
+const STATUS_LABELS = {
+  Active: 'Đang hoạt động',
+  Locked: 'Đã bị khóa',
+};
 
 function resizeImageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -35,8 +46,9 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '');
   const [formData, setFormData] = useState({
     name: user?.name || '',
-    email: user?.email || '',
     phone: user?.phone || '',
+    idNumber: user?.idNumber || '',
+    address: user?.address || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +56,7 @@ export default function ProfilePage() {
     return <Navigate to="/login" replace />;
   }
 
-  const displayName = formData.name || user?.username || 'Tài khoản';
+  const displayName = formData.name || 'Tài khoản';
   const avatarUrl = avatarPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff&size=200`;
 
   const handleAvatarChange = async (e) => {
@@ -73,6 +85,8 @@ export default function ProfilePage() {
     try {
       await updateProfile({ ...formData, avatar: avatarPreview });
       toast.success('Cập nhật hồ sơ thành công!');
+    } catch (err) {
+      toast.error(err.message || 'Không thể cập nhật hồ sơ');
     } finally {
       setSaving(false);
     }
@@ -107,7 +121,15 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="font-bold text-gray-900">{displayName}</p>
-              <p className="text-sm text-gray-500">@{user?.username}</p>
+              <p className="text-sm text-gray-500">{user?.email}</p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold px-2.5 py-1">
+                  <ShieldCheck size={12} /> {ROLE_LABELS[user?.role] || user?.role}
+                </span>
+                <span className={`inline-flex items-center rounded-full text-xs font-semibold px-2.5 py-1 ${user?.status === 'Locked' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {STATUS_LABELS[user?.status] || user?.status}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -131,11 +153,11 @@ export default function ProfilePage() {
               </label>
               <input
                 type="email"
-                value={formData.email}
-                onChange={handleChange('email')}
-                placeholder="ban@email.com"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={user?.email || ''}
+                disabled
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
               />
+              <p className="text-xs text-gray-400 mt-1">Không thể thay đổi email</p>
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
@@ -146,6 +168,30 @@ export default function ProfilePage() {
                 value={formData.phone}
                 onChange={handleChange('phone')}
                 placeholder="09xxxxxxxx"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                <IdCard size={14} /> CMND/CCCD/Passport
+              </label>
+              <input
+                type="text"
+                value={formData.idNumber}
+                onChange={handleChange('idNumber')}
+                placeholder="079xxxxxxxxx"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                <MapPin size={14} /> Địa chỉ
+              </label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={handleChange('address')}
+                placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

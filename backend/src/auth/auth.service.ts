@@ -1,4 +1,9 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -13,9 +18,18 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
 import { AuthProvider } from '../common/enums/auth-provider.enum';
 import { Account } from './entities/account.entity';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { MailService } from '../mail/mail.service';
+
+const OTP_TTL_SECONDS = 90;
+
+interface PendingRegistration {
+  fullName: string;
+  phone?: string;
+  passwordHash: string;
+}
 
 interface RefreshPayload {
   sub: string;
@@ -36,6 +50,7 @@ export class AuthService {
     @InjectRepository(Account)
     private readonly accountRepo: Repository<Account>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly mailService: MailService,
   ) {
     this.googleClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
@@ -43,29 +58,30 @@ export class AuthService {
   }
 
   async register(dto: RegisterDTO) {
-    // Tạo User + Account(LOCAL) trong cùng 1 transaction để tránh User "mồ côi"
-    // (tồn tại nhưng không có cách nào đăng nhập) nếu bước tạo Account thất bại.
-    const user = await this.dataSource.transaction(async (manager) => {
-      const newUser = await this.userService.create(
-        { email: dto.email, fullName: dto.fullName, phone: dto.phone },
-        manager,
-      );
+    // Chưa tạo User/Account ở bước này — chỉ tạo thật sự khi OTP được xác minh đúng.
+    const existed = await this.userService.findByEmail(dto.email);
+    if (existed) {
+      throw new ConflictException('Email đã được sử dụng');
+    }
 
-      const hashedPassword = await bcrypt.hash(dto.password, 10);
-      const accountRepo = manager.getRepository(Account);
-      await accountRepo.save(
-        accountRepo.create({
-          user: newUser,
-          provider: AuthProvider.LOCAL,
-          providerAccountId: newUser.email,
-          password: hashedPassword,
-        }),
-      );
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const pending: PendingRegistration = {
+      fullName: dto.fullName,
+      phone: dto.phone,
+      passwordHash,
+    };
+    await this.redisClient.set(
+      `pending-register:${dto.email}`,
+      JSON.stringify(pending),
+      'EX',
+      OTP_TTL_SECONDS,
+    );
 
-      return newUser;
-    });
+    await this.generateAndSendOtp(dto.email);
 
-    return this.buildTokenPair(user.userId, user.email, user.role);
+    return {
+      message: 'Vui lòng kiểm tra email để lấy mã OTP xác minh tài khoản',
+    };
   }
 
   async login(dto: LoginDto) {
@@ -92,6 +108,73 @@ export class AuthService {
     }
 
     return this.buildTokenPair(user.userId, user.email, user.role);
+  }
+
+  async verifyOtp(email: string, otp: string) {
+    const storedOtp = await this.redisClient.get(`otp:${email}`);
+    if (!storedOtp || storedOtp !== otp) {
+      throw new UnauthorizedException('Mã OTP không đúng hoặc đã hết hạn');
+    }
+
+    const pendingRaw = await this.redisClient.get(`pending-register:${email}`);
+    if (!pendingRaw) {
+      throw new UnauthorizedException(
+        'Phiên đăng ký đã hết hạn, vui lòng đăng ký lại',
+      );
+    }
+    const pending = JSON.parse(pendingRaw) as PendingRegistration;
+
+    const user = await this.dataSource.transaction(async (manager) => {
+      const newUser = await this.userService.create(
+        { email, fullName: pending.fullName, phone: pending.phone },
+        manager,
+      );
+
+      const accountRepo = manager.getRepository(Account);
+      await accountRepo.save(
+        accountRepo.create({
+          user: newUser,
+          provider: AuthProvider.LOCAL,
+          providerAccountId: newUser.email,
+          password: pending.passwordHash,
+        }),
+      );
+
+      return newUser;
+    });
+
+    await this.redisClient.del(`otp:${email}`);
+    await this.redisClient.del(`pending-register:${email}`);
+
+    return this.buildTokenPair(user.userId, user.email, user.role);
+  }
+
+  async resendOtp(email: string) {
+    const pendingRaw = await this.redisClient.get(`pending-register:${email}`);
+    if (!pendingRaw) {
+      throw new UnauthorizedException(
+        'Không có yêu cầu đăng ký nào đang chờ xác minh, vui lòng đăng ký lại',
+      );
+    }
+
+    const remainingTtl = await this.redisClient.ttl(`otp:${email}`);
+    // Chỉ cho gửi lại khi mã cũ đã sống hơn 30 giây, tránh spam gửi mail liên tục
+    if (remainingTtl > OTP_TTL_SECONDS - 30) {
+      throw new UnauthorizedException(
+        'Vui lòng đợi ít nhất 30 giây trước khi yêu cầu gửi lại mã OTP',
+      );
+    }
+
+    // Gia hạn dữ liệu đăng ký tạm để không hết hạn trước mã OTP mới
+    await this.redisClient.expire(`pending-register:${email}`, OTP_TTL_SECONDS);
+    await this.generateAndSendOtp(email);
+    return { message: 'Đã gửi lại mã OTP' };
+  }
+
+  private async generateAndSendOtp(email: string) {
+    const otp = randomInt(100000, 1000000).toString();
+    await this.redisClient.set(`otp:${email}`, otp, 'EX', OTP_TTL_SECONDS);
+    await this.mailService.sendOtp(email, otp);
   }
 
   async loginWithGoogle(idToken: string) {

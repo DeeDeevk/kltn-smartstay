@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { UserModule } from '../users/user.module';
 import { RedisModule } from '../redis/redis.module';
+import { MailModule } from '../mail/mail.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { Account } from './entities/account.entity';
 
@@ -15,6 +16,7 @@ import { Account } from './entities/account.entity';
     PassportModule,
     JwtModule.register({}),
     RedisModule,
+    MailModule,
     TypeOrmModule.forFeature([Account]),
   ],
   controllers: [AuthController],

@@ -1,4 +1,8 @@
-import {  ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { EntityManager, Repository } from 'typeorm';
@@ -9,8 +13,8 @@ import { UserStatus } from 'src/common/enums/user-status.enum';
 export class UserService {
   constructor(
     @InjectRepository(User)
-    private readonly userRepo: Repository<User>
-  ){}
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   // manager: truyền vào khi cần gộp chung transaction với việc tạo Account (đăng ký)
   async create(
@@ -42,5 +46,18 @@ export class UserService {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     return user;
+  }
+
+  async updateProfile(
+    userId: string,
+    data: {
+      fullName?: string;
+      phone?: string;
+      address?: string;
+      idNumber?: string;
+    },
+  ): Promise<User> {
+    await this.userRepo.update({ userId }, data);
+    return this.findById(userId);
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Loader2, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -12,7 +12,7 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: '',
     rememberMe: false,
   });
@@ -24,7 +24,7 @@ export default function LoginForm() {
 
     try {
       await login({
-        username: formData.username,
+        email: formData.email,
         password: formData.password,
       });
       toast.success('Đăng nhập thành công!');
@@ -52,16 +52,16 @@ export default function LoginForm() {
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Tên đăng nhập</label>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Email</label>
             <div className="relative">
               <input
-                type="text"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                placeholder="Nhập tên đăng nhập của bạn"
+                placeholder="name@example.com"
               />
-              <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             </div>
           </div>
 
