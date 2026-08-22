@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
 import { RoomTypeModule } from './room-types/room-type.module';
 import { RoomModule } from './rooms/room.module';
+import { ServiceModule } from './services/service.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { RoomModule } from './rooms/room.module';
     AuthModule,
     RoomTypeModule,
     RoomModule,
+    ServiceModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
