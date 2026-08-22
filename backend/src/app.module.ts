@@ -11,6 +11,7 @@ import { RedisModule } from './redis/redis.module';
 import { RoomTypeModule } from './room-types/room-type.module';
 import { RoomModule } from './rooms/room.module';
 import { ServiceModule } from './services/service.module';
+import { PromotionModule } from './promotions/promotion.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ServiceModule } from './services/service.module';
     RoomTypeModule,
     RoomModule,
     ServiceModule,
+    PromotionModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
