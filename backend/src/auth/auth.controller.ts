@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { RegisterDTO } from './dto/register.dto';
 import { AuthService } from './auth.service';
@@ -9,6 +10,9 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+// Giới hạn riêng cho các endpoint nhạy cảm (brute-force mật khẩu/OTP), chặt hơn mức mặc định toàn cục
+const AUTH_THROTTLE = { default: { limit: 5, ttl: 60000 } };
+
 interface AuthenticatedRequest extends Request {
   user: { userId: string; email: string; role: string };
 }
@@ -17,11 +21,13 @@ interface AuthenticatedRequest extends Request {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Throttle(AUTH_THROTTLE)
   @Post('register')
   register(@Body() dto: RegisterDTO) {
     return this.authService.register(dto);
   }
 
+  @Throttle(AUTH_THROTTLE)
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
@@ -37,11 +43,13 @@ export class AuthController {
     return this.authService.loginWithGoogle(dto.idToken);
   }
 
+  @Throttle(AUTH_THROTTLE)
   @Post('verify-otp')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto.email, dto.otp);
   }
 
+  @Throttle(AUTH_THROTTLE)
   @Post('resend-otp')
   resendOtp(@Body() dto: ResendOtpDto) {
     return this.authService.resendOtp(dto.email);

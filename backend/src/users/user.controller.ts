@@ -14,7 +14,7 @@ export class UserController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  getMe(@Req() req: AuthenticatedRequest, @Body() dto: UpdateProfileDto) {
+  getMe(@Req() req: AuthenticatedRequest) {
     return this.userService.findById(req.user.userId);
   }
 

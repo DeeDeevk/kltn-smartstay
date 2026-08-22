@@ -24,6 +24,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { MailService } from '../mail/mail.service';
 
 const OTP_TTL_SECONDS = 90;
+const MAX_OTP_ATTEMPTS = 5;
 
 interface PendingRegistration {
   fullName: string;
@@ -111,6 +112,17 @@ export class AuthService {
   }
 
   async verifyOtp(email: string, otp: string) {
+    const attemptsKey = `otp-attempts:${email}`;
+    const attempts = await this.redisClient.incr(attemptsKey);
+    if (attempts === 1) {
+      await this.redisClient.expire(attemptsKey, OTP_TTL_SECONDS);
+    }
+    if (attempts > MAX_OTP_ATTEMPTS) {
+      throw new UnauthorizedException(
+        'Bạn đã nhập sai mã OTP quá số lần cho phép, vui lòng yêu cầu gửi lại mã',
+      );
+    }
+
     const storedOtp = await this.redisClient.get(`otp:${email}`);
     if (!storedOtp || storedOtp !== otp) {
       throw new UnauthorizedException('Mã OTP không đúng hoặc đã hết hạn');
@@ -145,6 +157,7 @@ export class AuthService {
 
     await this.redisClient.del(`otp:${email}`);
     await this.redisClient.del(`pending-register:${email}`);
+    await this.redisClient.del(attemptsKey);
 
     return this.buildTokenPair(user.userId, user.email, user.role);
   }
@@ -174,6 +187,8 @@ export class AuthService {
   private async generateAndSendOtp(email: string) {
     const otp = randomInt(100000, 1000000).toString();
     await this.redisClient.set(`otp:${email}`, otp, 'EX', OTP_TTL_SECONDS);
+    // Mã mới -> reset số lần thử sai của mã cũ
+    await this.redisClient.del(`otp-attempts:${email}`);
     await this.mailService.sendOtp(email, otp);
   }
 
