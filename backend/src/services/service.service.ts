@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Service } from './entities/service.entity';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -33,6 +33,25 @@ export class ServiceService {
       throw new NotFoundException('Không tìm thấy dịch vụ');
     }
     return service;
+  }
+
+  async findActiveById(serviceId: string): Promise<Service> {
+    const service = await this.serviceRepo.findOne({
+      where: { serviceId, isActive: true },
+    });
+    if (!service) {
+      throw new NotFoundException(
+        'Không tìm thấy dịch vụ hoặc dịch vụ đã ngưng cung cấp',
+      );
+    }
+    return service;
+  }
+
+  async findActiveByIds(serviceIds: string[]): Promise<Service[]> {
+    if (serviceIds.length === 0) return [];
+    return this.serviceRepo.find({
+      where: { serviceId: In(serviceIds), isActive: true },
+    });
   }
 
   async create(dto: CreateServiceDto): Promise<Service> {

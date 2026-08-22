@@ -71,6 +71,10 @@ export class PromotionService {
     return { valid: true, discountAmount, promotion };
   }
 
+  async incrementUsage(promotionId: string): Promise<void> {
+    await this.promotionRepo.increment({ promotionId }, 'usedCount', 1);
+  }
+
   private assertValidDiscount(
     discountType: DiscountType,
     discountValue: number,
