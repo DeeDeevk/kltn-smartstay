@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
 import { Camera, Save, Loader2, User, Mail, Phone, IdCard, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Header from '../layout/Header';
@@ -41,7 +40,7 @@ function resizeImageToDataUrl(file) {
 }
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const fileInputRef = useRef(null);
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '');
   const [formData, setFormData] = useState({
@@ -51,10 +50,6 @@ export default function ProfilePage() {
     address: user?.address || '',
   });
   const [saving, setSaving] = useState(false);
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
 
   const displayName = formData.name || 'Tài khoản';
   const avatarUrl = avatarPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff&size=200`;

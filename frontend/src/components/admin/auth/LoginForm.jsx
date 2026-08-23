@@ -4,13 +4,38 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 6;
+// Chỉ ADMIN mới có trang riêng (/admin) hiện tại; STAFF chưa có khu vực riêng ở frontend
+// nên vẫn theo luồng khách hàng để tránh bị ProtectedRoute bật ra ngay sau khi vào /admin.
+const ADMIN_ROLE = 'ADMIN';
+
+function validateLoginForm({ email, password }) {
+  if (!EMAIL_REGEX.test(email)) {
+    return 'Email không hợp lệ';
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Mật khẩu phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự`;
+  }
+  return null;
+}
+
+function getLoginErrorMessage(err) {
+  if (err.status === 401) {
+    return 'Email hoặc mật khẩu không đúng';
+  }
+  if (err.status === 400) {
+    return err.message || 'Thông tin đăng nhập không hợp lệ';
+  }
+  return err.message || 'Có lỗi xảy ra khi đăng nhập, vui lòng thử lại';
+}
+
 export default function LoginForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,22 +44,31 @@ export default function LoginForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
 
+    const validationError = validateLoginForm(formData);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    setLoading(true);
     try {
-      await login({
+      const user = await login({
         email: formData.email,
         password: formData.password,
       });
       toast.success('Đăng nhập thành công!');
 
-      const from = location.state?.from || '/';
-      const checkoutState = location.state?.checkoutState;
-      navigate(from, { state: checkoutState });
+      if (user?.role === ADMIN_ROLE) {
+        navigate('/admin', { replace: true });
+      } else {
+        const from = location.state?.from || '/';
+        const checkoutState = location.state?.checkoutState;
+        navigate(from, { state: checkoutState });
+      }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.message || 'Có lỗi xảy ra khi đăng nhập');
+      toast.error(getLoginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -95,12 +129,6 @@ export default function LoginForm() {
             />
             <span className="text-sm leading-none text-slate-500 transition-colors group-hover:text-slate-700">Ghi nhớ đăng nhập</span>
           </label>
-
-          {error && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              {error}
-            </div>
-          )}
 
           <button
             type="submit"

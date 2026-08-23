@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import apiClient from '../services/apiClient'
+import { store } from '../store'
+import { authApi } from '../services/auth'
 
 const AuthContext = createContext(null)
 
@@ -52,6 +54,15 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // apiClient tự xử lý refresh access token khi gặp 401 (xem apiClient.js); nếu
+  // refresh token cũng không còn hợp lệ, nó xoá localStorage và bắn sự kiện này để
+  // context đồng bộ lại state React (user/isAuthenticated) mà không cần import ngược.
+  useEffect(() => {
+    const handleSessionExpired = () => setUser(null)
+    window.addEventListener('auth:session-expired', handleSessionExpired)
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired)
+  }, [])
+
   // Token endpoints (login/verify-otp) chỉ trả user rút gọn {userId, email, role}
   // nên sau khi lưu token, gọi thêm /auth/me để lấy đủ fullName, phone... ngay lập tức
   // thay vì phải đợi F5 lại trang mới có.
@@ -64,28 +75,33 @@ export function AuthProvider({ children }) {
     return nextUser
   }
 
+  // Đăng nhập/đăng ký đi qua RTK Query mutation (authApi) thay vì gọi apiClient
+  // trực tiếp, theo đúng Technical Notes của US-đăng ký/đăng nhập. Context vẫn giữ
+  // nguyên API công khai (login/register/verifyOtp/resendOtp) để không phải sửa
+  // các nơi khác đang dùng useAuth().
   const login = async ({ email, password }) => {
-    const { data } = await apiClient.post('/auth/login', { email, password })
+    const data = await store
+      .dispatch(authApi.endpoints.login.initiate({ email, password }))
+      .unwrap()
     return applySession(data)
   }
 
   const register = async ({ fullName, email, phone, password }) => {
-    const { data } = await apiClient.post('/auth/register', {
-      fullName,
-      email,
-      phone,
-      password,
-    })
+    const data = await store
+      .dispatch(authApi.endpoints.register.initiate({ fullName, email, phone, password }))
+      .unwrap()
     return data
   }
 
   const verifyOtp = async ({ email, otp }) => {
-    const { data } = await apiClient.post('/auth/verify-otp', { email, otp })
+    const data = await store
+      .dispatch(authApi.endpoints.verifyOtp.initiate({ email, otp }))
+      .unwrap()
     return applySession(data)
   }
 
   const resendOtp = async (email) => {
-    const { data } = await apiClient.post('/auth/resend-otp', { email })
+    const data = await store.dispatch(authApi.endpoints.resendOtp.initiate(email)).unwrap()
     return data
   }
 
