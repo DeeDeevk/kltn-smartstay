@@ -33,3 +33,6 @@ Thumbs.db
 
 # TypeORM compiled build info
 *.tsbuildinfos
+
+.agents/
+skills-lock.json

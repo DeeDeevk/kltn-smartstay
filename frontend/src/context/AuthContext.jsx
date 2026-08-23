@@ -54,6 +54,15 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // apiClient tự xử lý refresh access token khi gặp 401 (xem apiClient.js); nếu
+  // refresh token cũng không còn hợp lệ, nó xoá localStorage và bắn sự kiện này để
+  // context đồng bộ lại state React (user/isAuthenticated) mà không cần import ngược.
+  useEffect(() => {
+    const handleSessionExpired = () => setUser(null)
+    window.addEventListener('auth:session-expired', handleSessionExpired)
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired)
+  }, [])
+
   // Token endpoints (login/verify-otp) chỉ trả user rút gọn {userId, email, role}
   // nên sau khi lưu token, gọi thêm /auth/me để lấy đủ fullName, phone... ngay lập tức
   // thay vì phải đợi F5 lại trang mới có.

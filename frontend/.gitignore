@@ -31,3 +31,5 @@ dist/
 .claude/
 .git
 
+.agents/
+skills-lock.json

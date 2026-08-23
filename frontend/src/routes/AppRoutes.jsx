@@ -23,7 +23,8 @@ import ProfilePage from '../components/user/ProfilePage'
 import { roomTypeApi } from '../services/roomType'
 import { useCreateBookingMutation } from '../services/booking'
 import { useAuth } from '../context/AuthContext'
-import AdminRoute from '../components/admin/routesadmin/AdminRoute'
+import ProtectedRoute from './ProtectedRoute'
+import ForbiddenPage from './ForbiddenPage'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ')
@@ -389,16 +390,14 @@ function CheckoutPage() {
 
 function AdminHome() {
   return (
-    <AdminRoute>
-      <div className="min-h-screen bg-gray-50 p-10">
-        <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-3">Khu quản trị Vika Hotel</h1>
-          <p className="text-gray-600">
-            Ứng dụng đã khởi động. Các module quản trị sẽ hiển thị dữ liệu mẫu cho đến khi backend được kết nối.
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50 p-10">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-3">Khu quản trị Vika Hotel</h1>
+        <p className="text-gray-600">
+          Ứng dụng đã khởi động. Các module quản trị sẽ hiển thị dữ liệu mẫu cho đến khi backend được kết nối.
+        </p>
       </div>
-    </AdminRoute>
+    </div>
   )
 }
 
@@ -412,10 +411,32 @@ export default function AppRoutes() {
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/searchrooms" element={<SearchResultsPage />} />
         <Route path="/rooms/:id" element={<RoomDetailPage />} />
-        <Route path="/user/profile" element={<ProfilePage />} />
+        <Route
+          path="/user/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/checkout" element={<CheckoutPage />} />
-        <Route path="/admin" element={<AdminHome />} />
-        <Route path="/admin/checkout" element={<CheckoutPage />} />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <AdminHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/checkout"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <CheckoutPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/403" element={<ForbiddenPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

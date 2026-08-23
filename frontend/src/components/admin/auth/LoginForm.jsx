@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
 // Chỉ ADMIN mới có trang riêng (/admin) hiện tại; STAFF chưa có khu vực riêng ở frontend
-// nên vẫn theo luồng khách hàng để tránh bị AdminRoute bật ra ngay sau khi vào /admin.
+// nên vẫn theo luồng khách hàng để tránh bị ProtectedRoute bật ra ngay sau khi vào /admin.
 const ADMIN_ROLE = 'ADMIN';
 
 function validateLoginForm({ email, password }) {
