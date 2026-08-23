@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import apiClient from '../services/apiClient'
+import { store } from '../store'
+import { authApi } from '../services/auth'
 
 const AuthContext = createContext(null)
 
@@ -64,28 +66,33 @@ export function AuthProvider({ children }) {
     return nextUser
   }
 
+  // Đăng nhập/đăng ký đi qua RTK Query mutation (authApi) thay vì gọi apiClient
+  // trực tiếp, theo đúng Technical Notes của US-đăng ký/đăng nhập. Context vẫn giữ
+  // nguyên API công khai (login/register/verifyOtp/resendOtp) để không phải sửa
+  // các nơi khác đang dùng useAuth().
   const login = async ({ email, password }) => {
-    const { data } = await apiClient.post('/auth/login', { email, password })
+    const data = await store
+      .dispatch(authApi.endpoints.login.initiate({ email, password }))
+      .unwrap()
     return applySession(data)
   }
 
   const register = async ({ fullName, email, phone, password }) => {
-    const { data } = await apiClient.post('/auth/register', {
-      fullName,
-      email,
-      phone,
-      password,
-    })
+    const data = await store
+      .dispatch(authApi.endpoints.register.initiate({ fullName, email, phone, password }))
+      .unwrap()
     return data
   }
 
   const verifyOtp = async ({ email, otp }) => {
-    const { data } = await apiClient.post('/auth/verify-otp', { email, otp })
+    const data = await store
+      .dispatch(authApi.endpoints.verifyOtp.initiate({ email, otp }))
+      .unwrap()
     return applySession(data)
   }
 
   const resendOtp = async (email) => {
-    const { data } = await apiClient.post('/auth/resend-otp', { email })
+    const data = await store.dispatch(authApi.endpoints.resendOtp.initiate(email)).unwrap()
     return data
   }
 

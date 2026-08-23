@@ -1,29 +1,28 @@
 import { Navigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 export default function AdminRoute({ children }) {
-    // Lấy token từ localStorage
     const token = localStorage.getItem("access_token");
 
     if (!token) {
-        // alert("Bạn chưa đăng nhập! Đang chuyển hướng về trang chủ...");
         return <Navigate to="/" replace />;
     }
 
     try {
-        // Cắt phần Payload của JWT và giải mã bằng hàm atob
-        const payloadBase64 = token.split('.')[1];
-        const decodedToken = JSON.parse(atob(payloadBase64));
+        // Vai trò đọc từ hồ sơ user đã lưu (đến từ /auth/me qua AuthContext),
+        // tránh tự decode JWT bằng tay — cách cũ so sánh "admin" (chữ thường) trong khi
+        // backend trả role là "ADMIN" (enum UserRole), nên trước đây không ai vào được trang admin.
+        const storedUser = JSON.parse(localStorage.getItem("auth_user") || "null");
 
-        // Kiểm tra quyền
-        if (decodedToken.role === "admin") {
+        if (storedUser?.role === "ADMIN") {
             return children;
-        } else {
-            // alert("Bạn không có quyền truy cập trang này! Đang chuyển hướng về trang chủ...");
-            return <Navigate to="/" replace />;
         }
+
+        toast.error("Bạn không có quyền truy cập trang này");
+        return <Navigate to="/" replace />;
     } catch (error) {
-        console.error("Lỗi giải mã token:", error);
-        alert("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại!");
+        console.error("Lỗi đọc thông tin phiên đăng nhập:", error);
+        toast.error("Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại");
         return <Navigate to="/" replace />;
     }
 }

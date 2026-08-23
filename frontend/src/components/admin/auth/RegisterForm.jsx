@@ -9,13 +9,50 @@ const labelClass = "mb-1.5 block text-sm font-semibold text-slate-700";
 const iconClass = "absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none";
 
 const RESEND_COOLDOWN_SECONDS = 30;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 6;
+
+function validateRegisterForm({ name, phone_number, email, password, confirmPassword }) {
+  if (!name.trim()) {
+    return 'Vui lòng nhập họ và tên';
+  }
+  if (!phone_number.trim()) {
+    return 'Vui lòng nhập số điện thoại';
+  }
+  if (!EMAIL_REGEX.test(email)) {
+    return 'Email không hợp lệ';
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Mật khẩu phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự`;
+  }
+  if (password !== confirmPassword) {
+    return 'Mật khẩu nhập lại không khớp';
+  }
+  return null;
+}
+
+function getRegisterErrorMessage(err) {
+  if (err.status === 409) {
+    return 'Email này đã được sử dụng, vui lòng dùng email khác';
+  }
+  if (err.status === 400) {
+    return err.message || 'Thông tin đăng ký không hợp lệ';
+  }
+  return err.message || 'Có lỗi xảy ra khi đăng ký, vui lòng thử lại';
+}
+
+function getOtpErrorMessage(err) {
+  if (err.status === 400 || err.status === 401) {
+    return 'Mã OTP không đúng hoặc đã hết hạn';
+  }
+  return err.message || 'Không thể xác minh OTP, vui lòng thử lại';
+}
 
 function OtpStep({ email, onVerified }) {
   const { verifyOtp, resendOtp } = useAuth();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [error, setError] = useState(null);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
 
   useEffect(() => {
@@ -26,27 +63,25 @@ function OtpStep({ email, onVerified }) {
 
   const handleVerify = async (e) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
     try {
       await verifyOtp({ email, otp });
       onVerified();
     } catch (err) {
-      setError(err.message || 'Mã OTP không đúng hoặc đã hết hạn');
+      toast.error(getOtpErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
-    setError(null);
     setResending(true);
     try {
       await resendOtp(email);
       toast.success('Đã gửi lại mã OTP');
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
-      setError(err.message || 'Không thể gửi lại mã OTP');
+      toast.error(err.message || 'Không thể gửi lại mã OTP');
     } finally {
       setResending(false);
     }
@@ -73,12 +108,6 @@ function OtpStep({ email, onVerified }) {
           Mã gồm 6 số vừa được gửi tới <span className="font-semibold text-slate-700">{email}</span>, có hiệu lực trong 90 giây.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-          {error}
-        </div>
-      )}
 
       <button
         type="submit"
@@ -116,7 +145,6 @@ export default function RegisterForm() {
   const [step, setStep] = useState('form'); // 'form' | 'otp'
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -127,10 +155,10 @@ export default function RegisterForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Mật khẩu nhập lại không khớp');
+    const validationError = validateRegisterForm(formData);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -146,7 +174,7 @@ export default function RegisterForm() {
       setStep('otp');
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.message || 'Có lỗi xảy ra khi đăng ký');
+      toast.error(getRegisterErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -273,13 +301,6 @@ export default function RegisterForm() {
               </div>
             </div>
           </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              {error}
-            </div>
-          )}
 
           {/* Submit Button */}
           <button
