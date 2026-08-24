@@ -107,6 +107,26 @@
       "priceFrom": "Price per night from",
       "bookNow": "Book now"
     },
+    "testimonials": {
+      "eyebrow": "Guest feedback",
+      "title": "What our guests say",
+      "subtitle": "Genuine feedback from guests who have stayed at Vika Hotel.",
+      "guest1": {
+        "name": "Minh Quan",
+        "trip": "Business traveler",
+        "quote": "Clean room, fast wifi, and a central location that's very convenient for work. The front desk kindly helped me change my schedule late at night."
+      },
+      "guest2": {
+        "name": "Thu Ha",
+        "trip": "Family vacation",
+        "quote": "Our family loved the Family Suite — the kids had their own space to play. Breakfast was delicious and varied!"
+      },
+      "guest3": {
+        "name": "Duc & Linh",
+        "trip": "Honeymoon",
+        "quote": "The balcony view was stunning, exactly like the photos on the website. Booking and paying online was fast and effortless."
+      }
+    },
     "promo": {
       "badge": "Exclusive offer",
       "titleLine1": "Vibrant Summer",
@@ -150,6 +170,10 @@
       "double": "Double Room",
       "triple": "Triple Room",
       "family": "Family Room",
+      "tierStandard": "Standard Room",
+      "tierDeluxe": "Deluxe Room",
+      "tierFamily": "Family Suite",
+      "tierExecutive": "Executive Suite",
       "discount": "{{percent}}% off",
       "guests": "guests",
       "amenitiesCount": "amenities",
@@ -199,6 +223,7 @@
       "processing": "Processing...",
       "bookNow": "Book now",
       "nights": "{{price}} x {{nights}} nights",
+      "vat": "VAT ({{rate}}%)",
       "total": "Total"
     },
     "reviews": {
@@ -243,6 +268,18 @@
       "bookingFailed": "Could not create the booking. Please try again."
     },
     "title": "Confirm your booking",
+    "payment": {
+      "title": "Scan to pay",
+      "subtitle": "Amount due: {{amount}}",
+      "creatingLink": "Creating payment code...",
+      "openLink": "Open PayOS payment page",
+      "expiresIn": "Code expires in {{time}}",
+      "expired": "The payment code has expired.",
+      "failed": "Payment failed. Please try again.",
+      "retry": "Generate a new code",
+      "linkError": "Could not create the payment link",
+      "waitingHint": "This page will move on automatically once payment is received."
+    },
     "customerInfo": "Guest information",
     "fullName": "Full name",
     "phone": "Phone number",
@@ -256,6 +293,7 @@
       "checkIn": "Check-in",
       "checkOut": "Check-out",
       "priceNights": "{{price}} x {{nights}} nights",
+      "vat": "VAT ({{rate}}%)",
       "total": "Total"
     }
   },
@@ -270,6 +308,7 @@
     "payment": {
       "UNPAID": "Unpaid",
       "PAID": "Paid",
+      "FAILED": "Payment failed",
       "cash": "Cash",
       "payos": "PayOS"
     },
@@ -286,7 +325,40 @@
       "cancelSuccess": "Booking cancelled",
       "cancelError": "Could not cancel the booking",
       "cancelTitle": "Cancel booking",
-      "cancelMessage": "Are you sure you want to cancel the booking for \"{{roomName}}\"?"
+      "cancelMessage": "Are you sure you want to cancel the booking for \"{{roomName}}\"?",
+      "viewDetail": "Details",
+      "table": {
+        "room": "Room",
+        "code": "Booking code",
+        "dates": "Check-in - Check-out",
+        "total": "Total",
+        "payment": "Payment",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "detail": {
+        "title": "Booking details",
+        "bookingCode": "Booking code",
+        "checkIn": "Check-in",
+        "checkOut": "Check-out",
+        "guestInfo": "Guest information",
+        "guestName": "Guest name",
+        "guestPhone": "Phone number",
+        "guestEmail": "Contact email",
+        "extraServices": "Extra services",
+        "service": "Service",
+        "quantity": "Qty",
+        "unitPrice": "Unit price",
+        "subtotal": "Subtotal",
+        "noServices": "No extra services for this booking.",
+        "roomAmount": "Room amount",
+        "discount": "Discount",
+        "serviceAmount": "Extra services",
+        "vat": "VAT ({{rate}}%)",
+        "total": "Total",
+        "vatNote": "VAT and service fees included",
+        "cancelReason": "Cancellation reason"
+      }
     }
   },
   "payment": {

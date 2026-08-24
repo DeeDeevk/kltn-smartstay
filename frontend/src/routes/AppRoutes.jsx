@@ -8,6 +8,7 @@ import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
+import TestimonialsSection from '../components/homepage/TestimonialsSection'
 import PromoSection from '../components/homepage/PromoSection'
 import AuthHero from '../components/admin/auth/AuthHero'
 import LoginForm from '../components/admin/auth/LoginForm'
@@ -32,7 +33,7 @@ import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
 import { useLazySearchAvailabilityQuery } from '../services/availability'
 import { useCreateBookingMutation } from '../services/booking'
-import { useCreatePayOSLinkMutation } from '../services/payment'
+import { useCreatePayOSLinkMutation, useSyncPayOSStatusQuery } from '../services/payment'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import ForbiddenPage from './ForbiddenPage'
@@ -77,6 +78,7 @@ function HomePage() {
       <main>
         <HeroSection />
         <FeaturedRooms />
+        <TestimonialsSection />
         <PromoSection />
       </main>
       <Footer />
@@ -392,6 +394,128 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
   )
 }
 
+const PAYOS_POLL_INTERVAL_MS = 4000
+
+// Đếm ngược tới thời điểm hết hạn (unix giây) mà backend trả về cho link PayOS.
+// Trả về null nếu không có expiredAt (BE không phải lúc nào cũng có, xem AC "nếu có").
+function usePaymentCountdown(expiredAt) {
+  const [remaining, setRemaining] = useState(() =>
+    expiredAt ? Math.max(0, expiredAt - Math.floor(Date.now() / 1000)) : null,
+  )
+
+  useEffect(() => {
+    if (!expiredAt) {
+      setRemaining(null)
+      return
+    }
+    const tick = () => setRemaining(Math.max(0, expiredAt - Math.floor(Date.now() / 1000)))
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [expiredAt])
+
+  return remaining
+}
+
+function formatCountdown(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+// Hiển thị QR + link thanh toán ngay trên trang checkout (thay vì redirect sang PayOS),
+// đếm ngược tới khi hết hạn, và tự poll trạng thái để phát hiện thanh toán thành công mà
+// không cần khách quay lại trang (webhook thật của PayOS không gọi được tới localhost).
+function PayOSPaymentPanel({ totalPrice, paymentLink, linkError, isCreatingLink, paymentFailed, remaining, onRetry }) {
+  const { t, i18n } = useTranslation()
+  const isExpired = Boolean(paymentLink) && remaining === 0
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-lg mx-auto text-center space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{t('checkout.payment.title')}</h1>
+        <p className="text-gray-500 mt-2">
+          {t('checkout.payment.subtitle', { amount: formatCurrency(totalPrice, i18n.language) })}
+        </p>
+      </div>
+
+      {isCreatingLink && !paymentLink && (
+        <div className="flex flex-col items-center gap-3 py-8 text-gray-500">
+          <Loader2 className="animate-spin" size={28} />
+          {t('checkout.payment.creatingLink')}
+        </div>
+      )}
+
+      {linkError && !isCreatingLink && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {linkError}
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {t('checkout.payment.retry')}
+          </button>
+        </div>
+      )}
+
+      {paymentFailed && !linkError && !isCreatingLink && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {t('checkout.payment.failed')}
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {t('checkout.payment.retry')}
+          </button>
+        </div>
+      )}
+
+      {paymentLink && !isExpired && !paymentFailed && (
+        <>
+          <div className="flex justify-center py-2">
+            <QRCodeSVG value={paymentLink.qrCode} size={200} level="M" />
+          </div>
+          {remaining !== null && (
+            <p className="text-sm font-semibold text-gray-600">
+              {t('checkout.payment.expiresIn', { time: formatCountdown(remaining) })}
+            </p>
+          )}
+          <a
+            href={paymentLink.checkoutUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {t('checkout.payment.openLink')}
+          </a>
+          <p className="text-xs text-gray-400">{t('checkout.payment.waitingHint')}</p>
+        </>
+      )}
+
+      {paymentLink && isExpired && !paymentFailed && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+            {t('checkout.payment.expired')}
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {t('checkout.payment.retry')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CheckoutPage() {
   const { t } = useTranslation()
   const location = useLocation()
@@ -406,16 +530,55 @@ function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [errors, setErrors] = useState({})
   const [paidBooking, setPaidBooking] = useState(null)
+  // Booking online đã tạo, đang chờ thanh toán — giữ lại để nút "Tạo mã mới" gọi lại
+  // đúng booking này thay vì tạo booking mới (bug cũ khi bấm nộp lại form).
+  const [pendingBooking, setPendingBooking] = useState(null)
+  const [paymentLink, setPaymentLink] = useState(null)
+  const [linkError, setLinkError] = useState(null)
+  const [paymentFailed, setPaymentFailed] = useState(false)
 
   const [createBooking, { isLoading: isCreating }] = useCreateBookingMutation()
-  const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation()
-  const isLoading = isCreating || isRedirecting
+  const [createPayOSLink, { isLoading: isCreatingLink }] = useCreatePayOSLinkMutation()
+
+  const requestPaymentLink = async (bookingId) => {
+    setLinkError(null)
+    setPaymentLink(null)
+    setPaymentFailed(false)
+    try {
+      const link = await createPayOSLink(bookingId).unwrap()
+      setPaymentLink(link)
+    } catch (err) {
+      setLinkError(err?.data?.message || t('checkout.payment.linkError'))
+    }
+  }
+
+  const remaining = usePaymentCountdown(paymentLink?.expiredAt)
+  const isLinkExpired = Boolean(paymentLink) && remaining === 0
+
+  // Không có webhook thật trên localhost — tự poll trạng thái đơn (RTK Query
+  // pollingInterval) trong lúc đang chờ khách quét QR/thanh toán, để trang tự chuyển
+  // sang màn hình thành công hoặc báo thất bại. `skip` dừng poll khi đã PAID/FAILED
+  // hoặc link đã hết hạn, và RTK Query tự huỷ subscription khi rời trang.
+  const shouldPollPayment = Boolean(pendingBooking && paymentLink && !paidBooking && !paymentFailed && !isLinkExpired)
+  const { data: syncedBooking } = useSyncPayOSStatusQuery(pendingBooking?.bookingId, {
+    skip: !shouldPollPayment,
+    pollingInterval: PAYOS_POLL_INTERVAL_MS,
+  })
+
+  useEffect(() => {
+    if (!syncedBooking) return
+    if (syncedBooking.paymentStatus === 'PAID') {
+      setPaidBooking(syncedBooking)
+    } else if (syncedBooking.paymentStatus === 'FAILED') {
+      setPaymentFailed(true)
+    }
+  }, [syncedBooking])
 
   if (!checkoutState?.room) {
     return <Navigate to="/" replace />
   }
 
-  const { room, startDate, endDate, nights, totalPrice } = checkoutState
+  const { room, startDate, endDate, nights, totalPrice, vatAmount } = checkoutState
 
   const handleChange = (field) => (e) => {
     setGuestInfo((prev) => ({ ...prev, [field]: e.target.value }))
@@ -448,8 +611,8 @@ function CheckoutPage() {
       }).unwrap()
 
       if (paymentMethod === 'online') {
-        const { checkoutUrl } = await createPayOSLink(booking.bookingId).unwrap()
-        window.location.href = checkoutUrl
+        setPendingBooking(booking)
+        await requestPaymentLink(booking.bookingId)
         return
       }
 
@@ -470,6 +633,16 @@ function CheckoutPage() {
             startDate={startDate}
             endDate={endDate}
             totalPrice={totalPrice}
+          />
+        ) : pendingBooking ? (
+          <PayOSPaymentPanel
+            totalPrice={totalPrice}
+            paymentLink={paymentLink}
+            linkError={linkError}
+            isCreatingLink={isCreatingLink}
+            paymentFailed={paymentFailed}
+            remaining={remaining}
+            onRetry={() => requestPaymentLink(pendingBooking.bookingId)}
           />
         ) : (
           <>
@@ -546,16 +719,16 @@ function CheckoutPage() {
 
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isCreating}
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-70 text-white font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
-                  {isLoading && <Loader2 size={18} className="animate-spin" />}
-                  {isLoading ? t('checkout.processing') : t('checkout.confirmBooking')}
+                  {isCreating && <Loader2 size={18} className="animate-spin" />}
+                  {isCreating ? t('checkout.processing') : t('checkout.confirmBooking')}
                 </button>
               </form>
 
               <aside className="lg:sticky lg:top-24 h-fit">
-                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} />
+                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} />
               </aside>
             </div>
           </>

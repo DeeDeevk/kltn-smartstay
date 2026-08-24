@@ -22,4 +22,8 @@ export const paymentApi = createApi({
   }),
 });
 
-export const { useCreatePayOSLinkMutation, useLazySyncPayOSStatusQuery } = paymentApi;
+export const {
+  useCreatePayOSLinkMutation,
+  useSyncPayOSStatusQuery,
+  useLazySyncPayOSStatusQuery,
+} = paymentApi;

@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import formatCurrencyUtil from '../../utils/formatCurrency';
+import { VAT_RATE } from '../../utils/vat';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop';
 
-export default function OrderSummaryCard({ room, startDate, endDate, nights, totalPrice }) {
+export default function OrderSummaryCard({ room, startDate, endDate, nights, totalPrice, vatAmount = 0 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'vi-VN';
-  const pricePerNight = totalPrice / nights;
+  const roomSubtotal = totalPrice - vatAmount;
+  const pricePerNight = roomSubtotal / nights;
 
   const formatCurrency = (amount) => formatCurrencyUtil(amount, i18n.language);
 
@@ -43,7 +45,11 @@ export default function OrderSummaryCard({ room, startDate, endDate, nights, tot
       <div className="space-y-2">
         <div className="flex justify-between text-sm text-gray-600">
           <span>{t('checkout.summary.priceNights', { price: formatCurrency(pricePerNight), nights })}</span>
-          <span>{formatCurrency(totalPrice)}</span>
+          <span>{formatCurrency(roomSubtotal)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-gray-500">
+          <span>{t('checkout.summary.vat', { rate: VAT_RATE * 100 })}</span>
+          <span>{formatCurrency(vatAmount)}</span>
         </div>
         <div className="flex justify-between items-center pt-3 border-t border-gray-100">
           <span className="font-bold text-gray-900">{t('checkout.summary.total')}</span>

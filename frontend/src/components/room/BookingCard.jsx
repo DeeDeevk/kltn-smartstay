@@ -11,6 +11,7 @@ import { toast } from 'react-toastify';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import formatCurrencyUtil from '../../utils/formatCurrency';
+import { VAT_RATE, calculateVat } from '../../utils/vat';
 
 // Component con để hiển thị từng dòng khách (Người lớn, Trẻ em...)
 const GuestCounter = ({ label, subLabel, value, onDecrease, onIncrease, max = 10 }) => (
@@ -70,7 +71,11 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
   // Tính số đêm
   const nights = Math.max(1, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)));
 
-  const totalPrice = (pricePerNight * nights);
+  const roomSubtotal = (pricePerNight * nights);
+  // Chỉ để hiển thị trước cho khách xem — số tiền charge thật luôn do backend tính lại
+  // khi tạo link thanh toán, đảm bảo khớp 100% với VAT_RATE ở booking.service.ts.
+  const vatAmount = calculateVat(roomSubtotal);
+  const totalPrice = roomSubtotal + vatAmount;
 
   const formatCurrency = (amount) => formatCurrencyUtil(amount, i18n.language);
 
@@ -80,7 +85,8 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       nights,
-      totalPrice
+      totalPrice,
+      vatAmount
     };
 
     if (!isAuthenticated) {
@@ -176,7 +182,11 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
           <span className="underline decoration-gray-300 decoration-dotted">
             {t('room.booking.nights', { price: formatCurrency(pricePerNight), nights })}
           </span>
-          <span>{formatCurrency(pricePerNight * nights)}</span>
+          <span>{formatCurrency(roomSubtotal)}</span>
+        </div>
+        <div className="flex justify-between text-gray-500 text-sm">
+          <span>{t('room.booking.vat', { rate: VAT_RATE * 100 })}</span>
+          <span>{formatCurrency(vatAmount)}</span>
         </div>
         <div className="flex justify-between items-center border-t border-gray-200 mt-4 pt-4">
           <span className="font-bold text-gray-900 text-lg">{t('room.booking.total')}</span>

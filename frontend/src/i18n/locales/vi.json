@@ -107,6 +107,26 @@
       "priceFrom": "Giá mỗi đêm từ",
       "bookNow": "Đặt ngay"
     },
+    "testimonials": {
+      "eyebrow": "Cảm nhận khách hàng",
+      "title": "Khách hàng nói gì về chúng tôi",
+      "subtitle": "Những chia sẻ chân thực từ khách đã lưu trú tại Vika Hotel.",
+      "guest1": {
+        "name": "Minh Quân",
+        "trip": "Khách công tác",
+        "quote": "Phòng sạch sẽ, wifi nhanh, vị trí trung tâm rất thuận tiện cho công việc. Lễ tân hỗ trợ nhiệt tình dù tôi đổi lịch lúc khuya."
+      },
+      "guest2": {
+        "name": "Thu Hà",
+        "trip": "Kỳ nghỉ gia đình",
+        "quote": "Gia đình mình rất thích phòng Family Suite, các bé có không gian chơi riêng. Bữa sáng ngon và đa dạng!"
+      },
+      "guest3": {
+        "name": "Đức & Linh",
+        "trip": "Tuần trăng mật",
+        "quote": "View từ ban công tuyệt đẹp, đúng như hình đăng trên web. Đặt phòng và thanh toán online rất nhanh, tiện lợi."
+      }
+    },
     "promo": {
       "badge": "Ưu đãi độc quyền",
       "titleLine1": "Mùa Hè Rực Rỡ",
@@ -150,6 +170,10 @@
       "double": "Phòng Đôi",
       "triple": "Phòng Ba",
       "family": "Phòng Gia Đình",
+      "tierStandard": "Phòng Tiêu Chuẩn",
+      "tierDeluxe": "Phòng Deluxe",
+      "tierFamily": "Suite Gia Đình",
+      "tierExecutive": "Suite Cao Cấp",
       "discount": "Ưu đãi {{percent}}%",
       "guests": "người",
       "amenitiesCount": "tiện nghi",
@@ -199,6 +223,7 @@
       "processing": "Đang xử lý...",
       "bookNow": "Đặt phòng ngay",
       "nights": "{{price}} x {{nights}} đêm",
+      "vat": "Thuế VAT ({{rate}}%)",
       "total": "Tổng cộng"
     },
     "reviews": {
@@ -243,6 +268,18 @@
       "bookingFailed": "Không thể tạo đặt phòng. Vui lòng thử lại."
     },
     "title": "Xác nhận đặt phòng",
+    "payment": {
+      "title": "Quét mã để thanh toán",
+      "subtitle": "Số tiền cần thanh toán: {{amount}}",
+      "creatingLink": "Đang tạo mã thanh toán...",
+      "openLink": "Mở trang thanh toán PayOS",
+      "expiresIn": "Mã hết hạn sau {{time}}",
+      "expired": "Mã thanh toán đã hết hạn.",
+      "failed": "Thanh toán không thành công. Vui lòng thử lại.",
+      "retry": "Tạo mã mới",
+      "linkError": "Không thể tạo link thanh toán",
+      "waitingHint": "Trang sẽ tự động chuyển tiếp ngay khi hệ thống nhận được thanh toán."
+    },
     "customerInfo": "Thông tin khách hàng",
     "fullName": "Họ và tên",
     "phone": "Số điện thoại",
@@ -256,6 +293,7 @@
       "checkIn": "Nhận phòng",
       "checkOut": "Trả phòng",
       "priceNights": "{{price}} x {{nights}} đêm",
+      "vat": "Thuế VAT ({{rate}}%)",
       "total": "Tổng cộng"
     }
   },
@@ -270,6 +308,7 @@
     "payment": {
       "UNPAID": "Chưa thanh toán",
       "PAID": "Đã thanh toán",
+      "FAILED": "Thanh toán thất bại",
       "cash": "Tiền mặt",
       "payos": "PayOS"
     },
@@ -286,7 +325,40 @@
       "cancelSuccess": "Đã hủy đơn đặt phòng",
       "cancelError": "Không thể hủy đơn đặt phòng",
       "cancelTitle": "Hủy đơn đặt phòng",
-      "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?"
+      "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?",
+      "viewDetail": "Chi tiết",
+      "table": {
+        "room": "Phòng",
+        "code": "Mã đặt",
+        "dates": "Ngày nhận - trả",
+        "total": "Tổng tiền",
+        "payment": "Thanh toán",
+        "status": "Trạng thái",
+        "actions": "Hành động"
+      },
+      "detail": {
+        "title": "Chi tiết đặt phòng",
+        "bookingCode": "Mã đặt",
+        "checkIn": "Nhận phòng",
+        "checkOut": "Trả phòng",
+        "guestInfo": "Thông tin khách hàng",
+        "guestName": "Người nhận phòng",
+        "guestPhone": "Số điện thoại",
+        "guestEmail": "Email liên hệ",
+        "extraServices": "Dịch vụ bổ sung",
+        "service": "Dịch vụ",
+        "quantity": "SL",
+        "unitPrice": "Đơn giá",
+        "subtotal": "Thành tiền",
+        "noServices": "Không có dịch vụ bổ sung nào.",
+        "roomAmount": "Tiền phòng",
+        "discount": "Giảm giá",
+        "serviceAmount": "Dịch vụ bổ sung",
+        "vat": "Thuế VAT ({{rate}}%)",
+        "total": "Tổng cộng",
+        "vatNote": "Đã bao gồm VAT và phí dịch vụ",
+        "cancelReason": "Lý do hủy"
+      }
     }
   },
   "payment": {

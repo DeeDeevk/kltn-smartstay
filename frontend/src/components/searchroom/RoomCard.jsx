@@ -10,11 +10,24 @@ const CAPACITY_LABEL_KEYS = {
   3: 'search.roomCard.triple',
 };
 
+// Ưu tiên nhận diện hạng phòng theo tên (Standard/Deluxe/Family/Executive...) — khớp cả
+// tên hạng thuần tuý ("Deluxe Room") lẫn tên thương mại có hậu tố ("Deluxe Ocean View").
+// Loại phòng không khớp rule nào thì rơi về nhãn suy theo sức chứa như trước đây.
+const TIER_LABEL_RULES = [
+  [/executive|vip/i, 'search.roomCard.tierExecutive'],
+  [/family/i, 'search.roomCard.tierFamily'],
+  [/deluxe/i, 'search.roomCard.tierDeluxe'],
+  [/standard/i, 'search.roomCard.tierStandard'],
+];
+
 export default function RoomCard({ room, startDate, endDate }) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
 
-  const capacityLabel = (capacity) => t(CAPACITY_LABEL_KEYS[capacity] ?? 'search.roomCard.family');
+  const roomTierLabel = (room) => {
+    const rule = TIER_LABEL_RULES.find(([pattern]) => pattern.test(room.name ?? ''));
+    return t(rule ? rule[1] : CAPACITY_LABEL_KEYS[room.capacity_people] ?? 'search.roomCard.family');
+  };
 
   const handleBookNow = () => {
     const roomId = room.roomTypeId || room.id;
@@ -57,7 +70,7 @@ export default function RoomCard({ room, startDate, endDate }) {
         <div className="flex justify-between items-center mb-2">
           <div className="flex gap-2">
             <span className="bg-blue-50 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
-              {capacityLabel(room.capacity_people)}
+              {roomTierLabel(room)}
             </span>
             {/* {room.roomClass && (
               <span className="bg-amber-50 text-amber-600 text-xs font-semibold px-2 py-1 rounded border border-amber-100 uppercase tracking-wider">
