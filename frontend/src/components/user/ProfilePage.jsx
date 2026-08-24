@@ -3,6 +3,8 @@ import { Camera, Save, Loader2, User, Mail, Phone, IdCard, MapPin, ShieldCheck }
 import { toast } from 'react-toastify';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
+import StatusBadge from '../common/StatusBadge';
+import ChangePasswordForm from './ChangePasswordForm';
 import { useAuth } from '../../context/AuthContext';
 
 const MAX_AVATAR_SIZE = 320;
@@ -11,11 +13,6 @@ const ROLE_LABELS = {
   CUSTOMER: 'Khách hàng',
   STAFF: 'Nhân viên',
   ADMIN: 'Quản trị viên',
-};
-
-const STATUS_LABELS = {
-  Active: 'Đang hoạt động',
-  Locked: 'Đã bị khóa',
 };
 
 function resizeImageToDataUrl(file) {
@@ -121,9 +118,7 @@ export default function ProfilePage() {
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold px-2.5 py-1">
                   <ShieldCheck size={12} /> {ROLE_LABELS[user?.role] || user?.role}
                 </span>
-                <span className={`inline-flex items-center rounded-full text-xs font-semibold px-2.5 py-1 ${user?.status === 'Locked' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                  {STATUS_LABELS[user?.status] || user?.status}
-                </span>
+                <StatusBadge status={user?.status} />
               </div>
             </div>
           </div>
@@ -201,6 +196,8 @@ export default function ProfilePage() {
             {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
           </button>
         </form>
+
+        <ChangePasswordForm />
       </main>
       <Footer />
     </div>

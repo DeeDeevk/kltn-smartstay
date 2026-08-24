@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import { authApi } from '../services/auth';
+import { userApi } from '../services/user';
 import { availabilityApi } from '../services/availability';
 import { extraServiceApi } from '../services/extraService';
 import { roomTypeApi } from '../services/roomType';
@@ -13,6 +14,7 @@ export const store = configureStore({
     reducer: {
         // Add the generated reducer as a specific top-level slice
         [authApi.reducerPath]: authApi.reducer,
+        [userApi.reducerPath]: userApi.reducer,
         [availabilityApi.reducerPath]: availabilityApi.reducer,
         [extraServiceApi.reducerPath]: extraServiceApi.reducer,
         [roomTypeApi.reducerPath]: roomTypeApi.reducer,
@@ -26,6 +28,7 @@ export const store = configureStore({
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware().concat(
             authApi.middleware,
+            userApi.middleware,
             availabilityApi.middleware,
             extraServiceApi.middleware,
             roomTypeApi.middleware,

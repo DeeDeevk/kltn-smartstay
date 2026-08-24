@@ -20,6 +20,7 @@ import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
 import ProfilePage from '../components/user/ProfilePage'
+import UserManagementPage from '../components/admin/users/UserManagementPage'
 import { roomTypeApi } from '../services/roomType'
 import { useCreateBookingMutation } from '../services/booking'
 import { useAuth } from '../context/AuthContext'
@@ -433,6 +434,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <CheckoutPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/accounts"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <UserManagementPage />
             </ProtectedRoute>
           }
         />
