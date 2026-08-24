@@ -11,12 +11,12 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { OAuth2Client } from 'google-auth-library';
 import { UserService } from '../users/user.service';
-import { User } from '../users/entities/user.entity';
 import { RegisterDTO } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { CreateStaffDto } from './dto/create-staff.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
-import { AuthProvider } from '../common/enums/auth-provider.enum';
+import { AuthProvider } from './enums/auth-provider.enum';
 import { Account } from './entities/account.entity';
 import { randomUUID, randomInt } from 'crypto';
 import Redis from 'ioredis';
@@ -82,6 +82,42 @@ export class AuthService {
     return {
       message: 'Vui lòng kiểm tra email để lấy mã OTP xác minh tài khoản',
     };
+  }
+
+  // Chỉ Admin gọi được (kiểm tra role ở AuthController). Khác register(): tạo
+  // User + Account(LOCAL) ngay lập tức, không qua OTP, vì admin đã xác thực
+  // danh tính nhân viên ngoài đời.
+  async createStaff(dto: CreateStaffDto) {
+    const existed = await this.userService.findByEmail(dto.email);
+    if (existed) {
+      throw new ConflictException('Email đã được sử dụng');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    return this.dataSource.transaction(async (manager) => {
+      const newUser = await this.userService.create(
+        {
+          email: dto.email,
+          fullName: dto.fullName,
+          phone: dto.phone,
+          role: UserRole.STAFF,
+        },
+        manager,
+      );
+
+      const accountRepo = manager.getRepository(Account);
+      await accountRepo.save(
+        accountRepo.create({
+          user: newUser,
+          provider: AuthProvider.LOCAL,
+          providerAccountId: newUser.email,
+          password: passwordHash,
+        }),
+      );
+
+      return newUser;
+    });
   }
 
   async login(dto: LoginDto) {
@@ -174,7 +210,65 @@ export class AuthService {
   private async generateAndSendOtp(email: string) {
     const otp = randomInt(100000, 1000000).toString();
     await this.redisClient.set(`otp:${email}`, otp, 'EX', OTP_TTL_SECONDS);
-    await this.mailService.sendOtp(email, otp);
+    await this.mailService.sendOtp(email, otp, OTP_TTL_SECONDS);
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userService.findByEmail(email);
+    if (user) {
+      const account = await this.accountRepo.findOne({
+        where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
+      });
+      // Chỉ gửi OTP nếu user tồn tại VÀ có đăng nhập bằng mật khẩu (LOCAL).
+      // Vẫn trả về cùng 1 message ở dưới trong mọi trường hợp để tránh lộ
+      // thông tin email nào tồn tại trong hệ thống.
+      if (account) {
+        const otp = randomInt(100000, 1000000).toString();
+        await this.redisClient.set(
+          `reset-otp:${email}`,
+          otp,
+          'EX',
+          OTP_TTL_SECONDS,
+        );
+        await this.mailService.sendPasswordResetOtp(
+          email,
+          otp,
+          OTP_TTL_SECONDS,
+        );
+      }
+    }
+
+    return {
+      message:
+        'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đặt lại mật khẩu',
+    };
+  }
+
+  async resetPassword(email: string, otp: string, newPassword: string) {
+    const storedOtp = await this.redisClient.get(`reset-otp:${email}`);
+    if (!storedOtp || storedOtp !== otp) {
+      throw new UnauthorizedException('Mã OTP không đúng hoặc đã hết hạn');
+    }
+
+    const user = await this.userService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Tài khoản không tồn tại');
+    }
+
+    const account = await this.accountRepo.findOne({
+      where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
+    });
+    if (!account) {
+      throw new UnauthorizedException(
+        'Tài khoản này đăng nhập bằng Google, không thể đặt lại mật khẩu',
+      );
+    }
+
+    account.password = await bcrypt.hash(newPassword, 10);
+    await this.accountRepo.save(account);
+    await this.redisClient.del(`reset-otp:${email}`);
+
+    return { message: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập lại' };
   }
 
   async loginWithGoogle(idToken: string) {
@@ -206,18 +300,15 @@ export class AuthService {
     const googleSub = payload.sub;
 
     const user = await this.dataSource.transaction(async (manager) => {
-      const userRepo = manager.getRepository(User);
       const accountRepo = manager.getRepository(Account);
 
-      let existingUser = await userRepo.findOne({ where: { email } });
+      // Tạo User qua UserService (không thao tác repository trực tiếp) để mọi luồng
+      // tạo tài khoản (đăng ký thường lẫn Google) đều đi qua cùng 1 nơi.
+      let existingUser = await this.userService.findByEmail(email);
       if (!existingUser) {
-        existingUser = await userRepo.save(
-          userRepo.create({
-            email,
-            fullName: payload.name ?? email,
-            role: UserRole.CUSTOMER,
-            status: UserStatus.ACTIVE,
-          }),
+        existingUser = await this.userService.create(
+          { email, fullName: payload.name ?? email },
+          manager,
         );
       }
 
@@ -267,6 +358,12 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token đã bị thu hồi');
     }
 
+    // Tài khoản có thể đã bị admin khóa sau khi token này được cấp
+    const user = await this.userService.findById(payload.sub);
+    if (user.status === UserStatus.LOCKED) {
+      throw new UnauthorizedException('Tài khoản đã bị khóa');
+    }
+
     // Thu hồi refresh token cũ (rotation) trước khi cấp cặp token mới
     await this.redisClient.del(`refresh:${payload.jti}`);
 
@@ -275,6 +372,31 @@ export class AuthService {
 
   async getMe(userId: string) {
     return this.userService.findById(userId);
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const account = await this.accountRepo.findOne({
+      where: { user: { userId }, provider: AuthProvider.LOCAL },
+    });
+    if (!account?.password) {
+      throw new UnauthorizedException(
+        'Tài khoản này chưa đăng ký đăng nhập bằng mật khẩu',
+      );
+    }
+
+    const matched = await bcrypt.compare(currentPassword, account.password);
+    if (!matched) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    account.password = await bcrypt.hash(newPassword, 10);
+    await this.accountRepo.save(account);
+
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async logout(token: string) {

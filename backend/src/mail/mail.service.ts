@@ -25,7 +25,48 @@ export class MailService {
     });
   }
 
-  async sendOtp(email: string, otp: string): Promise<void> {
+  async sendOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
+    await this.sendOtpEmail({
+      email,
+      otp,
+      ttlSeconds,
+      subject: 'Mã xác thực tài khoản Vika Hotel',
+      heading: 'Xác thực tài khoản Vika Hotel',
+      warning: 'Nếu bạn không yêu cầu mã này, hãy bỏ qua email.',
+    });
+  }
+
+  async sendPasswordResetOtp(
+    email: string,
+    otp: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    await this.sendOtpEmail({
+      email,
+      otp,
+      ttlSeconds,
+      subject: 'Đặt lại mật khẩu Vika Hotel',
+      heading: 'Đặt lại mật khẩu Vika Hotel',
+      warning:
+        'Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này — mật khẩu của bạn sẽ không thay đổi.',
+    });
+  }
+
+  private async sendOtpEmail({
+    email,
+    otp,
+    ttlSeconds,
+    subject,
+    heading,
+    warning,
+  }: {
+    email: string;
+    otp: string;
+    ttlSeconds: number;
+    subject: string;
+    heading: string;
+    warning: string;
+  }): Promise<void> {
     const senderEmail =
       this.configService.getOrThrow<string>('MAIL_FROM_EMAIL');
     const senderName = this.configService.get<string>(
@@ -39,11 +80,11 @@ export class MailService {
           address: senderEmail,
         },
         to: email,
-        subject: 'Mã xác thực tài khoản Vika Hotel',
+        subject,
         text: [
           `Mã OTP của bạn là: ${otp}`,
-          'Mã có hiệu lực trong 5 phút.',
-          'Nếu bạn không yêu cầu mã này, hãy bỏ qua email.',
+          `Mã có hiệu lực trong ${ttlSeconds} giây.`,
+          warning,
         ].join('\n'),
         html: `
           <div style="
@@ -54,7 +95,7 @@ export class MailService {
             color: #0f172a;
           ">
             <h2 style="color: #2563eb">
-              Xác thực tài khoản Vika Hotel
+              ${heading}
             </h2>
 
             <p>Mã OTP của bạn là:</p>
@@ -73,10 +114,10 @@ export class MailService {
               ${otp}
             </div>
 
-            <p>Mã này có hiệu lực trong 5 phút.</p>
+            <p>Mã này có hiệu lực trong ${ttlSeconds} giây.</p>
 
             <p style="color: #64748b; font-size: 14px">
-              Nếu bạn không yêu cầu mã này, hãy bỏ qua email.
+              ${warning}
             </p>
           </div>
         `,

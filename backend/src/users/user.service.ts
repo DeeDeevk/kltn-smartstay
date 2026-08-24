@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -58,6 +59,25 @@ export class UserService {
     },
   ): Promise<User> {
     await this.userRepo.update({ userId }, data);
+    return this.findById(userId);
+  }
+
+  async lockUser(userId: string, requesterId: string): Promise<User> {
+    if (userId === requesterId) {
+      throw new BadRequestException(
+        'Không thể tự khóa tài khoản của chính mình',
+      );
+    }
+    return this.setStatus(userId, UserStatus.LOCKED);
+  }
+
+  async unlockUser(userId: string): Promise<User> {
+    return this.setStatus(userId, UserStatus.ACTIVE);
+  }
+
+  private async setStatus(userId: string, status: UserStatus): Promise<User> {
+    await this.findById(userId); // đảm bảo tồn tại, ném 404 nếu không
+    await this.userRepo.update({ userId }, { status });
     return this.findById(userId);
   }
 }

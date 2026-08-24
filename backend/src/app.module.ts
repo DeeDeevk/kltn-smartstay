@@ -15,8 +15,6 @@ import { RedisModule } from './redis/redis.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
-        isGlobal: true,
-        envFilePath: '.env',
         host: config.get<string>('DB_HOST'),
         port: config.get<number>('DB_PORT'),
         username: config.get<string>('DB_USERNAME'),
