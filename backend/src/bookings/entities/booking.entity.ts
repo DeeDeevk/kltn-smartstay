@@ -1,4 +1,6 @@
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
+import { PaymentMethod } from 'src/common/enums/payment-method.enum';
+import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { Promotion } from 'src/promotions/entities/promotion.entity';
 import { Room } from 'src/rooms/entities/room.entity';
 import { RoomType } from 'src/room-types/entities/room-type.entity';
@@ -70,6 +72,26 @@ export class Booking {
 
   @Column({ name: 'cancelReason', type: 'text', nullable: true })
   cancelReason!: string | null;
+
+  @Column({
+    name: 'paymentMethod',
+    type: 'enum',
+    enum: PaymentMethod,
+    default: PaymentMethod.CASH,
+  })
+  paymentMethod!: PaymentMethod;
+
+  @Column({
+    name: 'paymentStatus',
+    type: 'enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.UNPAID,
+  })
+  paymentStatus!: PaymentStatus;
+
+  // Mã đơn hàng số nguyên duy nhất PayOS yêu cầu — chỉ có khi paymentMethod = PAYOS
+  @Column({ name: 'payosOrderCode', type: 'bigint', nullable: true, unique: true })
+  payosOrderCode!: string | null;
 
   @OneToMany(() => BookingServiceItem, (item) => item.booking, {
     eager: true,

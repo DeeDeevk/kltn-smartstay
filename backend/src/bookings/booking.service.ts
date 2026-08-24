@@ -20,6 +20,8 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { Room } from 'src/rooms/entities/room.entity';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
+import { PaymentMethod } from 'src/common/enums/payment-method.enum';
+import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { RoomTypeService } from 'src/room-types/room-type.service';
 import { ServiceService } from 'src/services/service.service';
@@ -102,6 +104,12 @@ export class BookingService {
         discountAmount = result.discountAmount;
       }
 
+      const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
+      const payosOrderCode =
+        paymentMethod === PaymentMethod.PAYOS
+          ? String(Date.now())
+          : null;
+
       const booking = this.bookingRepo.create({
         user,
         roomType,
@@ -113,6 +121,9 @@ export class BookingService {
         discountAmount,
         roomAmount,
         status: BookingStatus.PENDING,
+        paymentMethod,
+        paymentStatus: PaymentStatus.UNPAID,
+        payosOrderCode,
       } as Partial<Booking>);
       const saved = await this.bookingRepo.save(booking);
 
@@ -300,6 +311,23 @@ export class BookingService {
     }
 
     return { message: 'Đã huỷ đơn đặt phòng' };
+  }
+
+  // Dùng chung bởi webhook PayOS và endpoint đồng bộ trạng thái thủ công
+  // (localhost không nhận được webhook thật từ PayOS nên PaymentService gọi
+  // trực tiếp payos.paymentRequests.get() rồi gọi lại hàm này để cập nhật).
+  async markPaidByOrderCode(orderCode: number): Promise<Booking | null> {
+    const booking = await this.bookingRepo.findOne({
+      where: { payosOrderCode: String(orderCode) },
+    });
+    if (!booking) return null;
+    if (booking.paymentStatus === PaymentStatus.PAID) return booking;
+
+    booking.paymentStatus = PaymentStatus.PAID;
+    if (booking.status === BookingStatus.PENDING) {
+      booking.status = BookingStatus.CONFIRMED;
+    }
+    return this.bookingRepo.save(booking);
   }
 
   private assertCanView(booking: Booking, requester: Requester): void {

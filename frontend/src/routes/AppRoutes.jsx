@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
@@ -20,11 +20,16 @@ import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
 import ProfilePage from '../components/user/ProfilePage'
+import BookingHistoryPage from '../components/user/BookingHistoryPage'
+import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
+import PaymentCancelPage from '../components/payment/PaymentCancelPage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
+import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
 import { useCreateBookingMutation } from '../services/booking'
+import { useCreatePayOSLinkMutation } from '../services/payment'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import ForbiddenPage from './ForbiddenPage'
@@ -137,13 +142,17 @@ function SearchResultsPage() {
 function RoomDetailPage() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
-  const { data: roomTypesResponse } = roomTypeApi.useGetAllRoomTypesQuery()
-  const room = useMemo(() => {
-    const rooms = roomTypesResponse?.data || []
-    return rooms.find((item) => String(item.id) === String(id)) || rooms[0]
-  }, [id, roomTypesResponse])
+  const { data: room, isLoading, isError } = roomTypeApi.useGetRoomTypeByIdQuery(id, { skip: !id })
 
-  if (!room) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
+      </div>
+    )
+  }
+
+  if (isError || !room) {
     return <Navigate to="/" replace />
   }
 
@@ -177,10 +186,12 @@ function RoomDetailPage() {
 function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
   const navigate = useNavigate()
 
+  const bookingCode = booking.bookingId.slice(0, 8).toUpperCase()
+
   const qrValue = [
     'VIKA HOTEL - BOOKING TICKET',
-    `Ma: ${booking.booking_code}`,
-    `Khach: ${booking.guest_name}`,
+    `Ma: ${bookingCode}`,
+    `Khach: ${booking.guestInfo?.fullName ?? ''}`,
     `Phong: ${room.name}`,
     `Thoi gian: ${new Date(startDate).toLocaleDateString('vi-VN')} -> ${new Date(endDate).toLocaleDateString('vi-VN')}`,
     `Tong tien: ${formatCurrency(totalPrice)}`,
@@ -195,7 +206,7 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
         <h1 className="text-2xl font-bold text-gray-900">Đặt phòng thành công!</h1>
         <p className="text-gray-500 mt-2">
           Cảm ơn bạn đã đặt phòng tại Vika Hotel. Mã đặt phòng của bạn là{' '}
-          <span className="font-mono font-bold text-blue-600">{booking.booking_code}</span>
+          <span className="font-mono font-bold text-blue-600">{bookingCode}</span>
         </p>
       </div>
 
@@ -220,12 +231,20 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
         </div>
       </div>
 
-      <button
-        onClick={() => navigate('/')}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
-      >
-        Về trang chủ
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={() => navigate('/')}
+          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors"
+        >
+          Về trang chủ
+        </button>
+        <button
+          onClick={() => navigate('/user/historybooking')}
+          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+        >
+          Lịch sử đặt phòng
+        </button>
+      </div>
     </div>
   )
 }
@@ -242,8 +261,11 @@ function CheckoutPage() {
   })
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [errors, setErrors] = useState({})
+  const [paidBooking, setPaidBooking] = useState(null)
 
-  const [createBooking, { isLoading, data: bookingResult }] = useCreateBookingMutation()
+  const [createBooking, { isLoading: isCreating }] = useCreateBookingMutation()
+  const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation()
+  const isLoading = isCreating || isRedirecting
 
   if (!checkoutState?.room) {
     return <Navigate to="/" replace />
@@ -269,16 +291,25 @@ function CheckoutPage() {
     if (!validate()) return
 
     try {
-      await createBooking({
-        room_type_id: room.roomTypeId || room.id,
-        guest_name: guestInfo.name.trim(),
-        guest_phone: guestInfo.phone.trim(),
-        guest_email: guestInfo.email.trim(),
-        check_in_date: startDate,
-        check_out_date: endDate,
-        total_price: totalPrice,
-        payment_method: paymentMethod,
+      const booking = await createBooking({
+        roomTypeId: room.roomTypeId || room.id,
+        checkIn: startDate,
+        checkOut: endDate,
+        guestInfo: {
+          fullName: guestInfo.name.trim(),
+          phone: guestInfo.phone.trim(),
+          email: guestInfo.email.trim(),
+        },
+        paymentMethod: paymentMethod === 'online' ? 'PAYOS' : 'CASH',
       }).unwrap()
+
+      if (paymentMethod === 'online') {
+        const { checkoutUrl } = await createPayOSLink(booking.bookingId).unwrap()
+        window.location.href = checkoutUrl
+        return
+      }
+
+      setPaidBooking(booking)
     } catch (err) {
       toast.error(err?.data?.message || 'Không thể tạo đặt phòng. Vui lòng thử lại.')
     }
@@ -288,9 +319,9 @@ function CheckoutPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
-        {bookingResult?.data ? (
+        {paidBooking ? (
           <BookingSuccess
-            booking={bookingResult.data}
+            booking={paidBooking}
             room={room}
             startDate={startDate}
             endDate={endDate}
@@ -409,7 +440,31 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/user/historybooking"
+          element={
+            <ProtectedRoute>
+              <BookingHistoryPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/checkout" element={<CheckoutPage />} />
+        <Route
+          path="/payment/success"
+          element={
+            <ProtectedRoute>
+              <PaymentSuccessPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payment/cancel"
+          element={
+            <ProtectedRoute>
+              <PaymentCancelPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -419,6 +474,7 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          <Route path="room-types" element={<RoomTypeManagementPage />} />
           <Route path="accounts" element={<UserManagementPage />} />
         </Route>
         <Route
