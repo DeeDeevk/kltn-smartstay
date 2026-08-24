@@ -4,13 +4,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { RoomType } from './entities/room-type.entity';
 import { Room } from '../rooms/entities/room.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 import { CreateRoomTypeDto } from './dto/create-room-type.dto';
 import { UpdateRoomTypeDto } from './dto/update-room-type.dto';
 import { QueryRoomTypeDto } from './dto/query-room-type.dto';
 import { RoomTypeStatus } from 'src/common/enums/room-type-status.enum';
+import { BookingStatus } from 'src/common/enums/booking-status.enum';
+
+// Booking ở các trạng thái này vẫn còn ràng buộc tới loại phòng (chưa trả phòng/chưa huỷ),
+// nên không cho ngưng kinh doanh loại phòng khi còn booking thuộc nhóm này.
+const ACTIVE_BOOKING_STATUSES = [
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+  BookingStatus.CHECKED_IN,
+];
 
 @Injectable()
 export class RoomTypeService {
@@ -19,6 +29,8 @@ export class RoomTypeService {
     private readonly roomTypeRepo: Repository<RoomType>,
     @InjectRepository(Room)
     private readonly roomRepo: Repository<Room>,
+    @InjectRepository(Booking)
+    private readonly bookingRepo: Repository<Booking>,
   ) {}
 
   async findAllActive(query: QueryRoomTypeDto) {
@@ -112,6 +124,19 @@ export class RoomTypeService {
     if (roomType.status === RoomTypeStatus.INACTIVE) {
       throw new ConflictException('Loại phòng đã ngưng kinh doanh');
     }
+
+    const activeBookingCount = await this.bookingRepo.count({
+      where: {
+        roomType: { roomTypeId },
+        status: In(ACTIVE_BOOKING_STATUSES),
+      },
+    });
+    if (activeBookingCount > 0) {
+      throw new ConflictException(
+        'Không thể ngưng kinh doanh: loại phòng đang có booking hiệu lực',
+      );
+    }
+
     roomType.status = RoomTypeStatus.INACTIVE;
     await this.roomTypeRepo.save(roomType);
     return { message: 'Đã ngưng kinh doanh loại phòng' };

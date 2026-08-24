@@ -5,6 +5,7 @@ import { userApi } from '../services/user';
 import { availabilityApi } from '../services/availability';
 import { extraServiceApi } from '../services/extraService';
 import { roomTypeApi } from '../services/roomType';
+import { adminRoomApi } from '../services/adminRoom';
 import { bookingApi } from '../services/booking';
 import { paymentApi } from '../services/payment';
 import { chatApi } from '../services/chat';
@@ -18,6 +19,7 @@ export const store = configureStore({
         [availabilityApi.reducerPath]: availabilityApi.reducer,
         [extraServiceApi.reducerPath]: extraServiceApi.reducer,
         [roomTypeApi.reducerPath]: roomTypeApi.reducer,
+        [adminRoomApi.reducerPath]: adminRoomApi.reducer,
         [bookingApi.reducerPath]: bookingApi.reducer,
         [paymentApi.reducerPath]: paymentApi.reducer,
         [chatApi.reducerPath]: chatApi.reducer,
@@ -32,6 +34,7 @@ export const store = configureStore({
             availabilityApi.middleware,
             extraServiceApi.middleware,
             roomTypeApi.middleware,
+            adminRoomApi.middleware,
             bookingApi.middleware,
             paymentApi.middleware,
             chatApi.middleware,

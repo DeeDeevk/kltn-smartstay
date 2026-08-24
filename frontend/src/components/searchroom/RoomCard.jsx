@@ -2,6 +2,7 @@
 import { Star, User, Sparkles, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import formatCurrency from '../../utils/formatCurrency';
 
 const CAPACITY_LABEL_KEYS = {
   1: 'search.roomCard.single',
@@ -14,12 +15,6 @@ export default function RoomCard({ room, startDate, endDate }) {
   const { t, i18n } = useTranslation();
 
   const capacityLabel = (capacity) => t(CAPACITY_LABEL_KEYS[capacity] ?? 'search.roomCard.family');
-
-  // Format tiền tệ
-  const formatCurrency = (amount) =>
-    i18n.language === 'en'
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
-      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
 
   const handleBookNow = () => {
     const roomId = room.roomTypeId || room.id;
@@ -105,11 +100,11 @@ export default function RoomCard({ room, startDate, endDate }) {
           <div>
             {room.oldPrice && (
               <p className="text-xs text-gray-400 line-through mb-0.5">
-                {formatCurrency(room.oldPrice)}
+                {formatCurrency(room.oldPrice, i18n.language)}
               </p>
             )}
             <p className="text-xl font-bold text-gray-900">
-              {formatCurrency(room.basePrice || room.base_price)}
+              {formatCurrency(room.basePrice || room.base_price, i18n.language)}
             </p>
 
             <p className="text-xs text-gray-500">{t('search.roomCard.perNight')}</p>

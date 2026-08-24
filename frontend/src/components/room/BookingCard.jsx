@@ -10,6 +10,7 @@ import { useCreatePayOSLinkMutation } from '../../services/payment';
 import { toast } from 'react-toastify';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import formatCurrencyUtil from '../../utils/formatCurrency';
 
 // Component con để hiển thị từng dòng khách (Người lớn, Trẻ em...)
 const GuestCounter = ({ label, subLabel, value, onDecrease, onIncrease, max = 10 }) => (
@@ -71,11 +72,7 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
 
   const totalPrice = (pricePerNight * nights);
 
-  // Format tiền tệ
-  const formatCurrency = (amount) =>
-    i18n.language === 'en'
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
-      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+  const formatCurrency = (amount) => formatCurrencyUtil(amount, i18n.language);
 
   const handleBooking = () => {
     const checkoutState = {

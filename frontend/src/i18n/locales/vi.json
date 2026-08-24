@@ -92,6 +92,8 @@
       "exploreRooms": "Khám phá phòng nghỉ",
       "checkIn": "Ngày nhận phòng",
       "checkOut": "Ngày trả phòng",
+      "guests": "Số khách",
+      "guestsCount": "{{count}} khách",
       "searching": "Đang tìm...",
       "search": "Tìm kiếm"
     },
@@ -133,7 +135,14 @@
     "filter": {
       "title": "Bộ lọc",
       "reset": "Đặt lại",
-      "maxPrice": "Giá tối đa (đêm)",
+      "stayDetails": "Ngày ở & số khách",
+      "checkIn": "Ngày nhận phòng",
+      "checkOut": "Ngày trả phòng",
+      "capacity": "Số khách",
+      "applySearch": "Tìm lại",
+      "priceRange": "Khoảng giá (mỗi đêm)",
+      "minPrice": "Giá tối thiểu",
+      "maxPrice": "Giá tối đa",
       "roomType": "Loại phòng"
     },
     "roomCard": {
@@ -339,6 +348,82 @@
         "generic": "Không thể đổi mật khẩu, vui lòng thử lại"
       },
       "success": "Đổi mật khẩu thành công!"
+    }
+  },
+  "admin": {
+    "roomTypes": {
+      "title": "Loại phòng",
+      "addButton": "Thêm loại phòng",
+      "addRoomButton": "Thêm phòng",
+      "loadError": "Không thể tải danh sách loại phòng",
+      "empty": "Chưa có loại phòng nào. Bấm \"Thêm loại phòng\" để bắt đầu.",
+      "maxGuests": "Tối đa {{count}} khách",
+      "photosAndAmenities": "{{photos}} ảnh · {{amenities}} tiện nghi",
+      "edit": "Sửa",
+      "deactivateTitle": "Ngưng kinh doanh loại phòng",
+      "deactivateMessage": "Bạn có chắc muốn ngưng kinh doanh \"{{name}}\"? Loại phòng sẽ không còn hiển thị cho khách đặt phòng.",
+      "deactivateConfirm": "Ngưng kinh doanh",
+      "deactivateSuccess": "Đã ngưng kinh doanh \"{{name}}\"",
+      "deactivateError": "Không thể ngưng kinh doanh loại phòng",
+      "form": {
+        "editTitle": "Sửa loại phòng",
+        "createTitle": "Thêm loại phòng mới",
+        "name": "Tên loại phòng",
+        "namePlaceholder": "VD: Deluxe Ocean View",
+        "nameRequired": "Vui lòng nhập tên loại phòng",
+        "basePrice": "Giá cơ bản (VNĐ/đêm)",
+        "basePriceInvalid": "Giá không hợp lệ",
+        "capacity": "Sức chứa (khách)",
+        "capacityInvalid": "Sức chứa phải từ 1 khách",
+        "description": "Mô tả",
+        "amenities": "Tiện nghi",
+        "amenityPlaceholder": "VD: Wifi miễn phí — nhấn Enter để thêm",
+        "addAmenity": "Thêm",
+        "suggestedAmenities": "Gợi ý",
+        "images": "Hình ảnh",
+        "uploadImage": "Tải ảnh lên",
+        "removeImage": "Xóa ảnh",
+        "uploadError": "Tải ảnh lên thất bại",
+        "uploadWait": "Vui lòng đợi ảnh tải lên xong",
+        "cancel": "Hủy",
+        "save": "Lưu thay đổi",
+        "create": "Thêm loại phòng",
+        "saving": "Đang lưu...",
+        "saveError": "Không thể lưu loại phòng"
+      },
+      "amenitySuggestions": [
+        "Wifi miễn phí",
+        "Điều hòa",
+        "TV màn hình phẳng",
+        "Minibar",
+        "Máy pha cà phê",
+        "Ban công riêng",
+        "Phòng khách riêng",
+        "Bồn tắm",
+        "Dịch vụ dọn phòng hàng ngày",
+        "Bàn làm việc",
+        "Két an toàn",
+        "Máy giặt",
+        "Bãi đỗ xe",
+        "Hồ bơi"
+      ]
+    },
+    "rooms": {
+      "formTitle": "Thêm phòng mới",
+      "roomType": "Loại phòng",
+      "roomTypePlaceholder": "Chọn loại phòng",
+      "roomTypeRequired": "Vui lòng chọn loại phòng",
+      "roomNumber": "Số phòng",
+      "roomNumberPlaceholder": "VD: 301",
+      "roomNumberRequired": "Vui lòng nhập số phòng",
+      "floor": "Tầng",
+      "floorInvalid": "Tầng không hợp lệ",
+      "cancel": "Hủy",
+      "submit": "Thêm phòng",
+      "submitting": "Đang thêm...",
+      "createSuccess": "Đã thêm phòng \"{{roomNumber}}\"",
+      "createConflict": "Số phòng \"{{roomNumber}}\" đã tồn tại",
+      "createError": "Không thể thêm phòng"
     }
   },
   "common": {

@@ -10,6 +10,7 @@ import {
   useGetMyBookingsQuery,
 } from '../../services/booking';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
+import formatCurrencyUtil from '../../utils/formatCurrency';
 
 const STATUS_STYLES = {
   PENDING: 'bg-amber-50 text-amber-600',
@@ -29,10 +30,7 @@ export default function BookingHistoryPage() {
 
   const bookings = data?.data ?? [];
 
-  const formatCurrency = (amount) =>
-    i18n.language === 'en'
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
-      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+  const formatCurrency = (amount) => formatCurrencyUtil(amount, i18n.language);
 
   const formatDate = (value) => new Date(value).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN');
 

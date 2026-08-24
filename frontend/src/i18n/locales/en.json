@@ -92,6 +92,8 @@
       "exploreRooms": "Explore rooms",
       "checkIn": "Check-in date",
       "checkOut": "Check-out date",
+      "guests": "Guests",
+      "guestsCount": "{{count}} guests",
       "searching": "Searching...",
       "search": "Search"
     },
@@ -133,7 +135,14 @@
     "filter": {
       "title": "Filters",
       "reset": "Reset",
-      "maxPrice": "Max price (night)",
+      "stayDetails": "Stay dates & guests",
+      "checkIn": "Check-in date",
+      "checkOut": "Check-out date",
+      "capacity": "Guests",
+      "applySearch": "Search again",
+      "priceRange": "Price range (per night)",
+      "minPrice": "Min price",
+      "maxPrice": "Max price",
       "roomType": "Room type"
     },
     "roomCard": {
@@ -339,6 +348,82 @@
         "generic": "Could not change password, please try again"
       },
       "success": "Password changed successfully!"
+    }
+  },
+  "admin": {
+    "roomTypes": {
+      "title": "Room types",
+      "addButton": "Add room type",
+      "addRoomButton": "Add room",
+      "loadError": "Could not load the room type list",
+      "empty": "No room types yet. Click \"Add room type\" to get started.",
+      "maxGuests": "Up to {{count}} guests",
+      "photosAndAmenities": "{{photos}} photos · {{amenities}} amenities",
+      "edit": "Edit",
+      "deactivateTitle": "Deactivate room type",
+      "deactivateMessage": "Are you sure you want to deactivate \"{{name}}\"? It will no longer be visible to guests.",
+      "deactivateConfirm": "Deactivate",
+      "deactivateSuccess": "\"{{name}}\" has been deactivated",
+      "deactivateError": "Could not deactivate the room type",
+      "form": {
+        "editTitle": "Edit room type",
+        "createTitle": "Add new room type",
+        "name": "Room type name",
+        "namePlaceholder": "e.g. Deluxe Ocean View",
+        "nameRequired": "Please enter a room type name",
+        "basePrice": "Base price (VND/night)",
+        "basePriceInvalid": "Invalid price",
+        "capacity": "Capacity (guests)",
+        "capacityInvalid": "Capacity must be at least 1 guest",
+        "description": "Description",
+        "amenities": "Amenities",
+        "amenityPlaceholder": "e.g. Free Wifi — press Enter to add",
+        "addAmenity": "Add",
+        "suggestedAmenities": "Suggestions",
+        "images": "Images",
+        "uploadImage": "Upload image",
+        "removeImage": "Remove image",
+        "uploadError": "Failed to upload the image",
+        "uploadWait": "Please wait for images to finish uploading",
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "create": "Add room type",
+        "saving": "Saving...",
+        "saveError": "Could not save the room type"
+      },
+      "amenitySuggestions": [
+        "Free Wifi",
+        "Air conditioning",
+        "Flat-screen TV",
+        "Minibar",
+        "Coffee maker",
+        "Private balcony",
+        "Private living room",
+        "Bathtub",
+        "Daily housekeeping",
+        "Work desk",
+        "Safe box",
+        "Washing machine",
+        "Parking",
+        "Swimming pool"
+      ]
+    },
+    "rooms": {
+      "formTitle": "Add new room",
+      "roomType": "Room type",
+      "roomTypePlaceholder": "Select a room type",
+      "roomTypeRequired": "Please select a room type",
+      "roomNumber": "Room number",
+      "roomNumberPlaceholder": "e.g. 301",
+      "roomNumberRequired": "Please enter a room number",
+      "floor": "Floor",
+      "floorInvalid": "Invalid floor",
+      "cancel": "Cancel",
+      "submit": "Add room",
+      "submitting": "Adding...",
+      "createSuccess": "Room \"{{roomNumber}}\" has been added",
+      "createConflict": "Room number \"{{roomNumber}}\" already exists",
+      "createError": "Could not add the room"
     }
   },
   "common": {

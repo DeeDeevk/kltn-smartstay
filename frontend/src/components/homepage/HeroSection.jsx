@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { vi, enUS } from 'date-fns/locale';
-import { Calendar, Bed, Search, Loader2, Wifi, Waves, Sparkles, PlaneTakeoff, ChevronDown } from 'lucide-react';
+import { Calendar, Users, Search, Loader2, Wifi, Waves, Sparkles, PlaneTakeoff, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useSearchAvailabilityMutation } from '../../services/availability';
+import { useLazySearchAvailabilityQuery } from '../../services/availability';
 import { toast } from 'react-toastify';
+
+const MIN_GUESTS = 1;
+const MAX_GUESTS = 10;
 
 const highlights = [
   { icon: Wifi, labelKey: 'home.hero.highlight1' },
@@ -50,13 +53,13 @@ export default function HeroSection() {
 
   const [startDate, setStartDate] = useState(tomorrow);
   const [endDate, setEndDate] = useState(dayAfterTomorrow);
-  const [rooms, setRooms] = useState(1);
+  const [guests, setGuests] = useState(MIN_GUESTS);
   const navigate = useNavigate();
 
   const minEndDate = new Date(startDate);
   minEndDate.setDate(minEndDate.getDate() + 1);
 
-  const [searchAvailability, { isLoading }] = useSearchAvailabilityMutation();
+  const [searchAvailability, { isFetching: isLoading }] = useLazySearchAvailabilityQuery();
   const [activeSlide, setActiveSlide] = useState(0);
   const videoRef = useRef(null);
 
@@ -84,10 +87,14 @@ export default function HeroSection() {
       const searchParams = {
         checkIn: startDate.toISOString(),
         checkOut: endDate.toISOString(),
-        // rooms: parseInt(rooms)
+        capacity: guests,
       };
 
-      const result = await searchAvailability(searchParams).unwrap();
+      const result = await searchAvailability({
+        checkIn: searchParams.checkIn,
+        checkOut: searchParams.checkOut,
+        guests: searchParams.capacity,
+      }).unwrap();
 
       // Navigate to search results page with the data
       navigate('/searchrooms', { state: { results: result.availableRoomTypes, searchParams } });
@@ -196,27 +203,27 @@ export default function HeroSection() {
             />
           </div>
 
-          {/* Số phòng */}
+          {/* Số khách */}
           <div className="space-y-2">
-            {/* <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-              <Bed size={14} /> Số lượng phòng
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+              <Users size={14} /> {t('home.hero.guests')}
             </label>
             <select
-              value={rooms}
-              onChange={(e) => setRooms(e.target.value)}
+              value={guests}
+              onChange={(e) => setGuests(Number(e.target.value))}
               className="w-full border-b-2 border-gray-200 pb-2 text-gray-900 font-semibold focus:outline-none focus:border-blue-500 bg-transparent cursor-pointer appearance-none"
             >
-              {[1, 2, 3, 4, 5].map(num => (
-                <option key={num} value={num}>{num} Phòng</option>
+              {Array.from({ length: MAX_GUESTS - MIN_GUESTS + 1 }, (_, i) => MIN_GUESTS + i).map((num) => (
+                <option key={num} value={num}>{t('home.hero.guestsCount', { count: num })}</option>
               ))}
-            </select> */}
+            </select>
           </div>
 
           {/* Button Search */}
           <button
             onClick={handleSearch}
             disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 text-white h-12 rounded-xl font-bold text-lg shadow-lg shadow-blue-200 transition-all flex items-center justify-center grid-[3-4] gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="bg-blue-600 hover:bg-blue-700 text-white h-12 rounded-xl font-bold text-lg shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <Loader2 className="animate-spin" size={20} />

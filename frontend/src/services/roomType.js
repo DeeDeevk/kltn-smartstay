@@ -6,7 +6,7 @@ import axiosBaseQuery from './axiosBaseQuery';
 // để không phải sửa lại toàn bộ component tiêu thụ. `amenities` giữ nguyên string[] như backend
 // trả về — Redux store phải chỉ chứa dữ liệu serializable, nên việc quy đổi sang icon component
 // (cho hiển thị) chỉ được làm ở tầng render (xem RoomAmenities.jsx), không ở đây.
-function normalizeRoomType(roomType) {
+export function normalizeRoomType(roomType) {
   if (!roomType) return roomType;
   return {
     ...roomType,

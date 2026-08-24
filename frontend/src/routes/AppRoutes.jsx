@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft, SearchX } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
@@ -30,14 +30,13 @@ import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManage
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
+import { useLazySearchAvailabilityQuery } from '../services/availability'
 import { useCreateBookingMutation } from '../services/booking'
 import { useCreatePayOSLinkMutation } from '../services/payment'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import ForbiddenPage from './ForbiddenPage'
-
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ')
+import formatCurrency from '../utils/formatCurrency'
 
 const paymentMethods = [
   { value: 'cash', labelKey: 'checkout.paymentCash', icon: Banknote },
@@ -115,15 +114,49 @@ const SORT_OPTIONS = [
   { value: 'price-desc', labelKey: 'search.sort.priceDesc' },
 ]
 
+const DEFAULT_PRICE_FILTERS = { priceMin: 0, priceMax: MAX_PRICE, roomTypes: [] }
+
+// Dùng khi vào /searchrooms trực tiếp (menu "Phòng nghỉ", "Xem tất cả phòng"...)
+// mà không có searchParams từ HeroSection: mặc định 1 khách, nhận phòng ngày mai.
+function getDefaultSearchParams() {
+  const checkIn = new Date()
+  checkIn.setDate(checkIn.getDate() + 1)
+  const checkOut = new Date(checkIn)
+  checkOut.setDate(checkOut.getDate() + 1)
+  return { checkIn: checkIn.toISOString(), checkOut: checkOut.toISOString(), capacity: 1 }
+}
+
 function SearchResultsPage() {
   const { t, i18n } = useTranslation()
   const location = useLocation()
-  const { data: roomTypesResponse, isLoading } = roomTypeApi.useGetAllRoomTypesQuery()
-  const rooms = location.state?.results || roomTypesResponse?.data || []
-  const searchParams = location.state?.searchParams
+  const [triggerSearch, { isFetching: isSearching }] = useLazySearchAvailabilityQuery()
 
-  const [filters, setFilters] = useState({ price: MAX_PRICE, roomTypes: [], amenities: [], rating: 0 })
+  const [searchParams, setSearchParams] = useState(() => location.state?.searchParams ?? getDefaultSearchParams())
+  // Nếu đến từ HeroSection thì đã có kết quả sẵn (location.state.results), khỏi gọi lại API lần nữa.
+  const [rooms, setRooms] = useState(location.state?.results ?? [])
+  const [priceFilters, setPriceFilters] = useState(DEFAULT_PRICE_FILTERS)
   const [sortBy, setSortBy] = useState('recommended')
+
+  const runSearch = useCallback(async (params) => {
+    try {
+      const result = await triggerSearch({
+        checkIn: params.checkIn,
+        checkOut: params.checkOut,
+        guests: params.capacity,
+      }).unwrap()
+      setRooms(result.availableRoomTypes)
+    } catch (error) {
+      toast.error(error?.data?.message || t('home.hero.searchError'))
+    }
+  }, [triggerSearch, t])
+
+  useEffect(() => {
+    if (location.state?.results) return
+    runSearch(searchParams)
+    // Chỉ tự tìm khi vào trang mà chưa có kết quả sẵn; các lần tìm lại sau do người
+    // dùng chủ động bấm nút "Tìm lại" trong FilterSidebar sau khi đổi ngày/số khách.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const availableRoomTypes = useMemo(
     () => [...new Set(rooms.map((room) => room.name))],
@@ -133,8 +166,8 @@ function SearchResultsPage() {
   const visibleRooms = useMemo(() => {
     const filtered = rooms.filter((room) => {
       const price = room.basePrice ?? room.base_price ?? 0
-      if (price > filters.price) return false
-      if (filters.roomTypes.length > 0 && !filters.roomTypes.includes(room.name)) return false
+      if (price < priceFilters.priceMin || price > priceFilters.priceMax) return false
+      if (priceFilters.roomTypes.length > 0 && !priceFilters.roomTypes.includes(room.name)) return false
       return true
     })
 
@@ -145,10 +178,14 @@ function SearchResultsPage() {
       return [...filtered].sort((a, b) => (b.basePrice ?? b.base_price ?? 0) - (a.basePrice ?? a.base_price ?? 0))
     }
     return filtered
-  }, [rooms, filters, sortBy])
+  }, [rooms, priceFilters, sortBy])
 
-  const handleFilterChange = (patch) => setFilters((prev) => ({ ...prev, ...patch }))
-  const handleResetFilters = () => setFilters({ price: MAX_PRICE, roomTypes: [], amenities: [], rating: 0 })
+  const handleSearchParamsChange = (patch) => setSearchParams((prev) => ({ ...prev, ...patch }))
+  const handlePriceFilterChange = (patch) => setPriceFilters((prev) => ({ ...prev, ...patch }))
+  const handleResetFilters = () => setPriceFilters(DEFAULT_PRICE_FILTERS)
+
+  const isInitialLoading = isSearching && rooms.length === 0
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'vi-VN'
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -156,15 +193,11 @@ function SearchResultsPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <p className="text-gray-600">
-            {!isLoading && (
+            {!isInitialLoading && (
               <>
                 {t('search.resultsFound')} <span className="font-bold text-gray-900">{visibleRooms.length}</span> {t('search.roomsMatch')}
-                {searchParams && (
-                  <>
-                    {' '}{t('search.from')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkIn).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN')}</span>
-                    {' '}{t('search.to')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkOut).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN')}</span>
-                  </>
-                )}
+                {' '}{t('search.from')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkIn).toLocaleDateString(dateLocale)}</span>
+                {' '}{t('search.to')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkOut).toLocaleDateString(dateLocale)}</span>
               </>
             )}
           </p>
@@ -185,14 +218,18 @@ function SearchResultsPage() {
 
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
           <FilterSidebar
-            filters={filters}
-            onFilterChange={handleFilterChange}
+            searchParams={searchParams}
+            onSearchParamsChange={handleSearchParamsChange}
+            onApplySearch={() => runSearch(searchParams)}
+            isApplyingSearch={isSearching}
+            priceFilters={priceFilters}
+            onPriceFilterChange={handlePriceFilterChange}
             onReset={handleResetFilters}
             availableRoomTypes={availableRoomTypes}
           />
 
           <div>
-            {isLoading && (
+            {isInitialLoading && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="h-96 rounded-xl border border-gray-200 bg-white overflow-hidden animate-pulse">
@@ -207,7 +244,7 @@ function SearchResultsPage() {
               </div>
             )}
 
-            {!isLoading && visibleRooms.length === 0 && (
+            {!isInitialLoading && visibleRooms.length === 0 && (
               <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-20 text-center">
                 <div className="w-14 h-14 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mb-4">
                   <SearchX size={26} />
@@ -223,14 +260,14 @@ function SearchResultsPage() {
               </div>
             )}
 
-            {!isLoading && visibleRooms.length > 0 && (
+            {!isInitialLoading && visibleRooms.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {visibleRooms.map((room) => (
                   <RoomCard
                     key={room.id}
                     room={room}
-                    startDate={searchParams ? new Date(searchParams.checkIn) : undefined}
-                    endDate={searchParams ? new Date(searchParams.checkOut) : undefined}
+                    startDate={new Date(searchParams.checkIn)}
+                    endDate={new Date(searchParams.checkOut)}
                   />
                 ))}
               </div>
@@ -333,7 +370,7 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
         </div>
         <div className="flex justify-between pt-2 border-t border-gray-200">
           <span className="font-bold text-gray-900">{t('checkout.success.total')}</span>
-          <span className="font-bold text-blue-600">{formatCurrency(totalPrice)}</span>
+          <span className="font-bold text-blue-600">{formatCurrency(totalPrice, i18n.language)}</span>
         </div>
       </div>
 

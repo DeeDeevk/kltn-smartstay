@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import formatCurrencyUtil from '../../utils/formatCurrency';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop';
 
@@ -7,10 +8,7 @@ export default function OrderSummaryCard({ room, startDate, endDate, nights, tot
   const locale = i18n.language === 'en' ? 'en-US' : 'vi-VN';
   const pricePerNight = totalPrice / nights;
 
-  const formatCurrency = (amount) =>
-    i18n.language === 'en'
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
-      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+  const formatCurrency = (amount) => formatCurrencyUtil(amount, i18n.language);
 
   const formatDate = (date) =>
     new Date(date).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
