@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, User, History, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
-  { path: '/user/profile', label: 'Hồ sơ của tôi', icon: User },
-  { path: '/user/historybooking', label: 'Lịch sử đặt phòng', icon: History },
+  { path: '/user/profile', labelKey: 'userMenu.profile', icon: User },
+  { path: '/user/historybooking', labelKey: 'userMenu.bookingHistory', icon: History },
 ];
 
 export default function UserMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -61,7 +63,7 @@ export default function UserMenu() {
           </div>
 
           <div className="p-1.5">
-            {menuItems.map(({ path, label, icon: Icon }) => (
+            {menuItems.map(({ path, labelKey, icon: Icon }) => (
               <button
                 key={path}
                 onClick={() => goTo(path)}
@@ -70,7 +72,7 @@ export default function UserMenu() {
                 <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                   <Icon size={16} />
                 </span>
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -83,7 +85,7 @@ export default function UserMenu() {
               <span className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
                 <LogOut size={16} />
               </span>
-              Đăng xuất
+              {t('auth.logout')}
             </button>
           </div>
         </div>

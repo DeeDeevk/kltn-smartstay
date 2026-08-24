@@ -1,6 +1,7 @@
 // src/features/search/components/FilterSidebar.jsx
 import React from 'react';
 import { Filter, Star } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export default function FilterSidebar({
   filters,
@@ -8,8 +9,11 @@ export default function FilterSidebar({
   onReset,
   availableRoomTypes = []
 }) {
+  const { t, i18n } = useTranslation();
   const formatCurrency = (amount) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+    i18n.language === 'en'
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
+      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
 
   const handlePriceChange = (e) => {
     onFilterChange({ price: Number(e.target.value) });
@@ -37,20 +41,20 @@ export default function FilterSidebar({
     <div className="bg-white p-5 rounded-xl border border-gray-200 sticky top-24 shadow-sm">
       <div className="flex items-center justify-between mb-6">
         <h3 className="font-bold text-lg flex items-center gap-2">
-          <Filter size={20} className="text-blue-600" /> Bộ lọc
+          <Filter size={20} className="text-blue-600" /> {t('search.filter.title')}
         </h3>
         <button
           onClick={onReset}
           className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
         >
-          Đặt lại
+          {t('search.filter.reset')}
         </button>
       </div>
 
       {/* --- KHOẢNG GIÁ --- */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <h4 className="font-semibold text-sm">Giá tối đa (đêm)</h4>
+          <h4 className="font-semibold text-sm">{t('search.filter.maxPrice')}</h4>
           <span className="text-blue-600 font-bold text-sm">{formatCurrency(filters.price)}</span>
         </div>
         <input
@@ -63,15 +67,15 @@ export default function FilterSidebar({
           className="w-full accent-blue-500 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer mb-3"
         />
         <div className="flex justify-between text-[10px] text-gray-400 font-medium">
-          <span>0đ</span>
-          <span>10.000.000đ</span>
+          <span>{formatCurrency(0)}</span>
+          <span>{formatCurrency(10000000)}</span>
         </div>
       </div>
 
       {/* --- LOẠI PHÒNG --- */}
       {availableRoomTypes.length > 0 && (
         <div className="mb-6 border-t border-gray-100 pt-6">
-          <h4 className="font-semibold text-sm mb-3">Loại phòng</h4>
+          <h4 className="font-semibold text-sm mb-3">{t('search.filter.roomType')}</h4>
           <div className="space-y-3">
             {availableRoomTypes.map((typeName, idx) => (
               <label key={idx} className="flex items-center gap-3 cursor-pointer group">

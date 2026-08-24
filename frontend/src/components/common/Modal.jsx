@@ -1,8 +1,10 @@
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 // Modal dùng chung cho toàn app (thay cho window.confirm()/alert()) — chỉ lo phần
 // khung/backdrop, nội dung và hành động do component gọi nó quyết định qua children/footer.
 export default function Modal({ open, onClose, title, children, footer }) {
+  const { t } = useTranslation();
   if (!open) return null;
 
   return (
@@ -20,7 +22,7 @@ export default function Modal({ open, onClose, title, children, footer }) {
             type="button"
             onClick={onClose}
             className="text-gray-400 transition-colors hover:text-gray-600"
-            aria-label="Đóng"
+            aria-label={t('common.close')}
           >
             <X size={20} />
           </button>

@@ -1,0 +1,357 @@
+{
+  "nav": {
+    "home": "Trang chủ",
+    "rooms": "Phòng nghỉ",
+    "promotions": "Ưu đãi",
+    "contact": "Liên hệ"
+  },
+  "auth": {
+    "login": "Đăng nhập",
+    "register": "Đăng ký",
+    "logout": "Đăng xuất",
+    "welcomeBack": "Chào mừng trở lại",
+    "loginSubtitle": "Đăng nhập để tiếp tục đặt phòng và quản lý các đặt phòng của bạn tại Vika Hotel.",
+    "email": "Email",
+    "password": "Mật khẩu",
+    "confirmPassword": "Nhập lại mật khẩu",
+    "rememberMe": "Ghi nhớ đăng nhập",
+    "loggingIn": "Đang đăng nhập...",
+    "noAccount": "Chưa có tài khoản?",
+    "createNewAccount": "Đăng ký tài khoản mới",
+    "showPassword": "Hiện mật khẩu",
+    "hidePassword": "Ẩn mật khẩu",
+    "createAccount": "Tạo tài khoản mới",
+    "verifyEmail": "Xác minh email",
+    "registerSubtitle": "Tham gia cùng Vika Hotel để trải nghiệm những dịch vụ tốt nhất.",
+    "otpSubtitle": "Chỉ còn một bước nữa để hoàn tất đăng ký.",
+    "fullName": "Họ và tên",
+    "phone": "Số điện thoại",
+    "registering": "Đang đăng ký...",
+    "haveAccount": "Đã có tài khoản?",
+    "loginNow": "Đăng nhập ngay",
+    "otpCode": "Mã OTP",
+    "otpSentTo": "Mã gồm 6 số vừa được gửi tới",
+    "otpValidity": "có hiệu lực trong 90 giây.",
+    "verifying": "Đang xác minh...",
+    "verifyAccount": "Xác minh tài khoản",
+    "resending": "Đang gửi lại...",
+    "resendIn": "Gửi lại mã sau {{seconds}}s",
+    "resendOtp": "Gửi lại mã OTP",
+    "errors": {
+      "invalidEmail": "Email không hợp lệ",
+      "passwordMinLength": "Mật khẩu phải có ít nhất {{count}} ký tự",
+      "nameRequired": "Vui lòng nhập họ và tên",
+      "phoneRequired": "Vui lòng nhập số điện thoại",
+      "passwordMismatch": "Mật khẩu nhập lại không khớp",
+      "loginFailed401": "Email hoặc mật khẩu không đúng",
+      "invalidLoginInfo": "Thông tin đăng nhập không hợp lệ",
+      "loginGenericError": "Có lỗi xảy ra khi đăng nhập, vui lòng thử lại",
+      "emailInUse": "Email này đã được sử dụng, vui lòng dùng email khác",
+      "invalidRegisterInfo": "Thông tin đăng ký không hợp lệ",
+      "registerGenericError": "Có lỗi xảy ra khi đăng ký, vui lòng thử lại",
+      "invalidOtp": "Mã OTP không đúng hoặc đã hết hạn",
+      "otpGenericError": "Không thể xác minh OTP, vui lòng thử lại",
+      "resendOtpError": "Không thể gửi lại mã OTP"
+    },
+    "toasts": {
+      "loginSuccess": "Đăng nhập thành công!",
+      "otpSent": "Đã gửi mã OTP xác minh tới email của bạn",
+      "registerSuccess": "Đăng ký tài khoản thành công!",
+      "otpResent": "Đã gửi lại mã OTP"
+    },
+    "hero": {
+      "welcomeTo": "Chào mừng đến với",
+      "platform": "Nền tảng đặt phòng trực tuyến",
+      "titleLine1": "Trải nghiệm dịch vụ",
+      "titleHighlight": "Đẳng cấp 5 Sao",
+      "subtitle": "Không gian sang trọng, hiện đại và giàu tính chuyên nghiệp — đồng hành cùng bạn trong mỗi kỳ nghỉ tại Vika Hotel.",
+      "support247": "Hỗ trợ 24/7",
+      "fiveStarExperience": "Trải nghiệm 5 sao",
+      "secureBooking": "Đặt phòng an toàn",
+      "copyright": "© 2026 Vika Hotel Group. All rights reserved."
+    }
+  },
+  "userMenu": {
+    "profile": "Hồ sơ của tôi",
+    "bookingHistory": "Lịch sử đặt phòng"
+  },
+  "language": {
+    "vi": "Tiếng Việt",
+    "en": "Tiếng Anh"
+  },
+  "home": {
+    "hero": {
+      "highlight1": "Wifi tốc độ cao miễn phí",
+      "highlight2": "Hồ bơi vô cực view biển",
+      "highlight3": "Spa & chăm sóc 5 sao",
+      "highlight4": "Đưa đón sân bay",
+      "searchError": "Có lỗi xảy ra khi tìm kiếm phòng.",
+      "kicker": "Chào mừng đến với Vika Hotel",
+      "title": "Trải nghiệm kỳ nghỉ tuyệt vời nhất của bạn",
+      "subtitle": "Tận hưởng không gian sang trọng, dịch vụ đẳng cấp 5 sao và view biển tuyệt đẹp ngay tại trung tâm thành phố.",
+      "exploreRooms": "Khám phá phòng nghỉ",
+      "checkIn": "Ngày nhận phòng",
+      "checkOut": "Ngày trả phòng",
+      "searching": "Đang tìm...",
+      "search": "Tìm kiếm"
+    },
+    "featured": {
+      "loadError": "Không thể tải danh sách phòng",
+      "title": "Phòng Nghỉ Nổi Bật",
+      "subtitle": "Những lựa chọn được yêu thích nhất tại Vika Hotel",
+      "viewAll": "Xem tất cả phòng",
+      "loading": "Đang tải danh sách phòng...",
+      "retry": "Thử lại",
+      "priceFrom": "Giá mỗi đêm từ",
+      "bookNow": "Đặt ngay"
+    },
+    "promo": {
+      "badge": "Ưu đãi độc quyền",
+      "titleLine1": "Mùa Hè Rực Rỡ",
+      "titleLine2": "Giảm Tới 20%",
+      "description": "Đặt phòng ngay hôm nay để nhận ưu đãi đặc biệt cho kỳ nghỉ hè của bạn. Áp dụng cho các đặt phòng từ 3 đêm trở lên.",
+      "cta": "Xem Chi Tiết Ưu Đãi"
+    }
+  },
+  "footer": {
+    "blurb": "Trải nghiệm nghỉ dưỡng tuyệt vời nhất ngay tại trung tâm thành phố với dịch vụ 5 sao.",
+    "about": "Về Vika Hotel",
+    "aboutUs": "Về chúng tôi",
+    "careers": "Cơ hội nghề nghiệp",
+    "blog": "Blog du lịch",
+    "support": "Hỗ Trợ",
+    "helpCenter": "Trung tâm trợ giúp",
+    "privacyPolicy": "Chính sách bảo mật",
+    "contactUs": "Liên hệ",
+    "contactHeading": "Liên Hệ",
+    "copyright": "© 2026 Vika Hotel. All rights reserved.",
+    "terms": "Điều khoản",
+    "privacy": "Bảo mật",
+    "sitemap": "Sitemap"
+  },
+  "search": {
+    "filter": {
+      "title": "Bộ lọc",
+      "reset": "Đặt lại",
+      "maxPrice": "Giá tối đa (đêm)",
+      "roomType": "Loại phòng"
+    },
+    "roomCard": {
+      "single": "Phòng Đơn",
+      "double": "Phòng Đôi",
+      "triple": "Phòng Ba",
+      "family": "Phòng Gia Đình",
+      "discount": "Ưu đãi {{percent}}%",
+      "guests": "người",
+      "amenitiesCount": "tiện nghi",
+      "roomsLeft": "phòng còn trống",
+      "soldOut": "Tạm hết phòng",
+      "perNight": "/ đêm",
+      "bookNow": "Đặt ngay"
+    },
+    "sort": {
+      "recommended": "Đề xuất",
+      "priceAsc": "Giá tăng dần",
+      "priceDesc": "Giá giảm dần",
+      "label": "Sắp xếp theo:"
+    },
+    "resultsFound": "Tìm thấy",
+    "roomsMatch": "phòng phù hợp",
+    "from": "từ",
+    "to": "đến",
+    "emptyTitle": "Không tìm thấy phòng phù hợp",
+    "emptyText": "Thử điều chỉnh bộ lọc giá hoặc loại phòng để xem thêm lựa chọn khác.",
+    "resetFilters": "Đặt lại bộ lọc"
+  },
+  "room": {
+    "maxGuests": "Tối đa {{count}} khách",
+    "addToFavorites": "Lưu vào yêu thích",
+    "removeFromFavorites": "Bỏ yêu thích",
+    "about": "Giới thiệu về phòng này",
+    "defaultDescription": "Tận hưởng kỳ nghỉ dưỡng đẳng cấp, nơi sự sang trọng hiện đại hòa quyện cùng vẻ đẹp thiên nhiên. Không gian được thiết kế tinh tế để mang lại sự thoải mái tối đa cho quý khách. Trang thiết bị hiện đại, tầm nhìn tuyệt đẹp và dịch vụ chu đáo sẽ làm hài lòng những vị khách khó tính nhất.",
+    "amenities": {
+      "title": "Tiện nghi nổi bật",
+      "wifi": "WiFi miễn phí",
+      "ac": "Điều hòa",
+      "tv": "TV màn hình phẳng",
+      "kitchenette": "Bếp nhỏ",
+      "washer": "Máy giặt",
+      "parking": "Bãi đỗ xe",
+      "pool": "Hồ bơi",
+      "collapse": "Thu gọn",
+      "viewAll": "Xem tất cả {{count}} tiện nghi"
+    },
+    "booking": {
+      "loginRequired": "Vui lòng đăng nhập để tiếp tục đặt phòng",
+      "perNight": "/ đêm",
+      "checkIn": "Nhận phòng",
+      "checkOut": "Trả phòng",
+      "roomsLeft": "Còn {{count}} phòng trống",
+      "processing": "Đang xử lý...",
+      "bookNow": "Đặt phòng ngay",
+      "nights": "{{price}} x {{nights}} đêm",
+      "total": "Tổng cộng"
+    },
+    "reviews": {
+      "loading": "Đang tải đánh giá...",
+      "count": "({{count}} đánh giá)",
+      "empty": "Chưa có đánh giá nào cho loại phòng này.",
+      "collapse": "Thu gọn đánh giá",
+      "viewAll": "Xem tất cả {{count}} đánh giá",
+      "defaultGuestName": "Khách hàng",
+      "writeReview": "Viết đánh giá",
+      "reviewSubtitle": "Đánh giá trải nghiệm của bạn tại phòng {{roomName}}",
+      "satisfaction": "Mức độ hài lòng",
+      "ratingExcellent": "Tuyệt vời! 😍",
+      "ratingGood": "Rất tốt! 🙂",
+      "ratingAverage": "Bình thường 😐",
+      "ratingPoor": "Không tốt lắm 😕",
+      "ratingBad": "Rất tệ 😡",
+      "commentLabel": "Nhận xét chi tiết",
+      "commentPlaceholder": "Chia sẻ trải nghiệm của bạn về phòng, dịch vụ, hay tiện nghi...",
+      "cancel": "Hủy",
+      "submit": "Gửi đánh giá",
+      "submitSuccess": "Cảm ơn bạn đã để lại đánh giá!",
+      "submitError": "Không thể gửi đánh giá. Vui lòng thử lại."
+    }
+  },
+  "checkout": {
+    "paymentCash": "Thanh toán khi nhận phòng",
+    "paymentOnline": "Thanh toán online (PayOS)",
+    "success": {
+      "title": "Đặt phòng thành công!",
+      "thankYou": "Cảm ơn bạn đã đặt phòng tại Vika Hotel. Mã đặt phòng của bạn là",
+      "room": "Phòng",
+      "checkInOut": "Nhận / Trả phòng",
+      "total": "Tổng cộng",
+      "backHome": "Về trang chủ",
+      "bookingHistory": "Lịch sử đặt phòng"
+    },
+    "errors": {
+      "nameRequired": "Vui lòng nhập họ tên",
+      "invalidPhone": "Số điện thoại không hợp lệ",
+      "invalidEmail": "Email không hợp lệ",
+      "bookingFailed": "Không thể tạo đặt phòng. Vui lòng thử lại."
+    },
+    "title": "Xác nhận đặt phòng",
+    "customerInfo": "Thông tin khách hàng",
+    "fullName": "Họ và tên",
+    "phone": "Số điện thoại",
+    "email": "Email",
+    "paymentMethod": "Phương thức thanh toán",
+    "processing": "Đang xử lý...",
+    "confirmBooking": "Xác nhận đặt phòng",
+    "summary": {
+      "title": "Chi tiết đặt phòng",
+      "nights": "{{count}} đêm",
+      "checkIn": "Nhận phòng",
+      "checkOut": "Trả phòng",
+      "priceNights": "{{price}} x {{nights}} đêm",
+      "total": "Tổng cộng"
+    }
+  },
+  "booking": {
+    "status": {
+      "PENDING": "Chờ xác nhận",
+      "CONFIRMED": "Đã xác nhận",
+      "CHECKED_IN": "Đang lưu trú",
+      "CHECKED_OUT": "Đã trả phòng",
+      "CANCELLED": "Đã hủy"
+    },
+    "payment": {
+      "UNPAID": "Chưa thanh toán",
+      "PAID": "Đã thanh toán",
+      "cash": "Tiền mặt",
+      "payos": "PayOS"
+    },
+    "history": {
+      "title": "Lịch sử đặt phòng",
+      "loadError": "Không thể tải lịch sử đặt phòng",
+      "empty": "Bạn chưa có đơn đặt phòng nào.",
+      "payNow": "Thanh toán ngay",
+      "redirecting": "Đang chuyển...",
+      "linkError": "Không thể tạo liên kết thanh toán",
+      "cancel": "Hủy đơn",
+      "cancelling": "Đang hủy...",
+      "cancelReason": "Khách yêu cầu hủy đặt phòng",
+      "cancelSuccess": "Đã hủy đơn đặt phòng",
+      "cancelError": "Không thể hủy đơn đặt phòng",
+      "cancelTitle": "Hủy đơn đặt phòng",
+      "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?"
+    }
+  },
+  "payment": {
+    "success": {
+      "checking": "Đang xác nhận thanh toán...",
+      "title": "Thanh toán thành công!",
+      "confirmed": "Đơn đặt phòng {{bookingCode}} đã được xác nhận.",
+      "pendingTitle": "Chưa ghi nhận thanh toán",
+      "pendingText": "Giao dịch có thể đang được xử lý. Nếu bạn đã chuyển khoản thành công, vui lòng đợi ít phút rồi kiểm tra lại trong lịch sử đặt phòng.",
+      "errorTitle": "Không thể kiểm tra trạng thái thanh toán",
+      "errorText": "Vui lòng kiểm tra lại trong lịch sử đặt phòng."
+    },
+    "cancel": {
+      "title": "Đã hủy thanh toán",
+      "message": "Bạn đã hủy giao dịch thanh toán{{forOrder}}. Đơn đặt phòng vẫn được giữ, bạn có thể thanh toán lại bất cứ lúc nào trong lịch sử đặt phòng.",
+      "forOrder": " cho đơn {{bookingCode}}"
+    },
+    "backHome": "Về trang chủ",
+    "bookingHistory": "Lịch sử đặt phòng"
+  },
+  "profile": {
+    "role": {
+      "CUSTOMER": "Khách hàng",
+      "STAFF": "Nhân viên",
+      "ADMIN": "Quản trị viên"
+    },
+    "defaultAccountName": "Tài khoản",
+    "avatarErrorType": "Vui lòng chọn một tệp hình ảnh",
+    "avatarErrorProcess": "Không thể xử lý ảnh, vui lòng thử ảnh khác",
+    "updateSuccess": "Cập nhật hồ sơ thành công!",
+    "updateError": "Không thể cập nhật hồ sơ",
+    "title": "Hồ sơ của tôi",
+    "changeAvatar": "Đổi ảnh đại diện",
+    "fullName": "Họ và tên",
+    "email": "Email",
+    "emailImmutable": "Không thể thay đổi email",
+    "phone": "Số điện thoại",
+    "idNumber": "CMND/CCCD/Passport",
+    "address": "Địa chỉ",
+    "addressPlaceholder": "Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành",
+    "saving": "Đang lưu...",
+    "saveChanges": "Lưu thay đổi",
+    "changePassword": {
+      "title": "Đổi mật khẩu",
+      "currentPassword": "Mật khẩu hiện tại",
+      "newPassword": "Mật khẩu mới",
+      "newPasswordPlaceholder": "Ít nhất 8 ký tự, có chữ và số",
+      "confirmNewPassword": "Nhập lại mật khẩu mới",
+      "showPassword": "Hiện mật khẩu",
+      "hidePassword": "Ẩn mật khẩu",
+      "processing": "Đang xử lý...",
+      "submit": "Đổi mật khẩu",
+      "errors": {
+        "currentRequired": "Vui lòng nhập mật khẩu hiện tại",
+        "minLength": "Mật khẩu mới phải có ít nhất {{count}} ký tự",
+        "needsLetterAndNumber": "Mật khẩu mới phải chứa cả chữ và số",
+        "mismatch": "Mật khẩu mới nhập lại không khớp",
+        "wrongCurrent": "Mật khẩu hiện tại không đúng",
+        "generic": "Không thể đổi mật khẩu, vui lòng thử lại"
+      },
+      "success": "Đổi mật khẩu thành công!"
+    }
+  },
+  "common": {
+    "close": "Đóng",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "processing": "Đang xử lý...",
+    "statusActive": "Đang hoạt động",
+    "statusLocked": "Đã bị khóa"
+  },
+  "forbidden": {
+    "title": "403 - Không có quyền truy cập",
+    "message": "Tài khoản của bạn không có quyền truy cập trang này.",
+    "backHome": "Về trang chủ"
+  }
+}

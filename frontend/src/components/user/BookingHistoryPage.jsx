@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CalendarDays, CreditCard, Loader2, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import ConfirmModal from '../common/ConfirmModal';
@@ -10,11 +11,6 @@ import {
 } from '../../services/booking';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
-
-const formatDate = (value) => new Date(value).toLocaleDateString('vi-VN');
-
 const STATUS_STYLES = {
   PENDING: 'bg-amber-50 text-amber-600',
   CONFIRMED: 'bg-blue-50 text-blue-600',
@@ -23,20 +19,8 @@ const STATUS_STYLES = {
   CANCELLED: 'bg-red-50 text-red-600',
 };
 
-const STATUS_LABELS = {
-  PENDING: 'Chờ xác nhận',
-  CONFIRMED: 'Đã xác nhận',
-  CHECKED_IN: 'Đang lưu trú',
-  CHECKED_OUT: 'Đã trả phòng',
-  CANCELLED: 'Đã hủy',
-};
-
-const PAYMENT_LABELS = {
-  UNPAID: 'Chưa thanh toán',
-  PAID: 'Đã thanh toán',
-};
-
 export default function BookingHistoryPage() {
+  const { t, i18n } = useTranslation();
   const { data, isFetching, error } = useGetMyBookingsQuery();
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
   const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation();
@@ -45,13 +29,20 @@ export default function BookingHistoryPage() {
 
   const bookings = data?.data ?? [];
 
+  const formatCurrency = (amount) =>
+    i18n.language === 'en'
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
+      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+
+  const formatDate = (value) => new Date(value).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN');
+
   const handlePayNow = async (bookingId) => {
     setPayingId(bookingId);
     try {
       const { checkoutUrl } = await createPayOSLink(bookingId).unwrap();
       window.location.href = checkoutUrl;
     } catch (err) {
-      toast.error(err?.data?.message || 'Không thể tạo liên kết thanh toán');
+      toast.error(err?.data?.message || t('booking.history.linkError'));
       setPayingId(null);
     }
   };
@@ -61,12 +52,12 @@ export default function BookingHistoryPage() {
     try {
       await cancelBooking({
         bookingId: cancelTarget.bookingId,
-        reason: 'Khách yêu cầu hủy đặt phòng',
+        reason: t('booking.history.cancelReason'),
       }).unwrap();
-      toast.success('Đã hủy đơn đặt phòng');
+      toast.success(t('booking.history.cancelSuccess'));
       setCancelTarget(null);
     } catch (err) {
-      toast.error(err?.data?.message || 'Không thể hủy đơn đặt phòng');
+      toast.error(err?.data?.message || t('booking.history.cancelError'));
     }
   };
 
@@ -74,7 +65,7 @@ export default function BookingHistoryPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Lịch sử đặt phòng</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-8">{t('booking.history.title')}</h1>
 
         {isFetching && (
           <div className="flex justify-center py-16 text-gray-400">
@@ -84,13 +75,13 @@ export default function BookingHistoryPage() {
 
         {!isFetching && error && (
           <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
-            {error?.data?.message || 'Không thể tải lịch sử đặt phòng'}
+            {error?.data?.message || t('booking.history.loadError')}
           </div>
         )}
 
         {!isFetching && !error && bookings.length === 0 && (
           <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-            Bạn chưa có đơn đặt phòng nào.
+            {t('booking.history.empty')}
           </div>
         )}
 
@@ -120,11 +111,11 @@ export default function BookingHistoryPage() {
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <span className={`inline-flex items-center rounded-full text-xs font-semibold px-2.5 py-1 ${STATUS_STYLES[booking.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {STATUS_LABELS[booking.status] || booking.status}
+                        {t(`booking.status.${booking.status}`, booking.status)}
                       </span>
                       <span className="flex items-center gap-1 text-xs font-medium text-gray-400">
                         <CreditCard size={12} />
-                        {booking.paymentMethod === 'PAYOS' ? 'PayOS' : 'Tiền mặt'} · {PAYMENT_LABELS[booking.paymentStatus] || booking.paymentStatus}
+                        {booking.paymentMethod === 'PAYOS' ? t('booking.payment.payos') : t('booking.payment.cash')} · {t(`booking.payment.${booking.paymentStatus}`, booking.paymentStatus)}
                       </span>
                     </div>
                   </div>
@@ -139,7 +130,7 @@ export default function BookingHistoryPage() {
                           disabled={isRedirecting && payingId === booking.bookingId}
                           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-70"
                         >
-                          {isRedirecting && payingId === booking.bookingId ? 'Đang chuyển...' : 'Thanh toán ngay'}
+                          {isRedirecting && payingId === booking.bookingId ? t('booking.history.redirecting') : t('booking.history.payNow')}
                         </button>
                       )}
                       {canCancel && (
@@ -148,7 +139,7 @@ export default function BookingHistoryPage() {
                           onClick={() => setCancelTarget(booking)}
                           className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
                         >
-                          Hủy đơn
+                          {t('booking.history.cancel')}
                         </button>
                       )}
                     </div>
@@ -163,9 +154,9 @@ export default function BookingHistoryPage() {
 
       <ConfirmModal
         open={Boolean(cancelTarget)}
-        title="Hủy đơn đặt phòng"
-        message={`Bạn có chắc muốn hủy đơn đặt phòng "${cancelTarget?.roomType?.name}"?`}
-        confirmLabel="Hủy đơn"
+        title={t('booking.history.cancelTitle')}
+        message={t('booking.history.cancelMessage', { roomName: cancelTarget?.roomType?.name })}
+        confirmLabel={t('booking.history.cancel')}
         danger
         loading={isCancelling}
         onConfirm={handleConfirmCancel}

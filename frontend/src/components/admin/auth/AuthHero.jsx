@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Clock, Star, ShieldCheck } from 'lucide-react';
 import vikaLogo from '../../../assets/icon/icon.png';
 
 const trustPoints = [
-  { icon: Clock, label: 'Hỗ trợ 24/7' },
-  { icon: Star, label: 'Trải nghiệm 5 sao' },
-  { icon: ShieldCheck, label: 'Đặt phòng an toàn' },
+  { icon: Clock, labelKey: 'auth.hero.support247' },
+  { icon: Star, labelKey: 'auth.hero.fiveStarExperience' },
+  { icon: ShieldCheck, labelKey: 'auth.hero.secureBooking' },
 ];
 
 export default function AuthHero() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const heroSlides = [
     'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2070&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=2070&auto=format&fit=crop',
@@ -46,39 +48,39 @@ export default function AuthHero() {
             <img src={vikaLogo} alt="Vika Hotel" className="h-full w-full object-contain" />
           </div>
           <div>
-            <span className="block text-xs uppercase tracking-[0.45em] text-white/65">Chào mừng đến với</span>
+            <span className="block text-xs uppercase tracking-[0.45em] text-white/65">{t('auth.hero.welcomeTo')}</span>
             <span className="block text-2xl font-bold tracking-tight text-white drop-shadow-[0_8px_20px_rgba(0,0,0,0.28)]">VIKA HOTEL</span>
           </div>
         </button>
 
         <div className="max-w-lg space-y-5">
           <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/85 backdrop-blur-md shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
-            Nền tảng đặt phòng trực tuyến
+            {t('auth.hero.platform')}
           </span>
           <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-[-0.02em] drop-shadow-[0_10px_35px_rgba(0,0,0,0.45)]">
-            Trải nghiệm dịch vụ <br />
-            <span className="text-sky-300">Đẳng cấp 5 Sao</span>
+            {t('auth.hero.titleLine1')} <br />
+            <span className="text-sky-300">{t('auth.hero.titleHighlight')}</span>
           </h1>
           <p className="max-w-md text-lg leading-8 text-white/85 drop-shadow-md">
-            Không gian sang trọng, hiện đại và giàu tính chuyên nghiệp — đồng hành cùng bạn trong mỗi kỳ nghỉ tại Vika Hotel.
+            {t('auth.hero.subtitle')}
           </p>
 
           <div className="grid grid-cols-3 gap-4 pt-3">
-            {trustPoints.map(({ icon: Icon, label }) => (
+            {trustPoints.map(({ icon: Icon, labelKey }) => (
               <div
-                key={label}
+                key={labelKey}
                 className="flex flex-col items-start gap-2.5 rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 backdrop-blur-md shadow-[0_16px_40px_rgba(0,0,0,0.16)]"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sky-300">
                   <Icon size={16} />
                 </span>
-                <span className="text-sm font-medium leading-tight text-white/85">{label}</span>
+                <span className="text-sm font-medium leading-tight text-white/85">{t(labelKey)}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="text-sm text-white/55">&copy; 2026 Vika Hotel Group. All rights reserved.</p>
+        <p className="text-sm text-white/55">{t('auth.hero.copyright')}</p>
       </div>
     </div>
   );

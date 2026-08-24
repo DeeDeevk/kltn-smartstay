@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { roomTypeApi } from '../../services/roomType';
 import { ChevronRight, Loader2, Star } from 'lucide-react';
 
 export default function FeaturedRooms() {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const {
     data: roomsResponse,
     isLoading: loading,
@@ -11,7 +13,7 @@ export default function FeaturedRooms() {
   } = roomTypeApi.useGetAllRoomTypesQuery();
 
   const rooms = (roomsResponse?.data || []).slice(0, 3);
-  const error = rtkError ? 'Không thể tải danh sách phòng' : null;
+  const error = rtkError ? t('home.featured.loadError') : null;
 
   const handleBookNow = (room) => {
     navigate(`/rooms/${room.id}`);
@@ -23,18 +25,18 @@ export default function FeaturedRooms() {
         {/* Section Header */}
         <div className="flex justify-between items-end mb-12">
           <div>
-            <h2 className="font-display text-3xl font-semibold text-gray-900 mb-2">Phòng Nghỉ Nổi Bật</h2>
-            <p className="text-gray-500">Những lựa chọn được yêu thích nhất tại Vika Hotel</p>
+            <h2 className="font-display text-3xl font-semibold text-gray-900 mb-2">{t('home.featured.title')}</h2>
+            <p className="text-gray-500">{t('home.featured.subtitle')}</p>
           </div>
           <a href="/searchrooms" className="hidden md:flex items-center text-blue-600 font-semibold hover:gap-2 transition-all">
-            Xem tất cả phòng <ChevronRight size={20} />
+            {t('home.featured.viewAll')} <ChevronRight size={20} />
           </a>
         </div>
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-            <p className="text-gray-500 font-medium">Đang tải danh sách phòng...</p>
+            <p className="text-gray-500 font-medium">{t('home.featured.loading')}</p>
           </div>
         ) : error ? (
           <div className="text-center py-20 bg-red-50 rounded-2xl border border-red-100">
@@ -43,7 +45,7 @@ export default function FeaturedRooms() {
               onClick={() => window.location.reload()}
               className="mt-4 text-blue-600 font-semibold hover:underline"
             >
-              Thử lại
+              {t('home.featured.retry')}
             </button>
           </div>
         ) : (
@@ -69,16 +71,16 @@ export default function FeaturedRooms() {
                   <p className="text-gray-500 text-sm mb-4 line-clamp-2">{room.description}</p>
                   <div className="flex items-end justify-between">
                     <div>
-                      <span className="text-gray-400 text-xs">Giá mỗi đêm từ</span>
+                      <span className="text-gray-400 text-xs">{t('home.featured.priceFrom')}</span>
                       <p className="text-blue-600 font-bold text-lg">
-                        {new Intl.NumberFormat('vi-VN').format(room.base_price)}đ
+                        {new Intl.NumberFormat(i18n.language === 'en' ? 'en-US' : 'vi-VN').format(room.base_price)}{i18n.language === 'en' ? '₫' : 'đ'}
                       </p>
                     </div>
                     <button
                       onClick={() => handleBookNow(room)}
                       className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
                     >
-                      Đặt ngay
+                      {t('home.featured.bookNow')}
                     </button>
                   </div>
                 </div>
@@ -88,7 +90,7 @@ export default function FeaturedRooms() {
         )}
 
         <div className="mt-8 text-center md:hidden">
-          <button className="text-blue-600 font-semibold">Xem tất cả phòng &rarr;</button>
+          <button className="text-blue-600 font-semibold">{t('home.featured.viewAll')} &rarr;</button>
         </div>
       </div>
     </section>

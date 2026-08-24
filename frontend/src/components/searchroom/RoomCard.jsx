@@ -1,13 +1,25 @@
 // src/features/search/components/RoomCard.jsx
-import { Star, User, BedDouble, Ruler, Heart } from 'lucide-react';
+import { Star, User, Sparkles, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+
+const CAPACITY_LABEL_KEYS = {
+  1: 'search.roomCard.single',
+  2: 'search.roomCard.double',
+  3: 'search.roomCard.triple',
+};
 
 export default function RoomCard({ room, startDate, endDate }) {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+
+  const capacityLabel = (capacity) => t(CAPACITY_LABEL_KEYS[capacity] ?? 'search.roomCard.family');
 
   // Format tiền tệ
   const formatCurrency = (amount) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
+    i18n.language === 'en'
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND' }).format(amount)
+      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', 'đ');
 
   const handleBookNow = () => {
     const roomId = room.roomTypeId || room.id;
@@ -34,7 +46,7 @@ export default function RoomCard({ room, startDate, endDate }) {
         {/* Badge Giảm giá / Nổi bật */}
         {room.discount && (
           <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-            Ưu đãi {room.discount}%
+            {t('search.roomCard.discount', { percent: room.discount })}
           </span>
         )}
         {room.tag && (
@@ -50,7 +62,7 @@ export default function RoomCard({ room, startDate, endDate }) {
         <div className="flex justify-between items-center mb-2">
           <div className="flex gap-2">
             <span className="bg-blue-50 text-blue-600 text-xs font-semibold px-2 py-1 rounded">
-              {room.capacity_people > 1 ? 'Phòng Đôi' : 'Phòng Đơn'}
+              {capacityLabel(room.capacity_people)}
             </span>
             {/* {room.roomClass && (
               <span className="bg-amber-50 text-amber-600 text-xs font-semibold px-2 py-1 rounded border border-amber-100 uppercase tracking-wider">
@@ -73,17 +85,21 @@ export default function RoomCard({ room, startDate, endDate }) {
         {/* Thông số kỹ thuật */}
         <div className="flex flex-wrap gap-3 text-sm text-gray-500 mb-4">
           <div className="flex items-center gap-1">
-            <Ruler size={14} /> {room.size_m2}m²
+            <User size={14} /> {room.capacity_people} {t('search.roomCard.guests')}
           </div>
-          <div className="flex items-center gap-1">
-            <User size={14} /> {room.capacity_people} Người
-          </div>
+          {room.amenities?.length > 0 && (
+            <div className="flex items-center gap-1">
+              <Sparkles size={14} /> {room.amenities.length} {t('search.roomCard.amenitiesCount')}
+            </div>
+          )}
         </div>
-        {room.availableCount && (
-          <p className="text-blue-600 font-semibold text-sm">
-            {room.availableCount} phòng còn trống
+        {room.availableCount > 0 ? (
+          <p className="text-blue-600 font-semibold text-sm mb-1">
+            {room.availableCount} {t('search.roomCard.roomsLeft')}
           </p>
-        )}
+        ) : room.availableCount === 0 ? (
+          <p className="text-red-500 font-semibold text-sm mb-1">{t('search.roomCard.soldOut')}</p>
+        ) : null}
         {/* Giá & Button (Đẩy xuống đáy) */}
         <div className="mt-auto flex items-end justify-between">
           <div>
@@ -96,13 +112,14 @@ export default function RoomCard({ room, startDate, endDate }) {
               {formatCurrency(room.basePrice || room.base_price)}
             </p>
 
-            <p className="text-xs text-gray-500">/ đêm</p>
+            <p className="text-xs text-gray-500">{t('search.roomCard.perNight')}</p>
           </div>
           <button
             onClick={handleBookNow}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+            disabled={room.availableCount === 0}
+            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
           >
-            Đặt ngay
+            {t('search.roomCard.bookNow')}
           </button>
         </div>
       </div>

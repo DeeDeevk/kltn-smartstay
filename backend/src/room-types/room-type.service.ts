@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RoomType } from './entities/room-type.entity';
+import { Room } from '../rooms/entities/room.entity';
 import { CreateRoomTypeDto } from './dto/create-room-type.dto';
 import { UpdateRoomTypeDto } from './dto/update-room-type.dto';
 import { QueryRoomTypeDto } from './dto/query-room-type.dto';
@@ -16,9 +17,11 @@ export class RoomTypeService {
   constructor(
     @InjectRepository(RoomType)
     private readonly roomTypeRepo: Repository<RoomType>,
+    @InjectRepository(Room)
+    private readonly roomRepo: Repository<Room>,
   ) {}
 
-  async findAllActive(query: QueryRoomTypeDto): Promise<RoomType[]> {
+  async findAllActive(query: QueryRoomTypeDto) {
     const qb = this.roomTypeRepo
       .createQueryBuilder('roomType')
       .where('roomType.status = :status', { status: RoomTypeStatus.ACTIVE });
@@ -44,7 +47,29 @@ export class RoomTypeService {
       });
     }
 
-    return qb.orderBy('roomType.createdAt', 'DESC').getMany();
+    const roomTypes = await qb.orderBy('roomType.createdAt', 'DESC').getMany();
+    return this.withRoomCount(roomTypes);
+  }
+
+  // Số phòng vật lý thuộc mỗi loại — hiển thị "còn trống" ở trang tìm kiếm.
+  // Chỉ đếm tổng số phòng của loại (không trừ theo ngày đặt cụ thể).
+  private async withRoomCount(roomTypes: RoomType[]) {
+    if (roomTypes.length === 0) return [];
+    const counts = await this.roomRepo
+      .createQueryBuilder('room')
+      .select('room.roomTypeId', 'roomTypeId')
+      .addSelect('COUNT(*)', 'count')
+      .where('room.roomTypeId IN (:...ids)', {
+        ids: roomTypes.map((rt) => rt.roomTypeId),
+      })
+      .groupBy('room.roomTypeId')
+      .getRawMany<{ roomTypeId: string; count: string }>();
+
+    const countMap = new Map(counts.map((c) => [c.roomTypeId, Number(c.count)]));
+    return roomTypes.map((rt) => ({
+      ...rt,
+      roomCount: countMap.get(rt.roomTypeId) ?? 0,
+    }));
   }
 
   async findActiveById(roomTypeId: string): Promise<RoomType> {

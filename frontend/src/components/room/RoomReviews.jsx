@@ -4,8 +4,10 @@ import Review from "./Review";
 import { useGetReviewsByRoomTypeQuery } from "../../services/review";
 import { useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function RoomReviews({ averageRating, totalReviews }) {
+  const { t } = useTranslation();
   const { id } = useParams();
   const { data: reviewsData, isLoading } = useGetReviewsByRoomTypeQuery(id);
   const reviews = reviewsData?.data || [];
@@ -23,7 +25,7 @@ export default function RoomReviews({ averageRating, totalReviews }) {
   if (isLoading) {
     return (
       <div className="flex justify-center p-10 bg-white rounded-xl border border-gray-100 italic font-medium text-gray-400">
-        <Loader2 className="animate-spin mr-2" /> Đang tải đánh giá...
+        <Loader2 className="animate-spin mr-2" /> {t('room.reviews.loading')}
       </div>
     );
   }
@@ -37,7 +39,7 @@ export default function RoomReviews({ averageRating, totalReviews }) {
           {Number(computedAverageRating).toFixed(1)}
         </span>
         <span className="text-gray-500 font-medium ml-1">
-          ({reviewsCount} đánh giá)
+          {t('room.reviews.count', { count: reviewsCount })}
         </span>
       </div>
 
@@ -50,7 +52,7 @@ export default function RoomReviews({ averageRating, totalReviews }) {
         </div>
       ) : (
         <div className="py-10 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-          <p className="text-gray-400 italic">Chưa có đánh giá nào cho loại phòng này.</p>
+          <p className="text-gray-400 italic">{t('room.reviews.empty')}</p>
         </div>
       )}
 
@@ -61,8 +63,8 @@ export default function RoomReviews({ averageRating, totalReviews }) {
           className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-4 py-2 rounded-lg transition-colors self-start"
         >
           {showAll
-            ? "Thu gọn đánh giá"
-            : `Xem tất cả ${reviews.length} đánh giá`}
+            ? t('room.reviews.collapse')
+            : t('room.reviews.viewAll', { count: reviews.length })}
         </button>
       )}
     </div>

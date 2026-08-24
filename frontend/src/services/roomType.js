@@ -13,6 +13,7 @@ function normalizeRoomType(roomType) {
     id: roomType.roomTypeId,
     base_price: roomType.basePrice,
     capacity_people: roomType.capacity,
+    availableCount: roomType.roomCount,
     images: (roomType.images ?? []).map((url) => ({ url })),
   };
 }
