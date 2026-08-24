@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
-import { AuthProvider } from '../../common/enums/auth-provider.enum';
+import { AuthProvider } from '../enums/auth-provider.enum';
 
 @Entity('Account')
 @Unique(['provider', 'providerAccountId'])

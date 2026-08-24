@@ -8,7 +8,13 @@ import { RefreshDto } from './dto/refresh.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { CreateStaffDto } from './dto/create-staff.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/role.decorator';
+import { UserRole } from '../common/enums/user-role.enum';
 
 // Giới hạn riêng cho các endpoint nhạy cảm (brute-force mật khẩu/OTP), chặt hơn mức mặc định toàn cục
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60000 } };
@@ -55,6 +61,16 @@ export class AuthController {
     return this.authService.resendOtp(dto.email);
   }
 
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.email, dto.otp, dto.newPassword);
+  }
+
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   logout(@Req() req: Request) {
@@ -67,5 +83,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@Req() req: AuthenticatedRequest) {
     return this.authService.getMe(req.user.userId);
+  }
+
+  @Post('create-staff')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  createStaff(@Body() dto: CreateStaffDto) {
+    return this.authService.createStaff(dto);
   }
 }
