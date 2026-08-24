@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, Eye, EyeOff, Loader2, User, Phone, Lock, ShieldCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
 
@@ -9,13 +10,51 @@ const labelClass = "mb-1.5 block text-sm font-semibold text-slate-700";
 const iconClass = "absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none";
 
 const RESEND_COOLDOWN_SECONDS = 30;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 6;
+
+function validateRegisterForm({ name, phone_number, email, password, confirmPassword }, t) {
+  if (!name.trim()) {
+    return t('auth.errors.nameRequired');
+  }
+  if (!phone_number.trim()) {
+    return t('auth.errors.phoneRequired');
+  }
+  if (!EMAIL_REGEX.test(email)) {
+    return t('auth.errors.invalidEmail');
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return t('auth.errors.passwordMinLength', { count: MIN_PASSWORD_LENGTH });
+  }
+  if (password !== confirmPassword) {
+    return t('auth.errors.passwordMismatch');
+  }
+  return null;
+}
+
+function getRegisterErrorMessage(err, t) {
+  if (err.status === 409) {
+    return t('auth.errors.emailInUse');
+  }
+  if (err.status === 400) {
+    return err.message || t('auth.errors.invalidRegisterInfo');
+  }
+  return err.message || t('auth.errors.registerGenericError');
+}
+
+function getOtpErrorMessage(err, t) {
+  if (err.status === 400 || err.status === 401) {
+    return t('auth.errors.invalidOtp');
+  }
+  return err.message || t('auth.errors.otpGenericError');
+}
 
 function OtpStep({ email, onVerified }) {
+  const { t } = useTranslation();
   const { verifyOtp, resendOtp } = useAuth();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [error, setError] = useState(null);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
 
   useEffect(() => {
@@ -26,27 +65,25 @@ function OtpStep({ email, onVerified }) {
 
   const handleVerify = async (e) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
     try {
       await verifyOtp({ email, otp });
       onVerified();
     } catch (err) {
-      setError(err.message || 'Mã OTP không đúng hoặc đã hết hạn');
+      toast.error(getOtpErrorMessage(err, t));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
-    setError(null);
     setResending(true);
     try {
       await resendOtp(email);
-      toast.success('Đã gửi lại mã OTP');
+      toast.success(t('auth.toasts.otpResent'));
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
-      setError(err.message || 'Không thể gửi lại mã OTP');
+      toast.error(err.message || t('auth.errors.resendOtpError'));
     } finally {
       setResending(false);
     }
@@ -55,7 +92,7 @@ function OtpStep({ email, onVerified }) {
   return (
     <form className="space-y-5" onSubmit={handleVerify}>
       <div>
-        <label className={labelClass}>Mã OTP</label>
+        <label className={labelClass}>{t('auth.otpCode')}</label>
         <div className="relative">
           <input
             type="text"
@@ -70,15 +107,9 @@ function OtpStep({ email, onVerified }) {
           <ShieldCheck className={iconClass} size={18} />
         </div>
         <p className="mt-2 text-sm text-slate-500">
-          Mã gồm 6 số vừa được gửi tới <span className="font-semibold text-slate-700">{email}</span>, có hiệu lực trong 90 giây.
+          {t('auth.otpSentTo')} <span className="font-semibold text-slate-700">{email}</span>, {t('auth.otpValidity')}
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-          {error}
-        </div>
-      )}
 
       <button
         type="submit"
@@ -88,10 +119,10 @@ function OtpStep({ email, onVerified }) {
         {loading ? (
           <>
             <Loader2 className="animate-spin" size={20} />
-            Đang xác minh...
+            {t('auth.verifying')}
           </>
         ) : (
-          'Xác minh tài khoản'
+          t('auth.verifyAccount')
         )}
       </button>
 
@@ -102,7 +133,7 @@ function OtpStep({ email, onVerified }) {
           disabled={cooldown > 0 || resending}
           className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-500 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline"
         >
-          {resending ? 'Đang gửi lại...' : cooldown > 0 ? `Gửi lại mã sau ${cooldown}s` : 'Gửi lại mã OTP'}
+          {resending ? t('auth.resending') : cooldown > 0 ? t('auth.resendIn', { seconds: cooldown }) : t('auth.resendOtp')}
         </button>
       </div>
     </form>
@@ -113,10 +144,10 @@ export default function RegisterForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { register } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState('form'); // 'form' | 'otp'
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -127,10 +158,10 @@ export default function RegisterForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Mật khẩu nhập lại không khớp');
+    const validationError = validateRegisterForm(formData, t);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -142,18 +173,18 @@ export default function RegisterForm() {
         phone: formData.phone_number,
         password: formData.password,
       });
-      toast.success('Đã gửi mã OTP xác minh tới email của bạn');
+      toast.success(t('auth.toasts.otpSent'));
       setStep('otp');
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.message || 'Có lỗi xảy ra khi đăng ký');
+      toast.error(getRegisterErrorMessage(err, t));
     } finally {
       setLoading(false);
     }
   };
 
   const handleVerified = () => {
-    toast.success('Đăng ký tài khoản thành công!');
+    toast.success(t('auth.toasts.registerSuccess'));
     const from = location.state?.from || '/';
     const checkoutState = location.state?.checkoutState;
     navigate(from, { state: checkoutState });
@@ -169,12 +200,10 @@ export default function RegisterForm() {
       <div className="w-full max-w-[560px] rounded-[28px] border border-white/70 bg-white/90 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.10)] backdrop-blur-xl md:p-10">
         <div className="mb-8 space-y-2">
           <h2 className="text-[2rem] font-bold tracking-tight text-slate-900 md:text-[2.25rem]">
-            {step === 'form' ? 'Tạo tài khoản mới' : 'Xác minh email'}
+            {step === 'form' ? t('auth.createAccount') : t('auth.verifyEmail')}
           </h2>
           <p className="max-w-md text-[15px] leading-7 text-slate-500">
-            {step === 'form'
-              ? 'Tham gia cùng Vika Hotel để trải nghiệm những dịch vụ tốt nhất.'
-              : 'Chỉ còn một bước nữa để hoàn tất đăng ký.'}
+            {step === 'form' ? t('auth.registerSubtitle') : t('auth.otpSubtitle')}
           </p>
         </div>
 
@@ -184,7 +213,7 @@ export default function RegisterForm() {
         <form className="space-y-5" onSubmit={handleSubmit}>
           {/* Full Name */}
           <div>
-            <label className={labelClass}>Họ và tên</label>
+            <label className={labelClass}>{t('auth.fullName')}</label>
             <div className="relative">
               <input
                 type="text"
@@ -202,7 +231,7 @@ export default function RegisterForm() {
           {/* Phone + Email */}
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Số điện thoại</label>
+              <label className={labelClass}>{t('auth.phone')}</label>
               <div className="relative">
                 <input
                   type="tel"
@@ -217,7 +246,7 @@ export default function RegisterForm() {
               </div>
             </div>
             <div>
-              <label className={labelClass}>Email</label>
+              <label className={labelClass}>{t('auth.email')}</label>
               <div className="relative">
                 <input
                   type="email"
@@ -236,7 +265,7 @@ export default function RegisterForm() {
           {/* Password + Confirm Password */}
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Mật khẩu</label>
+              <label className={labelClass}>{t('auth.password')}</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -251,14 +280,14 @@ export default function RegisterForm() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
-                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
             <div>
-              <label className={labelClass}>Nhập lại mật khẩu</label>
+              <label className={labelClass}>{t('auth.confirmPassword')}</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -274,13 +303,6 @@ export default function RegisterForm() {
             </div>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              {error}
-            </div>
-          )}
-
           {/* Submit Button */}
           <button
             type="submit"
@@ -290,23 +312,23 @@ export default function RegisterForm() {
             {loading ? (
               <>
                 <Loader2 className="animate-spin" size={20} />
-                Đang đăng ký...
+                {t('auth.registering')}
               </>
             ) : (
-              'Đăng ký'
+              t('auth.register')
             )}
           </button>
 
           {/* Sign In Link */}
           <div className="text-center pt-2">
             <p className="text-sm text-slate-500">
-              Đã có tài khoản?{' '}
+              {t('auth.haveAccount')}{' '}
               <button
                 type="button"
                 onClick={() => navigate('/login', { state: location.state })}
                 className="font-bold text-blue-600 transition-colors hover:text-blue-500 hover:underline"
               >
-                Đăng nhập ngay
+                {t('auth.loginNow')}
               </button>
             </p>
           </div>

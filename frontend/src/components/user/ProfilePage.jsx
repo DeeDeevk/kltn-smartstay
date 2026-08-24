@@ -1,23 +1,14 @@
 import { useRef, useState } from 'react';
-import { Navigate } from 'react-router-dom';
 import { Camera, Save, Loader2, User, Mail, Phone, IdCard, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
+import StatusBadge from '../common/StatusBadge';
+import ChangePasswordForm from './ChangePasswordForm';
 import { useAuth } from '../../context/AuthContext';
 
 const MAX_AVATAR_SIZE = 320;
-
-const ROLE_LABELS = {
-  CUSTOMER: 'Khách hàng',
-  STAFF: 'Nhân viên',
-  ADMIN: 'Quản trị viên',
-};
-
-const STATUS_LABELS = {
-  Active: 'Đang hoạt động',
-  Locked: 'Đã bị khóa',
-};
 
 function resizeImageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -41,7 +32,8 @@ function resizeImageToDataUrl(file) {
 }
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, updateProfile } = useAuth();
+  const { t } = useTranslation();
+  const { user, updateProfile } = useAuth();
   const fileInputRef = useRef(null);
   const [avatarPreview, setAvatarPreview] = useState(user?.avatar || '');
   const [formData, setFormData] = useState({
@@ -52,11 +44,7 @@ export default function ProfilePage() {
   });
   const [saving, setSaving] = useState(false);
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  const displayName = formData.name || 'Tài khoản';
+  const displayName = formData.name || t('profile.defaultAccountName');
   const avatarUrl = avatarPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff&size=200`;
 
   const handleAvatarChange = async (e) => {
@@ -64,14 +52,14 @@ export default function ProfilePage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Vui lòng chọn một tệp hình ảnh');
+      toast.error(t('profile.avatarErrorType'));
       return;
     }
 
     try {
       setAvatarPreview(await resizeImageToDataUrl(file));
     } catch {
-      toast.error('Không thể xử lý ảnh, vui lòng thử ảnh khác');
+      toast.error(t('profile.avatarErrorProcess'));
     }
   };
 
@@ -84,9 +72,9 @@ export default function ProfilePage() {
     setSaving(true);
     try {
       await updateProfile({ ...formData, avatar: avatarPreview });
-      toast.success('Cập nhật hồ sơ thành công!');
+      toast.success(t('profile.updateSuccess'));
     } catch (err) {
-      toast.error(err.message || 'Không thể cập nhật hồ sơ');
+      toast.error(err.message || t('profile.updateError'));
     } finally {
       setSaving(false);
     }
@@ -96,7 +84,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Hồ sơ của tôi</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-8">{t('profile.title')}</h1>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 space-y-8">
           {/* Avatar */}
@@ -107,7 +95,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md transition-colors"
-                aria-label="Đổi ảnh đại diện"
+                aria-label={t('profile.changeAvatar')}
               >
                 <Camera size={15} />
               </button>
@@ -124,11 +112,9 @@ export default function ProfilePage() {
               <p className="text-sm text-gray-500">{user?.email}</p>
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold px-2.5 py-1">
-                  <ShieldCheck size={12} /> {ROLE_LABELS[user?.role] || user?.role}
+                  <ShieldCheck size={12} /> {t(`profile.role.${user?.role}`, user?.role)}
                 </span>
-                <span className={`inline-flex items-center rounded-full text-xs font-semibold px-2.5 py-1 ${user?.status === 'Locked' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                  {STATUS_LABELS[user?.status] || user?.status}
-                </span>
+                <StatusBadge status={user?.status} />
               </div>
             </div>
           </div>
@@ -137,7 +123,7 @@ export default function ProfilePage() {
           <div className="grid sm:grid-cols-2 gap-5">
             <div className="sm:col-span-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <User size={14} /> Họ và tên
+                <User size={14} /> {t('profile.fullName')}
               </label>
               <input
                 type="text"
@@ -149,7 +135,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <Mail size={14} /> Email
+                <Mail size={14} /> {t('profile.email')}
               </label>
               <input
                 type="email"
@@ -157,11 +143,11 @@ export default function ProfilePage() {
                 disabled
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
               />
-              <p className="text-xs text-gray-400 mt-1">Không thể thay đổi email</p>
+              <p className="text-xs text-gray-400 mt-1">{t('profile.emailImmutable')}</p>
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <Phone size={14} /> Số điện thoại
+                <Phone size={14} /> {t('profile.phone')}
               </label>
               <input
                 type="tel"
@@ -173,7 +159,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <IdCard size={14} /> CMND/CCCD/Passport
+                <IdCard size={14} /> {t('profile.idNumber')}
               </label>
               <input
                 type="text"
@@ -185,13 +171,13 @@ export default function ProfilePage() {
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <MapPin size={14} /> Địa chỉ
+                <MapPin size={14} /> {t('profile.address')}
               </label>
               <input
                 type="text"
                 value={formData.address}
                 onChange={handleChange('address')}
-                placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
+                placeholder={t('profile.addressPlaceholder')}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -203,9 +189,11 @@ export default function ProfilePage() {
             className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 text-white font-bold py-3 px-6 rounded-xl transition-colors"
           >
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+            {saving ? t('profile.saving') : t('profile.saveChanges')}
           </button>
         </form>
+
+        <ChangePasswordForm />
       </main>
       <Footer />
     </div>

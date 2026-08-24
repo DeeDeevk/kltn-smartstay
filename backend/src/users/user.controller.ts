@@ -1,16 +1,22 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
-  Patch,
-  Body,
   Param,
   ParseUUIDPipe,
+  Patch,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserService } from './user.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { QueryUserDto } from './dto/query-user.dto';
+import { UpdateRoleDto } from './dto/update-role.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
@@ -36,20 +42,60 @@ export class UserController {
     return this.userService.updateProfile(req.user.userId, dto);
   }
 
-  @Patch(':id/lock')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  lockUser(
-    @Param('id', ParseUUIDPipe) id: string,
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  changePassword(
     @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
   ) {
-    return this.userService.lockUser(id, req.user.userId);
+    return this.userService.changePassword(
+      req.user.userId,
+      dto.oldPassword,
+      dto.newPassword,
+    );
   }
 
-  @Patch(':id/unlock')
+  @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  unlockUser(@Param('id', ParseUUIDPipe) id: string) {
-    return this.userService.unlockUser(id);
+  findAll(@Query() query: QueryUserDto) {
+    return this.userService.findAll(query);
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.userService.findById(id);
+  }
+
+  @Patch(':id/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  updateRole(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRoleDto,
+  ) {
+    if (req.user.userId === id) {
+      throw new BadRequestException('Không thể tự đổi vai trò của chính mình');
+    }
+    return this.userService.updateRole(id, dto.role);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  updateStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateStatusDto,
+  ) {
+    if (req.user.userId === id) {
+      throw new BadRequestException(
+        'Không thể tự khóa/mở khóa tài khoản của chính mình',
+      );
+    }
+    return this.userService.updateStatus(id, dto.status);
   }
 }
