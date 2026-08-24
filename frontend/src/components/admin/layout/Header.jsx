@@ -1,42 +1,14 @@
-import React, { useState } from 'react';
-import { Search, Bell, HelpCircle, Download, Loader2 } from 'lucide-react';
-// Import file utils xuất excel vừa tạo
-import { exportTaxReportToExcel } from '../../../utils/exportTaxReport';
+import React from 'react';
 
 export default function Header() {
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Hàm xử lý xuất Excel
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      // DỮ LIỆU MẪU: Thực tế bạn sẽ lấy data này từ API hoặc State truyền qua Context/Redux
-      const mockData = [
-        { code: 'BK001', date: '10/04/2026', name: 'Nguyễn Văn A - Thuê sân 7', revenue: 1500000, note: 'Đã thanh toán' },
-        { code: 'BK002', date: '11/04/2026', name: 'Công ty IT - Đặt tiệc & Sân', revenue: 8500000, note: 'Chuyển khoản' },
-        { code: 'BK003', date: '12/04/2026', name: 'Trần Thị B - Thuê sân 5', revenue: 800000, note: '' },
-        { code: 'BK004', date: '13/04/2026', name: 'Lê Văn C - Đặt trước', revenue: 2000000, note: 'Cọc 50%' },
-      ];
-
-      // Gọi hàm xuất Excel (truyền data và kỳ báo cáo)
-      await exportTaxReportToExcel(mockData, 'Tháng 4 Năm 2026');
-
-    } catch (error) {
-      console.error("Lỗi khi xuất file Excel:", error);
-      alert("Có lỗi xảy ra khi xuất báo cáo!");
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex justify-end items-center justify-between px-8 fixed top-0 left-64 right-0 z-10">
       {/* Search Bar */}
       {/* <div className="flex items-center w-96 bg-gray-50 rounded-lg px-4 py-2 border border-transparent focus-within:border-blue-200 focus-within:bg-white transition-all">
         <Search size={18} className="text-gray-400" />
-        <input 
-          type="text" 
-          placeholder="Tìm kiếm giao dịch, khách hàng..." 
+        <input
+          type="text"
+          placeholder="Tìm kiếm giao dịch, khách hàng..."
           className="bg-transparent border-none outline-none text-sm ml-3 w-full text-gray-700 placeholder-gray-400"
         />
       </div> */}

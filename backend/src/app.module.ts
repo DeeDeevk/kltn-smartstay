@@ -13,6 +13,7 @@ import { RoomModule } from './rooms/room.module';
 import { ServiceModule } from './services/service.module';
 import { PromotionModule } from './promotions/promotion.module';
 import { BookingModule } from './bookings/booking.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { BookingModule } from './bookings/booking.module';
     ServiceModule,
     PromotionModule,
     BookingModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

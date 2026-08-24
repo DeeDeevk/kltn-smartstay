@@ -1,22 +1,5 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
-import apiClient from './apiClient';
-
-const axiosBaseQuery =
-  () =>
-  async ({ url, method = 'get', data, params }) => {
-    try {
-      const result = await apiClient({ url, method, data, params });
-      return { data: result.data };
-    } catch (error) {
-      return {
-        error: {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.response?.data?.message || error.message,
-        },
-      };
-    }
-  };
+import axiosBaseQuery from './axiosBaseQuery';
 
 export const authApi = createApi({
   reducerPath: 'authApi',
