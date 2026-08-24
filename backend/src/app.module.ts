@@ -13,7 +13,9 @@ import { RoomModule } from './rooms/room.module';
 import { ServiceModule } from './services/service.module';
 import { PromotionModule } from './promotions/promotion.module';
 import { BookingModule } from './bookings/booking.module';
+import { UploadModule } from './uploads/upload.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { PaymentModule } from './payments/payment.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PromotionModule,
     BookingModule,
     DashboardModule,
+    UploadModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

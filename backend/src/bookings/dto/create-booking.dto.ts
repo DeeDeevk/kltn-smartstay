@@ -3,11 +3,13 @@ import {
   IsArray,
   IsDateString,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
+import { PaymentMethod } from 'src/common/enums/payment-method.enum';
 
 class GuestInfoDto {
   @IsString()
@@ -43,4 +45,8 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   promotionCode?: string;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 }
