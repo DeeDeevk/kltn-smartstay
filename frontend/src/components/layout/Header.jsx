@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
 import { Menu, X, User, History, LogOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { NAV_LINKS } from '../../data/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import logoIcon from '../../assets/icon/icon.png';
 import UserMenu from './UserMenu';
+import LanguageSwitcher from './LanguageSwitcher';
+
+const NAV_LABEL_KEYS = {
+  'Trang chủ': 'nav.home',
+  'Phòng nghỉ': 'nav.rooms',
+  'Ưu đãi': 'nav.promotions',
+  'Liên hệ': 'nav.contact',
+};
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // Highlight active link if needed, or just handle navigation
   const handleNavClick = (path) => {
@@ -40,13 +50,13 @@ export default function Header() {
                 onClick={() => navigate(item.to)}
                 className="text-gray-600 hover:text-blue-600 font-medium text-sm transition-colors uppercase tracking-wide"
               >
-                {item.label}
+                {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
               </button>
             ))}
           </nav>
 
           {/* RIGHT: AUTH BUTTONS */}
-          <div className="hidden md:flex items-center gap-4 flex-shrink-0">
+          <div className="hidden md:flex items-center gap-3 flex-shrink-0">
             {isAuthenticated ? (
               <UserMenu />
             ) : (
@@ -55,20 +65,22 @@ export default function Header() {
                   onClick={() => navigate('/login')}
                   className="text-gray-600 hover:text-blue-600 font-medium text-sm"
                 >
-                  Đăng nhập
+                  {t('auth.login')}
                 </button>
                 <button
                   onClick={() => navigate('/register')} // Update to /register if separate
                   className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-lg shadow-blue-200"
                 >
-                  Đăng ký
+                  {t('auth.register')}
                 </button>
               </>
             )}
+            <LanguageSwitcher />
           </div>
 
           {/* MOBILE MENU BUTTON */}
-          <div className="md:hidden">
+          <div className="md:hidden flex items-center gap-3">
+            <LanguageSwitcher />
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-600">
               {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -86,7 +98,7 @@ export default function Header() {
                 onClick={() => handleNavClick(item.to)}
                 className="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
               >
-                {item.label}
+                {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
               </button>
             ))}
             {isAuthenticated ? (
@@ -107,25 +119,25 @@ export default function Header() {
                   onClick={() => handleNavClick('/user/profile')}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
                 >
-                  <User size={18} className="text-gray-400" /> Hồ sơ của tôi
+                  <User size={18} className="text-gray-400" /> {t('userMenu.profile')}
                 </button>
                 <button
                   onClick={() => handleNavClick('/user/historybooking')}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
                 >
-                  <History size={18} className="text-gray-400" /> Lịch sử đặt phòng
+                  <History size={18} className="text-gray-400" /> {t('userMenu.bookingHistory')}
                 </button>
                 <button
                   onClick={logout}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 mt-1 text-base font-bold text-red-600 hover:bg-red-50 rounded-md"
                 >
-                  <LogOut size={18} /> Đăng xuất
+                  <LogOut size={18} /> {t('auth.logout')}
                 </button>
               </div>
             ) : (
               <div className="mt-4 flex flex-col gap-3">
-                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 border border-gray-300 rounded-lg font-bold text-gray-700">Đăng nhập</button>
-                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 bg-blue-600 text-white rounded-lg font-bold">Đăng ký</button>
+                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 border border-gray-300 rounded-lg font-bold text-gray-700">{t('auth.login')}</button>
+                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 bg-blue-600 text-white rounded-lg font-bold">{t('auth.register')}</button>
               </div>
             )}
           </div>

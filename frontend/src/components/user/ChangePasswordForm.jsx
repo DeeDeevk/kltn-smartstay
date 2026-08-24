@@ -1,36 +1,38 @@
 import { useState } from 'react';
 import { Lock, Eye, EyeOff, Loader2, KeyRound } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 import { useChangePasswordMutation } from '../../services/user';
 
 const MIN_PASSWORD_LENGTH = 8;
 // Khớp rule mạnh của backend (ChangePasswordDto): tối thiểu 8 ký tự, có cả chữ và số.
 const STRONG_PASSWORD_REGEX = /(?=.*[a-zA-Z])(?=.*[0-9])/;
 
-function validate({ oldPassword, newPassword, confirmPassword }) {
+function validate({ oldPassword, newPassword, confirmPassword }, t) {
   if (!oldPassword) {
-    return 'Vui lòng nhập mật khẩu hiện tại';
+    return t('profile.changePassword.errors.currentRequired');
   }
   if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    return `Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự`;
+    return t('profile.changePassword.errors.minLength', { count: MIN_PASSWORD_LENGTH });
   }
   if (!STRONG_PASSWORD_REGEX.test(newPassword)) {
-    return 'Mật khẩu mới phải chứa cả chữ và số';
+    return t('profile.changePassword.errors.needsLetterAndNumber');
   }
   if (newPassword !== confirmPassword) {
-    return 'Mật khẩu mới nhập lại không khớp';
+    return t('profile.changePassword.errors.mismatch');
   }
   return null;
 }
 
-function getChangePasswordErrorMessage(err) {
+function getChangePasswordErrorMessage(err, t) {
   if (err.status === 401) {
-    return 'Mật khẩu hiện tại không đúng';
+    return t('profile.changePassword.errors.wrongCurrent');
   }
-  return err.message || 'Không thể đổi mật khẩu, vui lòng thử lại';
+  return err.message || t('profile.changePassword.errors.generic');
 }
 
 export default function ChangePasswordForm() {
+  const { t } = useTranslation();
   const [changePassword, { isLoading }] = useChangePasswordMutation();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -46,7 +48,7 @@ export default function ChangePasswordForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const validationError = validate(formData);
+    const validationError = validate(formData, t);
     if (validationError) {
       toast.error(validationError);
       return;
@@ -57,10 +59,10 @@ export default function ChangePasswordForm() {
         oldPassword: formData.oldPassword,
         newPassword: formData.newPassword,
       }).unwrap();
-      toast.success('Đổi mật khẩu thành công!');
+      toast.success(t('profile.changePassword.success'));
       setFormData({ oldPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      toast.error(getChangePasswordErrorMessage(err));
+      toast.error(getChangePasswordErrorMessage(err, t));
     }
   };
 
@@ -71,13 +73,13 @@ export default function ChangePasswordForm() {
     >
       <div className="flex items-center gap-2">
         <KeyRound size={18} className="text-gray-500" />
-        <h2 className="text-lg font-bold text-gray-900">Đổi mật khẩu</h2>
+        <h2 className="text-lg font-bold text-gray-900">{t('profile.changePassword.title')}</h2>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-            <Lock size={14} /> Mật khẩu hiện tại
+            <Lock size={14} /> {t('profile.changePassword.currentPassword')}
           </label>
           <input
             type={showPassword ? 'text' : 'password'}
@@ -89,19 +91,19 @@ export default function ChangePasswordForm() {
         </div>
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-            <Lock size={14} /> Mật khẩu mới
+            <Lock size={14} /> {t('profile.changePassword.newPassword')}
           </label>
           <input
             type={showPassword ? 'text' : 'password'}
             value={formData.newPassword}
             onChange={handleChange('newPassword')}
             className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ít nhất 8 ký tự, có chữ và số"
+            placeholder={t('profile.changePassword.newPasswordPlaceholder')}
           />
         </div>
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-            <Lock size={14} /> Nhập lại mật khẩu mới
+            <Lock size={14} /> {t('profile.changePassword.confirmNewPassword')}
           </label>
           <input
             type={showPassword ? 'text' : 'password'}
@@ -120,7 +122,7 @@ export default function ChangePasswordForm() {
           className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-700"
         >
           {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          {showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+          {showPassword ? t('profile.changePassword.hidePassword') : t('profile.changePassword.showPassword')}
         </button>
 
         <button
@@ -129,7 +131,7 @@ export default function ChangePasswordForm() {
           className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-70"
         >
           {isLoading && <Loader2 size={18} className="animate-spin" />}
-          {isLoading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+          {isLoading ? t('profile.changePassword.processing') : t('profile.changePassword.submit')}
         </button>
       </div>
     </form>

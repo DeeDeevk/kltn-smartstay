@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Wifi,
   Snowflake,
@@ -19,14 +20,14 @@ import {
 } from "lucide-react";
 import TienIch from "./tienich.jsx";
 
-const defaultAmenities = [
-  { icon: Wifi, name: "WiFi miễn phí" },
-  { icon: Snowflake, name: "Điều hòa" },
-  { icon: Tv, name: "TV màn hình phẳng" },
-  { icon: UtensilsCrossed, name: "Bếp nhỏ" },
-  { icon: WashingMachine, name: "Máy giặt" },
-  { icon: CircleParking, name: "Bãi đỗ xe" },
-  { icon: Waves, name: "Hồ bơi" },
+const defaultAmenityDefs = [
+  { icon: Wifi, nameKey: "room.amenities.wifi" },
+  { icon: Snowflake, nameKey: "room.amenities.ac" },
+  { icon: Tv, nameKey: "room.amenities.tv" },
+  { icon: UtensilsCrossed, nameKey: "room.amenities.kitchenette" },
+  { icon: WashingMachine, nameKey: "room.amenities.washer" },
+  { icon: CircleParking, nameKey: "room.amenities.parking" },
+  { icon: Waves, nameKey: "room.amenities.pool" },
 ];
 
 // amenities từ backend là string[] (Redux store chỉ được chứa dữ liệu serializable),
@@ -60,6 +61,8 @@ function toDisplayAmenity(item) {
 const MAX_VISIBLE = 6;
 
 export default function RoomAmenities({ amenities: propsAmenities = [] }) {
+  const { t } = useTranslation();
+  const defaultAmenities = defaultAmenityDefs.map((item) => ({ icon: item.icon, name: t(item.nameKey) }));
   const amenities =
     propsAmenities.length > 0 ? propsAmenities.map(toDisplayAmenity) : defaultAmenities;
   const [showAll, setShowAll] = useState(false);
@@ -68,7 +71,7 @@ export default function RoomAmenities({ amenities: propsAmenities = [] }) {
 
   return (
     <div className="h-fit rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="font-bold text-xl text-gray-900 mb-4">Tiện nghi nổi bật</h2>
+      <h2 className="font-bold text-xl text-gray-900 mb-4">{t('room.amenities.title')}</h2>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {visibleAmenities.map((item, index) => (
@@ -81,7 +84,7 @@ export default function RoomAmenities({ amenities: propsAmenities = [] }) {
           onClick={() => setShowAll(!showAll)}
           className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
         >
-          {showAll ? "Thu gọn" : `Xem tất cả ${amenities.length} tiện nghi`}
+          {showAll ? t('room.amenities.collapse') : t('room.amenities.viewAll', { count: amenities.length })}
         </button>
       )}
     </div>

@@ -30,6 +30,9 @@ import { UserService } from 'src/users/user.service';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
 
 const LOCK_TTL_MS = 5000;
+// Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
+// tính trên dịch vụ đi kèm (đồ ăn, giặt ủi... đã có mức thuế/giá riêng).
+const VAT_RATE = 0.08;
 
 interface Requester {
   userId: string;
@@ -265,6 +268,7 @@ export class BookingService {
         roomAmount: booking.roomAmount,
         serviceAmount: detail.serviceAmount,
         discountAmount: booking.discountAmount,
+        vatAmount: detail.vatAmount,
         totalAmount: detail.totalAmount,
       },
     };
@@ -330,6 +334,20 @@ export class BookingService {
     return this.bookingRepo.save(booking);
   }
 
+  // Gọi khi PayOS báo giao dịch đã kết thúc mà không thành công (CANCELLED/EXPIRED/FAILED)
+  // — không đổi BookingStatus (đơn vẫn giữ chỗ PENDING), chỉ đánh dấu để FE hiển thị
+  // "thanh toán thất bại" và cho phép tạo lại link thanh toán mới cho cùng booking.
+  async markFailedByOrderCode(orderCode: number): Promise<Booking | null> {
+    const booking = await this.bookingRepo.findOne({
+      where: { payosOrderCode: String(orderCode) },
+    });
+    if (!booking) return null;
+    if (booking.paymentStatus === PaymentStatus.PAID) return booking;
+
+    booking.paymentStatus = PaymentStatus.FAILED;
+    return this.bookingRepo.save(booking);
+  }
+
   private assertCanView(booking: Booking, requester: Requester): void {
     const isOwner = booking.user.userId === requester.userId;
     const role = requester.role as UserRole;
@@ -346,9 +364,11 @@ export class BookingService {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    const totalAmount =
-      booking.roomAmount + serviceAmount - booking.discountAmount;
-    return { ...booking, serviceAmount, totalAmount };
+    // Thuế GTGT 8% tính trên tiền phòng sau khuyến mãi (không áp dụng cho dịch vụ đi kèm).
+    const netRoomAmount = booking.roomAmount - booking.discountAmount;
+    const vatAmount = Math.round(netRoomAmount * VAT_RATE);
+    const totalAmount = netRoomAmount + serviceAmount + vatAmount;
+    return { ...booking, serviceAmount, vatAmount, totalAmount };
   }
 
   private async findByIdRaw(bookingId: string): Promise<Booking> {

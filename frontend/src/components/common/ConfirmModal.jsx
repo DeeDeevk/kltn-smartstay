@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import Modal from './Modal';
 
 // Dialog xác nhận dùng chung, xây trên Modal — dùng cho mọi hành động cần xác nhận
@@ -6,12 +7,13 @@ export default function ConfirmModal({
   open,
   title,
   message,
-  confirmLabel = 'Xác nhận',
+  confirmLabel,
   danger = false,
   loading = false,
   onConfirm,
   onClose,
 }) {
+  const { t } = useTranslation();
   return (
     <Modal
       open={open}
@@ -25,7 +27,7 @@ export default function ConfirmModal({
             disabled={loading}
             className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-70"
           >
-            Hủy
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -35,7 +37,7 @@ export default function ConfirmModal({
               danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
-            {loading ? 'Đang xử lý...' : confirmLabel}
+            {loading ? t('common.processing') : (confirmLabel ?? t('common.confirm'))}
           </button>
         </>
       }

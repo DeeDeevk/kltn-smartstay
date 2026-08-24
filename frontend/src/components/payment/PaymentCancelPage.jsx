@@ -1,12 +1,16 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 
 export default function PaymentCancelPage() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const bookingId = searchParams.get('bookingId');
   const navigate = useNavigate();
+
+  const forOrder = bookingId ? t('payment.cancel.forOrder', { bookingCode: bookingId.slice(0, 8).toUpperCase() }) : '';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -17,9 +21,9 @@ export default function PaymentCancelPage() {
             <XCircle size={32} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Đã hủy thanh toán</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('payment.cancel.title')}</h1>
             <p className="text-gray-500 mt-2">
-              Bạn đã hủy giao dịch thanh toán{bookingId ? ` cho đơn ${bookingId.slice(0, 8).toUpperCase()}` : ''}. Đơn đặt phòng vẫn được giữ, bạn có thể thanh toán lại bất cứ lúc nào trong lịch sử đặt phòng.
+              {t('payment.cancel.message', { forOrder })}
             </p>
           </div>
 
@@ -28,13 +32,13 @@ export default function PaymentCancelPage() {
               onClick={() => navigate('/')}
               className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors"
             >
-              Về trang chủ
+              {t('payment.backHome')}
             </button>
             <button
               onClick={() => navigate('/user/historybooking')}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
             >
-              Lịch sử đặt phòng
+              {t('payment.bookingHistory')}
             </button>
           </div>
         </div>

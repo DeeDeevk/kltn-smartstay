@@ -10,6 +10,10 @@ interface Requester {
   role: string;
 }
 
+// Các trạng thái PayOS coi là giao dịch đã kết thúc mà KHÔNG thành công — khác với
+// PENDING/PROCESSING/UNDERPAID vốn vẫn đang chờ, chưa nên báo thất bại cho khách.
+const FAILED_PAYOS_STATUSES = ['CANCELLED', 'EXPIRED', 'FAILED'];
+
 @Injectable()
 export class PaymentService {
   private readonly payos: PayOS;
@@ -46,6 +50,9 @@ export class PaymentService {
     const orderCode = Number(booking.payosOrderCode);
     const returnUrl = `${this.frontendUrl}/payment/success?bookingId=${bookingId}`;
     const cancelUrl = `${this.frontendUrl}/payment/cancel?bookingId=${bookingId}`;
+    // Link hết hạn sau 15 phút — đủ để hiển thị đếm ngược có ý nghĩa trên trang checkout
+    // thay vì để mặc định không giới hạn thời gian của PayOS.
+    const expiredAt = Math.floor(Date.now() / 1000) + 15 * 60;
 
     try {
       const link = await this.payos.paymentRequests.create({
@@ -54,6 +61,7 @@ export class PaymentService {
         description: `DH ${String(orderCode).slice(-8)}`,
         returnUrl,
         cancelUrl,
+        expiredAt,
         items: [
           {
             name: booking.roomType.name,
@@ -65,7 +73,11 @@ export class PaymentService {
         buyerPhone: booking.guestInfo.phone,
         buyerEmail: booking.guestInfo.email,
       });
-      return { checkoutUrl: link.checkoutUrl, qrCode: link.qrCode };
+      return {
+        checkoutUrl: link.checkoutUrl,
+        qrCode: link.qrCode,
+        expiredAt: link.expiredAt ?? expiredAt,
+      };
     } catch {
       // orderCode đã tồn tại link từ lần tạo trước đó (VD: người dùng bấm "Thanh toán
       // lại") — lấy thông tin link cũ và tự dựng lại checkoutUrl theo mẫu chuẩn của PayOS.
@@ -95,6 +107,10 @@ export class PaymentService {
       const info = await this.payos.paymentRequests.get(orderCode);
       if (info.status === 'PAID') {
         await this.bookingService.markPaidByOrderCode(orderCode);
+        return this.bookingService.findById(bookingId, requester);
+      }
+      if (FAILED_PAYOS_STATUSES.includes(info.status)) {
+        await this.bookingService.markFailedByOrderCode(orderCode);
         return this.bookingService.findById(bookingId, requester);
       }
     } catch {

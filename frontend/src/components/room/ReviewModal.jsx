@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { X, Star, Loader2, Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useCreateReviewMutation } from '../../services/review';
 import { toast } from 'react-toastify';
 
 const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
+  const { t } = useTranslation();
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [hover, setHover] = useState(0);
@@ -22,10 +24,10 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
         comment
       }).unwrap();
 
-      toast.success("Cảm ơn bạn đã để lại đánh giá!");
+      toast.success(t('room.reviews.submitSuccess'));
       onClose();
     } catch (err) {
-      toast.error(err.data?.message || "Không thể gửi đánh giá. Vui lòng thử lại.");
+      toast.error(err.data?.message || t('room.reviews.submitError'));
     }
   };
 
@@ -36,8 +38,8 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
         {/* Header */}
         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Viết đánh giá</h2>
-            <p className="text-xs text-gray-500 mt-1">Đánh giá trải nghiệm của bạn tại phòng {roomType?.name}</p>
+            <h2 className="text-xl font-bold text-gray-900">{t('room.reviews.writeReview')}</h2>
+            <p className="text-xs text-gray-500 mt-1">{t('room.reviews.reviewSubtitle', { roomName: roomType?.name })}</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
             <X size={20} />
@@ -47,7 +49,7 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Star Rating */}
           <div className="flex flex-col items-center justify-center py-4 bg-blue-50/50 rounded-xl space-y-3">
-            <span className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Mức độ hài lòng</span>
+            <span className="text-sm font-semibold text-blue-600 uppercase tracking-wider">{t('room.reviews.satisfaction')}</span>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -69,21 +71,21 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
               ))}
             </div>
             <span className="text-lg font-bold text-gray-700">
-              {rating === 5 ? 'Tuyệt vời! 😍' :
-                rating === 4 ? 'Rất tốt! 🙂' :
-                  rating === 3 ? 'Bình thường 😐' :
-                    rating === 2 ? 'Không tốt lắm 😕' : 'Rất tệ 😡'}
+              {rating === 5 ? t('room.reviews.ratingExcellent') :
+                rating === 4 ? t('room.reviews.ratingGood') :
+                  rating === 3 ? t('room.reviews.ratingAverage') :
+                    rating === 2 ? t('room.reviews.ratingPoor') : t('room.reviews.ratingBad')}
             </span>
           </div>
 
           {/* Comment Area */}
           <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700 ml-1">Nhận xét chi tiết</label>
+            <label className="text-sm font-bold text-gray-700 ml-1">{t('room.reviews.commentLabel')}</label>
             <textarea
               required
               rows={4}
               className="w-full p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-700"
-              placeholder="Chia sẻ trải nghiệm của bạn về phòng, dịch vụ, hay tiện nghi..."
+              placeholder={t('room.reviews.commentPlaceholder')}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
             />
@@ -96,7 +98,7 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
               onClick={onClose}
               className="flex-1 py-3 px-4 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-colors"
             >
-              Hủy
+              {t('room.reviews.cancel')}
             </button>
             <button
               type="submit"
@@ -108,7 +110,7 @@ const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
               ) : (
                 <>
                   <Send size={18} />
-                  Gửi đánh giá
+                  {t('room.reviews.submit')}
                 </>
               )}
             </button>
