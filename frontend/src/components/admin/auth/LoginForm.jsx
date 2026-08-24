@@ -6,9 +6,8 @@ import { toast } from 'react-toastify';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
-// Chỉ ADMIN mới có trang riêng (/admin) hiện tại; STAFF chưa có khu vực riêng ở frontend
-// nên vẫn theo luồng khách hàng để tránh bị ProtectedRoute bật ra ngay sau khi vào /admin.
 const ADMIN_ROLE = 'ADMIN';
+const ADMIN_LANDING_PATH = '/admin';
 
 function validateLoginForm({ email, password }) {
   if (!EMAIL_REGEX.test(email)) {
@@ -60,7 +59,7 @@ export default function LoginForm() {
       toast.success('Đăng nhập thành công!');
 
       if (user?.role === ADMIN_ROLE) {
-        navigate('/admin', { replace: true });
+        navigate(ADMIN_LANDING_PATH, { replace: true });
       } else {
         const from = location.state?.from || '/';
         const checkoutState = location.state?.checkoutState;

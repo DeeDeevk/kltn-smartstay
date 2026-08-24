@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Loader2, Lock, Unlock, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'react-toastify';
-import DashboardLayout from '../layout/DashboardLayout';
 import StatusBadge from '../../common/StatusBadge';
 import ConfirmModal from '../../common/ConfirmModal';
 import { useAuth } from '../../../context/AuthContext';
@@ -93,7 +92,7 @@ export default function UserManagementPage() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <h1 className="mb-6 text-2xl font-bold text-gray-900">Quản lý tài khoản</h1>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -274,6 +273,6 @@ export default function UserManagementPage() {
         onConfirm={handleConfirmToggleStatus}
         onClose={() => setLockTarget(null)}
       />
-    </DashboardLayout>
+    </>
   );
 }

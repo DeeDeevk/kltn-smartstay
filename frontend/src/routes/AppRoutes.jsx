@@ -21,6 +21,8 @@ import RoomCard from '../components/searchroom/RoomCard'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
 import ProfilePage from '../components/user/ProfilePage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
+import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
+import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
 import { useCreateBookingMutation } from '../services/booking'
 import { useAuth } from '../context/AuthContext'
@@ -389,19 +391,6 @@ function CheckoutPage() {
   )
 }
 
-function AdminHome() {
-  return (
-    <div className="min-h-screen bg-gray-50 p-10">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-3">Khu quản trị Vika Hotel</h1>
-        <p className="text-gray-600">
-          Ứng dụng đã khởi động. Các module quản trị sẽ hiển thị dữ liệu mẫu cho đến khi backend được kết nối.
-        </p>
-      </div>
-    </div>
-  )
-}
-
 export default function AppRoutes() {
   return (
     <BrowserRouter>
@@ -425,23 +414,18 @@ export default function AppRoutes() {
           path="/admin"
           element={
             <ProtectedRoute roles={['ADMIN']}>
-              <AdminHome />
+              <DashboardLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<AdminDashboardPage />} />
+          <Route path="accounts" element={<UserManagementPage />} />
+        </Route>
         <Route
           path="/admin/checkout"
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <CheckoutPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/accounts"
-          element={
-            <ProtectedRoute roles={['ADMIN']}>
-              <UserManagementPage />
             </ProtectedRoute>
           }
         />
