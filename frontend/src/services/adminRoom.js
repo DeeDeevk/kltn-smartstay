@@ -13,12 +13,23 @@ export const adminRoomApi = createApi({
       query: (data) => ({ url: '/rooms', method: 'post', data }),
       invalidatesTags: [{ type: 'AdminRoom', id: 'LIST' }],
     }),
-    // Toàn bộ phòng vật lý (mọi tầng) — dùng để lọc phòng trống cùng loại phòng lúc check-in.
+    // Toàn bộ phòng vật lý (mọi tầng) — dùng cho Sơ đồ phòng và lọc phòng trống lúc check-in.
     getRoomMap: builder.query({
       query: () => ({ url: '/rooms/map', method: 'get' }),
-      providesTags: [{ type: 'AdminRoom', id: 'LIST' }],
+      providesTags: (result) => [
+        { type: 'AdminRoom', id: 'LIST' },
+        ...(result ?? []).map((r) => ({ type: 'AdminRoom', id: r.roomId })),
+      ],
+    }),
+    updateRoomStatus: builder.mutation({
+      query: ({ roomId, status }) => ({
+        url: `/rooms/${roomId}/status`,
+        method: 'patch',
+        data: { status },
+      }),
+      invalidatesTags: [{ type: 'AdminRoom', id: 'LIST' }],
     }),
   }),
 });
 
-export const { useCreateRoomMutation, useGetRoomMapQuery } = adminRoomApi;
+export const { useCreateRoomMutation, useGetRoomMapQuery, useUpdateRoomStatusMutation } = adminRoomApi;
