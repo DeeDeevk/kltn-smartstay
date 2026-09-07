@@ -160,6 +160,9 @@ export class BookingService {
     if (query.status) {
       qb.andWhere('booking.status = :status', { status: query.status });
     }
+    if (query.roomId) {
+      qb.andWhere('room.roomId = :roomId', { roomId: query.roomId });
+    }
     if (query.checkIn) {
       qb.andWhere('booking.checkInDate >= :checkIn', {
         checkIn: query.checkIn,
@@ -240,6 +243,14 @@ export class BookingService {
 
     booking.room = room;
     booking.status = BookingStatus.CHECKED_IN;
+    // Đơn CASH được lễ tân thu tiền mặt trực tiếp ngay lúc check-in (khác đơn PayOS đã
+    // có luồng xác nhận thanh toán riêng qua webhook/sync) — đánh dấu đã thanh toán luôn.
+    if (
+      booking.paymentMethod === PaymentMethod.CASH &&
+      booking.paymentStatus !== PaymentStatus.PAID
+    ) {
+      booking.paymentStatus = PaymentStatus.PAID;
+    }
     await this.bookingRepo.save(booking);
 
     return this.toDetailResponse(booking);

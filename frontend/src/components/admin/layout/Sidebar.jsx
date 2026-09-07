@@ -9,7 +9,7 @@ import { useAuth } from '../../../context/AuthContext';
 const MENU_ITEMS = [
   { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true, roles: ['ADMIN', 'STAFF'] },
   { icon: QrCode, label: 'Check-in', path: '/admin/checkin', ready: true, roles: ['ADMIN', 'STAFF'] },
-  { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: false, roles: ['ADMIN', 'STAFF'] },
+  { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: true, roles: ['ADMIN', 'STAFF'] },
   { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false, roles: ['ADMIN', 'STAFF'] },
   { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true, roles: ['ADMIN'] },
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },

@@ -39,8 +39,8 @@ const ROLE_META = {
 
 const QUICK_LINKS = [
   {
-    label: 'Check-in',
-    description: 'Quét QR vé đặt phòng, gán phòng và nhận khách',
+    label: 'Check-in / Check-out',
+    description: 'Quét QR vé đặt phòng để nhận khách hoặc trả phòng',
     path: '/admin/checkin',
     icon: QrCode,
     ready: true,
@@ -64,9 +64,10 @@ const QUICK_LINKS = [
   },
   {
     label: 'Sơ đồ phòng',
-    description: 'Theo dõi trạng thái từng phòng theo thời gian thực',
+    description: 'Xem trạng thái từng phòng theo tầng, đổi trạng thái và xem lịch sử',
+    path: '/admin/rooms',
     icon: BedDouble,
-    ready: false,
+    ready: true,
     roles: ['ADMIN', 'STAFF'],
   },
   {
