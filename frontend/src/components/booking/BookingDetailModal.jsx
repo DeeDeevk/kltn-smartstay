@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
 import getBookingCode from '../../utils/bookingCode';
-import buildBookingQrTicket from '../../utils/bookingQrTicket';
+import getBookingQrPayload from '../../utils/bookingQrPayload';
 import BookingRoomSummary from './BookingRoomSummary';
 import BookingGuestInfoCard from './BookingGuestInfoCard';
 import BookingServiceItemsTable from './BookingServiceItemsTable';
@@ -11,11 +11,11 @@ import BookingPriceSummary from './BookingPriceSummary';
 // Chỉ lo khung modal (backdrop/header/scroll) và ráp các khối nội dung lại — mỗi khối là
 // 1 component riêng, nhận props hẹp, test được độc lập mà không cần dựng cả modal này.
 export default function BookingDetailModal({ booking, onClose }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   if (!booking) return null;
 
   const bookingCode = getBookingCode(booking.bookingId);
-  const qrValue = buildBookingQrTicket(booking, i18n.language);
+  const qrValue = getBookingQrPayload(booking);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>

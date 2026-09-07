@@ -7,7 +7,9 @@ import { toast } from 'react-toastify';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
-const ADMIN_ROLE = 'ADMIN';
+// STAFF (lễ tân) và ADMIN đều vào chung khu quản trị /admin — Sidebar tự lọc menu theo
+// role, còn các trang riêng của Admin (quản lý tài khoản, loại phòng...) tự chặn ở route.
+const ADMIN_AREA_ROLES = ['ADMIN', 'STAFF'];
 const ADMIN_LANDING_PATH = '/admin';
 
 function validateLoginForm({ email, password }, t) {
@@ -60,7 +62,7 @@ export default function LoginForm() {
       });
       toast.success(t('auth.toasts.loginSuccess'));
 
-      if (user?.role === ADMIN_ROLE) {
+      if (ADMIN_AREA_ROLES.includes(user?.role)) {
         navigate(ADMIN_LANDING_PATH, { replace: true });
       } else {
         // "from" có thể là trang trước đó của MỘT NGƯỜI KHÁC (vd. admin bị đăng xuất
