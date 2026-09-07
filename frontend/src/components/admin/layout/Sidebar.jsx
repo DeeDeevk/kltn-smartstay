@@ -1,7 +1,8 @@
 import React from 'react';
-import { BedDouble, BarChart3, Settings, CalendarRange, Users } from 'lucide-react';
+import { BedDouble, BarChart3, Settings, CalendarRange, Users, LogOut } from 'lucide-react';
 import { NavLink } from 'react-router-dom'; // 1. Import NavLink
 import vikaLogo from '../../../assets/icon/icon.png';
+import { useAuth } from '../../../context/AuthContext';
 
 // 2. Thêm đường dẫn (path) cho từng mục menu
 // Bạn nhớ bỏ thuộc tính 'active' cứng đi, NavLink sẽ tự xử lý
@@ -13,7 +14,25 @@ const MENU_ITEMS = [
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true },
 ];
 
+const ROLE_LABELS = {
+  ADMIN: 'Quản trị viên',
+  STAFF: 'Nhân viên',
+  CUSTOMER: 'Khách hàng',
+};
+
 export default function Sidebar() {
+  const { user, logout } = useAuth();
+
+  const displayName = user?.name || user?.username || 'Tài khoản';
+  const avatarUrl = user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff`;
+
+  // Không tự navigate('/login') ở đây — từng gây race với redirect tự động của
+  // ProtectedRoute (isAuthenticated đổi -> tự nó điều hướng), khiến state.from bị
+  // để lại sai giá trị và ảnh hưởng tới lượt đăng nhập tiếp theo của người khác.
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <aside className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0">
       {/* Logo */}
@@ -53,6 +72,23 @@ export default function Sidebar() {
         )}
       </nav>
 
+      {/* Tài khoản & đăng xuất */}
+      <div className="border-t border-gray-100 p-4">
+        <div className="flex items-center gap-3 mb-3 min-w-0">
+          <img src={avatarUrl} alt={displayName} className="w-9 h-9 rounded-full object-cover shrink-0 ring-2 ring-white shadow-sm" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
+            <p className="text-xs text-gray-400 truncate">{ROLE_LABELS[user?.role] || user?.role}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+        >
+          <LogOut size={18} />
+          Đăng xuất
+        </button>
+      </div>
     </aside>
   );
 }
