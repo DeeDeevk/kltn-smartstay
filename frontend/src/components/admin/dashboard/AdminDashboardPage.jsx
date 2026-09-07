@@ -10,6 +10,7 @@ import {
   Loader2,
   ArrowRight,
   AlertCircle,
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useAdminOverviewStats from './useAdminOverviewStats';
@@ -38,35 +39,49 @@ const ROLE_META = {
 
 const QUICK_LINKS = [
   {
+    label: 'Check-in',
+    description: 'Quét QR vé đặt phòng, gán phòng và nhận khách',
+    path: '/admin/checkin',
+    icon: QrCode,
+    ready: true,
+    roles: ['ADMIN', 'STAFF'],
+  },
+  {
+    label: 'Loại phòng',
+    description: 'Quản lý danh mục loại phòng và giá',
+    path: '/admin/room-types',
+    icon: Settings,
+    ready: true,
+    roles: ['ADMIN'],
+  },
+  {
     label: 'Quản lý tài khoản',
     description: 'Danh sách, phân quyền, khoá/mở khoá tài khoản',
     path: '/admin/accounts',
     icon: Users,
     ready: true,
+    roles: ['ADMIN'],
   },
   {
     label: 'Sơ đồ phòng',
     description: 'Theo dõi trạng thái từng phòng theo thời gian thực',
     icon: BedDouble,
     ready: false,
-  },
-  {
-    label: 'Loại phòng',
-    description: 'Quản lý danh mục loại phòng và giá',
-    icon: Settings,
-    ready: false,
+    roles: ['ADMIN', 'STAFF'],
   },
   {
     label: 'Đặt phòng',
     description: 'Xử lý đặt phòng, check-in / check-out',
     icon: CalendarRange,
     ready: false,
+    roles: ['ADMIN', 'STAFF'],
   },
   {
     label: 'Báo cáo doanh thu',
     description: 'Thống kê doanh thu, so sánh theo kỳ',
     icon: BarChart3,
     ready: false,
+    roles: ['ADMIN'],
   },
 ];
 
@@ -242,7 +257,7 @@ export default function AdminDashboardPage() {
 
       <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">Truy cập nhanh</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {QUICK_LINKS.map((link) => {
+        {QUICK_LINKS.filter((link) => link.roles.includes(user?.role)).map((link) => {
           const content = (
             <>
               <div className="flex items-center justify-between">

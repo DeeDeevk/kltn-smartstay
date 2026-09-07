@@ -1,17 +1,18 @@
 import React from 'react';
-import { BedDouble, BarChart3, Settings, CalendarRange, Users, LogOut } from 'lucide-react';
+import { BedDouble, BarChart3, Settings, CalendarRange, Users, LogOut, QrCode } from 'lucide-react';
 import { NavLink } from 'react-router-dom'; // 1. Import NavLink
 import vikaLogo from '../../../assets/icon/icon.png';
 import { useAuth } from '../../../context/AuthContext';
 
-// 2. Thêm đường dẫn (path) cho từng mục menu
+// 2. Thêm đường dẫn (path) cho từng mục menu, kèm roles được thấy mục đó
 // Bạn nhớ bỏ thuộc tính 'active' cứng đi, NavLink sẽ tự xử lý
 const MENU_ITEMS = [
-  { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true },
-  { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: false },
-  { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true },
-  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false },
-  { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true },
+  { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true, roles: ['ADMIN', 'STAFF'] },
+  { icon: QrCode, label: 'Check-in', path: '/admin/checkin', ready: true, roles: ['ADMIN', 'STAFF'] },
+  { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: false, roles: ['ADMIN', 'STAFF'] },
+  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false, roles: ['ADMIN', 'STAFF'] },
+  { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true, roles: ['ADMIN'] },
+  { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },
 ];
 
 const ROLE_LABELS = {
@@ -43,7 +44,7 @@ export default function Sidebar() {
 
       {/* Menu */}
       <nav className="flex-1 p-4 space-y-1">
-        {MENU_ITEMS.map((item, index) =>
+        {MENU_ITEMS.filter((item) => item.roles.includes(user?.role)).map((item, index) =>
           item.ready ? (
             <NavLink
               key={index}

@@ -29,6 +29,17 @@ export const bookingApi = createApi({
         { type: 'Booking', id: 'MY_LIST' },
       ],
     }),
+    // Lễ tân check-in: gán phòng vật lý cụ thể (roomId) cho 1 booking đã CONFIRMED.
+    checkIn: builder.mutation({
+      query: ({ bookingId, roomId }) => ({
+        url: `/bookings/${bookingId}/check-in`,
+        method: 'post',
+        data: { roomId },
+      }),
+      invalidatesTags: (result, error, { bookingId }) => [
+        { type: 'Booking', id: bookingId },
+      ],
+    }),
   }),
 });
 
@@ -37,4 +48,5 @@ export const {
   useGetMyBookingsQuery,
   useGetBookingByIdQuery,
   useCancelBookingMutation,
+  useCheckInMutation,
 } = bookingApi;
