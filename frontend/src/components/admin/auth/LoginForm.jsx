@@ -63,7 +63,12 @@ export default function LoginForm() {
       if (user?.role === ADMIN_ROLE) {
         navigate(ADMIN_LANDING_PATH, { replace: true });
       } else {
-        const from = location.state?.from || '/';
+        // "from" có thể là trang trước đó của MỘT NGƯỜI KHÁC (vd. admin bị đăng xuất
+        // khỏi /admin rồi để lại state.from='/admin' trên /login) — không được tin
+        // mù quáng, kẻo tài khoản khách vừa đăng nhập bị đưa thẳng vào trang admin
+        // và dính 403.
+        const rawFrom = location.state?.from || '/';
+        const from = rawFrom.startsWith('/admin') ? '/' : rawFrom;
         const checkoutState = location.state?.checkoutState;
         navigate(from, { state: checkoutState });
       }
