@@ -178,7 +178,7 @@ export class AuthService {
     }
     const pending = JSON.parse(pendingRaw) as PendingRegistration;
 
-    const user = await this.dataSource.transaction(async (manager) => {
+    await this.dataSource.transaction(async (manager) => {
       const newUser = await this.userService.create(
         { email, fullName: pending.fullName, phone: pending.phone },
         manager,
@@ -201,7 +201,9 @@ export class AuthService {
     await this.redisClient.del(`pending-register:${email}`);
     await this.redisClient.del(attemptsKey);
 
-    return this.buildTokenPair(user.userId, user.email, user.role);
+    // Không cấp token ở đây: sau khi xác minh OTP thành công, người dùng được đưa
+    // về trang đăng nhập để tự đăng nhập lần đầu.
+    return { message: 'Đăng ký tài khoản thành công, vui lòng đăng nhập' };
   }
 
   async resendOtp(email: string) {

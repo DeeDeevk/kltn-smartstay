@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, User, History, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import ConfirmModal from '../common/ConfirmModal';
 
 const menuItems = [
   { path: '/user/profile', labelKey: 'userMenu.profile', icon: User },
@@ -14,6 +15,7 @@ export default function UserMenu() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const menuRef = useRef(null);
 
   const displayName = user?.name || user?.username || 'Tài khoản';
@@ -38,10 +40,11 @@ export default function UserMenu() {
 
   const handleLogout = () => {
     setIsOpen(false);
-    logout();
+    setConfirmLogout(true);
   };
 
   return (
+    <>
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen((prev) => !prev)}
@@ -91,5 +94,19 @@ export default function UserMenu() {
         </div>
       )}
     </div>
+
+    <ConfirmModal
+      open={confirmLogout}
+      danger
+      title={t('auth.logoutConfirmTitle')}
+      message={t('auth.logoutConfirmMessage')}
+      confirmLabel={t('auth.logout')}
+      onConfirm={() => {
+        setConfirmLogout(false);
+        logout();
+      }}
+      onClose={() => setConfirmLogout(false)}
+    />
+    </>
   );
 }

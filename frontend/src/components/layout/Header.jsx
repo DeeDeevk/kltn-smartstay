@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import logoIcon from '../../assets/icon/icon.png';
 import UserMenu from './UserMenu';
 import LanguageSwitcher from './LanguageSwitcher';
+import ConfirmModal from '../common/ConfirmModal';
 
 const NAV_LABEL_KEYS = {
   'Trang chủ': 'nav.home',
@@ -17,6 +18,7 @@ const NAV_LABEL_KEYS = {
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -128,7 +130,10 @@ export default function Header() {
                   <History size={18} className="text-gray-400" /> {t('userMenu.bookingHistory')}
                 </button>
                 <button
-                  onClick={logout}
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setConfirmLogout(true);
+                  }}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 mt-1 text-base font-bold text-red-600 hover:bg-red-50 rounded-md"
                 >
                   <LogOut size={18} /> {t('auth.logout')}
@@ -143,6 +148,19 @@ export default function Header() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmLogout}
+        danger
+        title={t('auth.logoutConfirmTitle')}
+        message={t('auth.logoutConfirmMessage')}
+        confirmLabel={t('auth.logout')}
+        onConfirm={() => {
+          setConfirmLogout(false);
+          logout();
+        }}
+        onClose={() => setConfirmLogout(false)}
+      />
     </header>
   );
 }

@@ -34,6 +34,10 @@ function validateRegisterForm({ name, phone_number, email, password, confirmPass
 
 function getRegisterErrorMessage(err, t) {
   if (err.status === 409) {
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('điện thoại') || msg.includes('phone')) {
+      return t('auth.errors.phoneInUse');
+    }
     return t('auth.errors.emailInUse');
   }
   if (err.status === 400) {
@@ -185,9 +189,9 @@ export default function RegisterForm() {
 
   const handleVerified = () => {
     toast.success(t('auth.toasts.registerSuccess'));
-    const from = location.state?.from || '/';
-    const checkoutState = location.state?.checkoutState;
-    navigate(from, { state: checkoutState });
+    // Không tự đăng nhập sau khi xác minh OTP — đưa người dùng về trang đăng nhập,
+    // giữ lại location.state để sau khi đăng nhập vẫn quay về đúng trang trước đó.
+    navigate('/login', { state: location.state });
   };
 
   const handleChange = (e) => {

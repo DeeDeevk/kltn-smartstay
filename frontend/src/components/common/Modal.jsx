@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -13,7 +14,10 @@ export default function Modal({ open, onClose, title, children, footer, size = '
   const { t } = useTranslation();
   if (!open) return null;
 
-  return (
+  // Render qua portal ra thẳng document.body: nếu để nguyên trong cây DOM, một
+  // ancestor có backdrop-filter/transform (vd. <header> có backdrop-blur) sẽ trở
+  // thành containing block khiến "fixed inset-0" bị co lại theo ancestor đó.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8"
       onClick={onClose}
@@ -36,6 +40,7 @@ export default function Modal({ open, onClose, title, children, footer, size = '
         <div>{children}</div>
         {footer && <div className="mt-6 flex justify-end gap-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

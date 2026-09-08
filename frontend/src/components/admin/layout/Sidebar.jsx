@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BedDouble, BarChart3, Settings, CalendarRange, Users, LogOut, QrCode } from 'lucide-react';
 import { NavLink } from 'react-router-dom'; // 1. Import NavLink
+import { useTranslation } from 'react-i18next';
 import vikaLogo from '../../../assets/icon/icon.png';
 import { useAuth } from '../../../context/AuthContext';
+import ConfirmModal from '../../common/ConfirmModal';
 
 // 2. Thêm đường dẫn (path) cho từng mục menu, kèm roles được thấy mục đó
 // Bạn nhớ bỏ thuộc tính 'active' cứng đi, NavLink sẽ tự xử lý
@@ -23,6 +25,8 @@ const ROLE_LABELS = {
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   const displayName = user?.name || user?.username || 'Tài khoản';
   const avatarUrl = user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff`;
@@ -31,10 +35,11 @@ export default function Sidebar() {
   // ProtectedRoute (isAuthenticated đổi -> tự nó điều hướng), khiến state.from bị
   // để lại sai giá trị và ảnh hưởng tới lượt đăng nhập tiếp theo của người khác.
   const handleLogout = () => {
-    logout();
+    setConfirmLogout(true);
   };
 
   return (
+    <>
     <aside className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0">
       {/* Logo */}
       <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-100">
@@ -91,5 +96,19 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+
+    <ConfirmModal
+      open={confirmLogout}
+      danger
+      title={t('auth.logoutConfirmTitle')}
+      message={t('auth.logoutConfirmMessage')}
+      confirmLabel={t('auth.logout')}
+      onConfirm={() => {
+        setConfirmLogout(false);
+        logout();
+      }}
+      onClose={() => setConfirmLogout(false)}
+    />
+    </>
   );
 }
