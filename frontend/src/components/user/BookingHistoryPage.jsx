@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import ConfirmModal from '../common/ConfirmModal';
-import BookingDetailModal, { StatusPill } from '../booking/BookingDetailModal';
+import BookingDetailModal from '../booking/BookingDetailModal';
+import StatusPill from '../booking/StatusPill';
 import { BOOKING_STATUS_STYLES, PAYMENT_STATUS_STYLES } from '../../utils/bookingStatusStyles';
 import {
   useCancelBookingMutation,
@@ -13,6 +14,8 @@ import {
 } from '../../services/booking';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
 import formatCurrency from '../../utils/formatCurrency';
+import formatDate from '../../utils/formatDate';
+import getBookingCode from '../../utils/bookingCode';
 
 function BookingActions({ booking, canPayNow, canCancel, isPaying, onPayNow, onCancel, onViewDetail, t }) {
   return (
@@ -57,9 +60,6 @@ export default function BookingHistoryPage() {
   const [detailBooking, setDetailBooking] = useState(null);
 
   const bookings = data?.data ?? [];
-
-  const dateLocale = i18n.language === 'en' ? 'en-US' : 'vi-VN';
-  const formatDate = (value) => new Date(value).toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const handlePayNow = async (bookingId) => {
     setPayingId(bookingId);
@@ -122,7 +122,7 @@ export default function BookingHistoryPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[860px] border-collapse text-left">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/80 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                    <tr className="whitespace-nowrap border-b border-gray-100 bg-gray-50/80 text-[11px] font-bold uppercase tracking-wide text-gray-400">
                       <th className="px-6 py-4">{t('booking.history.table.room')}</th>
                       <th className="px-4 py-4">{t('booking.history.table.code')}</th>
                       <th className="px-4 py-4">{t('booking.history.table.dates')}</th>
@@ -163,17 +163,19 @@ export default function BookingHistoryPage() {
                           </td>
                           <td className="px-4 py-4">
                             <span className="font-mono text-xs font-bold text-blue-600">
-                              {booking.bookingId.slice(0, 8).toUpperCase()}
+                              {getBookingCode(booking.bookingId)}
                             </span>
                           </td>
                           <td className="px-4 py-4">
                             <span className="flex items-center gap-1.5 text-sm text-gray-600">
                               <CalendarDays size={14} className="text-gray-400" />
-                              {formatDate(booking.checkInDate)} – {formatDate(booking.checkOutDate)}
+                              {formatDate(booking.checkInDate, i18n.language)} – {formatDate(booking.checkOutDate, i18n.language)}
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right">
-                            <span className="font-bold text-gray-900">{formatCurrency(booking.totalAmount, i18n.language)}</span>
+                            <span className="text-base font-bold tabular-nums text-blue-600">
+                              {formatCurrency(booking.totalAmount, i18n.language)}
+                            </span>
                           </td>
                           <td className="px-4 py-4">
                             <StatusPill
@@ -238,10 +240,10 @@ export default function BookingHistoryPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-bold text-gray-900">{booking.roomType?.name}</p>
                         <p className="mt-0.5 font-mono text-[11px] font-bold text-blue-600">
-                          {booking.bookingId.slice(0, 8).toUpperCase()}
+                          {getBookingCode(booking.bookingId)}
                         </p>
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                          <CalendarDays size={12} /> {formatDate(booking.checkInDate)} – {formatDate(booking.checkOutDate)}
+                          <CalendarDays size={12} /> {formatDate(booking.checkInDate, i18n.language)} – {formatDate(booking.checkOutDate, i18n.language)}
                         </p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <StatusPill
@@ -262,7 +264,7 @@ export default function BookingHistoryPage() {
                         <CreditCard size={12} />
                         {booking.paymentMethod === 'PAYOS' ? t('booking.payment.payos') : t('booking.payment.cash')}
                       </span>
-                      <span className="text-base font-bold text-blue-600">{formatCurrency(booking.totalAmount, i18n.language)}</span>
+                      <span className="text-base font-bold tabular-nums text-blue-600">{formatCurrency(booking.totalAmount, i18n.language)}</span>
                     </div>
                     <div className="border-t border-gray-100 px-4 py-3">
                       <BookingActions

@@ -28,6 +28,8 @@ import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
 import PaymentCancelPage from '../components/payment/PaymentCancelPage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
+import CheckInPage from '../components/admin/checkin/CheckInPage'
+import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
@@ -38,6 +40,8 @@ import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import ForbiddenPage from './ForbiddenPage'
 import formatCurrency from '../utils/formatCurrency'
+import getBookingCode from '../utils/bookingCode'
+import getBookingQrPayload from '../utils/bookingQrPayload'
 
 const paymentMethods = [
   { value: 'cash', labelKey: 'checkout.paymentCash', icon: Banknote },
@@ -331,16 +335,8 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
   const { t, i18n } = useTranslation()
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'vi-VN'
 
-  const bookingCode = booking.bookingId.slice(0, 8).toUpperCase()
-
-  const qrValue = [
-    'VIKA HOTEL - BOOKING TICKET',
-    `Ma: ${bookingCode}`,
-    `Khach: ${booking.guestInfo?.fullName ?? ''}`,
-    `Phong: ${room.name}`,
-    `Thoi gian: ${new Date(startDate).toLocaleDateString('vi-VN')} -> ${new Date(endDate).toLocaleDateString('vi-VN')}`,
-    `Tong tien: ${formatCurrency(totalPrice)}`,
-  ].join('\n')
+  const bookingCode = getBookingCode(booking.bookingId)
+  const qrValue = getBookingQrPayload(booking)
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-lg mx-auto text-center space-y-6">
@@ -785,14 +781,30 @@ export default function AppRoutes() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
               <DashboardLayout />
             </ProtectedRoute>
           }
         >
           <Route index element={<AdminDashboardPage />} />
-          <Route path="room-types" element={<RoomTypeManagementPage />} />
-          <Route path="accounts" element={<UserManagementPage />} />
+          <Route path="checkin" element={<CheckInPage />} />
+          <Route path="rooms" element={<RoomMapPage />} />
+          <Route
+            path="room-types"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <RoomTypeManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="accounts"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <UserManagementPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route
           path="/admin/checkout"

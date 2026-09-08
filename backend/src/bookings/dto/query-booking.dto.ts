@@ -1,11 +1,16 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
 
 export class QueryBookingDto {
   @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
+
+  // Lọc lịch sử check-in/check-out theo 1 phòng vật lý cụ thể.
+  @IsOptional()
+  @IsUUID()
+  roomId?: string;
 
   @IsOptional()
   @IsDateString()
