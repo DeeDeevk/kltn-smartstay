@@ -79,10 +79,7 @@ export class DashboardService {
       (a, b) => a + b,
       0,
     );
-    const roomsTotal = Object.values(roomsByStatus).reduce(
-      (a, b) => a + b,
-      0,
-    );
+    const roomsTotal = Object.values(roomsByStatus).reduce((a, b) => a + b, 0);
 
     return {
       users: { total: usersTotal, byRole: usersByRole },

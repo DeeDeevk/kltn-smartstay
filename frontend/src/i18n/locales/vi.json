@@ -490,7 +490,6 @@
       "roomNumber": "Số phòng",
       "roomNumberPlaceholder": "VD: T101",
       "roomNumberHint": "Bỏ trống để tự đặt theo quy ước T{tầng}{số}, vd T101 = phòng 1 tầng 1.",
-      "roomNumberRequired": "Vui lòng nhập số phòng",
       "floor": "Tầng",
       "floorInvalid": "Tầng không hợp lệ",
       "cancel": "Hủy",

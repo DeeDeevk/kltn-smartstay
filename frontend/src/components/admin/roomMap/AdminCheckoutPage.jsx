@@ -1,15 +1,20 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   ArrowLeft,
   BedDouble,
   Banknote,
   CalendarDays,
+  CheckCircle2,
   Loader2,
+  Minus,
+  Plus,
   QrCode,
+  Sparkles,
   TriangleAlert,
-  UtensilsCrossed,
+  Wine,
 } from 'lucide-react';
 import StatusPill from '../../booking/StatusPill';
 import { BOOKING_STATUS_STYLES } from '../../../utils/bookingStatusStyles';
@@ -21,6 +26,21 @@ import {
   useGetServicesQuery,
   useCheckOutMutation,
 } from '../../../services/booking';
+import {
+  useCreateCheckoutPayosLinkMutation,
+  useLazyCheckoutPayosStatusQuery,
+} from '../../../services/payment';
+
+// Mệnh giá tiền mặt VND đang lưu hành, dùng cho bảng đếm tiền khách đưa.
+const VND_DENOMS = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
+
+const BOOKING_STATUS_LABELS = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED: 'Đã xác nhận',
+  CHECKED_IN: 'Đang lưu trú',
+  CHECKED_OUT: 'Đã trả phòng',
+  CANCELLED: 'Đã huỷ',
+};
 
 function fmtDateTime(value) {
   return new Date(value).toLocaleString('vi-VN', {
@@ -32,23 +52,42 @@ function fmtDateTime(value) {
   });
 }
 
+function initials(name = '') {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(-2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase() || '?'
+  );
+}
+
 export default function AdminCheckoutPage() {
   const { roomId, bookingId } = useParams();
   const navigate = useNavigate();
 
-  const {
-    data: preview,
-    isLoading,
-    error,
-  } = useGetCheckoutPreviewQuery(bookingId);
+  const { data: preview, isLoading, error } =
+    useGetCheckoutPreviewQuery(bookingId);
   const { data: services = [] } = useGetServicesQuery();
   const [checkOut, { isLoading: submitting }] = useCheckOutMutation();
 
   const [selected, setSelected] = useState({}); // serviceId -> quantity
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [cashCounts, setCashCounts] = useState({}); // denom -> số tờ
+  const [transferConfirmed, setTransferConfirmed] = useState(false);
 
   const servicesById = useMemo(
     () => Object.fromEntries(services.map((s) => [s.serviceId, s])),
+    [services],
+  );
+  const minibar = useMemo(
+    () => services.filter((s) => s.category === 'MINIBAR'),
+    [services],
+  );
+  const others = useMemo(
+    () => services.filter((s) => s.category !== 'MINIBAR'),
     [services],
   );
 
@@ -73,7 +112,8 @@ export default function AdminCheckoutPage() {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
         <p className="text-sm font-medium text-red-600">
-          {error?.data?.message || 'Không tải được dữ liệu trả phòng cho đơn này.'}
+          {error?.data?.message ||
+            'Không tải được dữ liệu trả phòng cho đơn này.'}
         </p>
         <Link
           to={`/admin/rooms/${roomId}`}
@@ -87,22 +127,40 @@ export default function AdminCheckoutPage() {
 
   const { booking, lateCheckout, invoice } = preview;
   const roomCharge = invoice.roomAmount + invoice.lateCheckoutFee;
+  const serviceTotal = invoice.serviceAmount + newServicesSum;
   const totalAmount = invoice.totalAmount + newServicesSum;
   const subtotal = totalAmount - invoice.vatAmount;
   const dueAmount = Math.max(0, totalAmount - invoice.paidAmount);
 
-  const toggleService = (id) =>
+  const cashReceived = VND_DENOMS.reduce(
+    (sum, d) => sum + d * (cashCounts[d] || 0),
+    0,
+  );
+  const cashChange = cashReceived - dueAmount;
+
+  // Đủ điều kiện bấm "Hoàn tất Check-out": không còn nợ, hoặc đã thu đủ tiền mặt,
+  // hoặc đã xác nhận nhận chuyển khoản.
+  const paymentDone =
+    dueAmount <= 0 ||
+    (paymentMethod === 'CASH' && cashReceived >= dueAmount) ||
+    (paymentMethod === 'PAYOS' && transferConfirmed);
+
+  const setCash = (denom, count) =>
+    setCashCounts((prev) => ({ ...prev, [denom]: Math.max(0, count || 0) }));
+
+  const setQty = (id, qty) =>
     setSelected((prev) => {
       const next = { ...prev };
-      if (next[id]) delete next[id];
-      else next[id] = 1;
+      if (qty <= 0) delete next[id];
+      else next[id] = qty;
       return next;
     });
 
-  const setQty = (id, qty) =>
-    setSelected((prev) => ({ ...prev, [id]: Math.max(1, qty) }));
-
   const handleFinish = async () => {
+    if (!paymentDone) {
+      toast.error('Vui lòng hoàn tất thanh toán trước khi trả phòng');
+      return;
+    }
     try {
       await checkOut({
         bookingId,
@@ -113,7 +171,9 @@ export default function AdminCheckoutPage() {
         paymentMethod,
         markPaid: true,
       }).unwrap();
-      toast.success('Đã hoàn tất check-out — phòng chuyển sang trạng thái dọn dẹp');
+      toast.success(
+        'Đã hoàn tất check-out — phòng chuyển sang trạng thái dọn dẹp',
+      );
       navigate(`/admin/rooms/${roomId}`);
     } catch (err) {
       toast.error(err?.data?.message || 'Không thể hoàn tất check-out');
@@ -129,14 +189,24 @@ export default function AdminCheckoutPage() {
         >
           <ArrowLeft size={16} />
         </Link>
-        <h1 className="text-xl font-bold text-gray-900">Check-out & Thanh toán</h1>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">
+            Check-out & Thanh toán
+          </h1>
+          <p className="text-xs text-gray-400">
+            Đối chiếu chi phí lưu trú, dịch vụ và thu phần còn lại
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_368px]">
         <div className="space-y-5">
           {/* Khách */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div>
+          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+              {initials(booking.guestInfo?.fullName)}
+            </span>
+            <div className="min-w-0 flex-1">
               <p className="text-lg font-bold text-gray-900">
                 {booking.guestInfo?.fullName}
               </p>
@@ -146,18 +216,19 @@ export default function AdminCheckoutPage() {
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <CalendarDays size={13} />
-                  {formatDate(booking.checkInDate)} — {formatDate(booking.checkOutDate)}
+                  {formatDate(booking.checkInDate)} —{' '}
+                  {formatDate(booking.checkOutDate)}
                 </span>
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Trạng thái
               </p>
               <StatusPill
                 value={booking.status}
                 styles={BOOKING_STATUS_STYLES}
-                label={booking.status}
+                label={BOOKING_STATUS_LABELS[booking.status] || booking.status}
               />
             </div>
           </div>
@@ -165,15 +236,17 @@ export default function AdminCheckoutPage() {
           {/* Cảnh báo trả phòng muộn */}
           {lateCheckout.isLate && (
             <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <TriangleAlert className="mt-0.5 shrink-0 text-amber-500" size={20} />
+              <TriangleAlert
+                className="mt-0.5 shrink-0 text-amber-500"
+                size={20}
+              />
               <div className="text-sm">
                 <p className="font-bold text-amber-700">
-                  TRẢ PHÒNG MUỘN (SAU {String(new Date(lateCheckout.deadline).getHours()).padStart(2, '0')}H00)
+                  TRẢ PHÒNG MUỘN (SAU 12H00)
                 </p>
                 <p className="mt-1 text-amber-700">
-                  Giờ hiện tại là {fmtDateTime(Date.now())}. Theo quy định của khách
-                  sạn, do quá hạn trả phòng nên hệ thống đã tự động cộng thêm{' '}
-                  <b>{lateCheckout.nights} đêm</b> lưu trú (
+                  Giờ hiện tại {fmtDateTime(Date.now())}. Do quá hạn trả phòng, hệ
+                  thống tự cộng thêm <b>{lateCheckout.nights} đêm</b> lưu trú (
                   {formatCurrency(invoice.lateCheckoutFee)}) vào chi phí.
                 </p>
               </div>
@@ -181,103 +254,77 @@ export default function AdminCheckoutPage() {
           )}
 
           {/* Tiền phòng */}
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-gray-900">
+          <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <h2 className="flex items-center gap-2 border-b border-gray-100 px-5 py-4 text-base font-bold text-gray-900">
               <BedDouble size={18} className="text-blue-600" /> Tiền phòng
             </h2>
-            <div className="flex items-start justify-between border-t border-gray-100 pt-4 text-sm">
+            <div className="flex items-start justify-between px-5 py-4 text-sm">
               <div>
                 <p className="font-semibold text-gray-800">
                   Tiền phòng lưu trú
-                  {lateCheckout.nights > 0 && ` + ${lateCheckout.nights} đêm trả muộn`}
+                  {lateCheckout.nights > 0 &&
+                    ` + ${lateCheckout.nights} đêm trả muộn`}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400">
                   Mã đặt phòng: {getBookingCode(booking.bookingId)}
                 </p>
                 <p className="text-xs text-gray-400">
-                  Kế hoạch: {formatDate(booking.checkInDate)} — {formatDate(booking.checkOutDate)}
+                  Kế hoạch: {formatDate(booking.checkInDate)} —{' '}
+                  {formatDate(booking.checkOutDate)}
                 </p>
               </div>
-              <span className="text-base font-bold text-blue-600">
+              <span className="shrink-0 text-base font-bold text-blue-600">
                 {formatCurrency(roomCharge)}
               </span>
             </div>
           </section>
 
-          {/* Dịch vụ / tiêu dùng thêm */}
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-gray-900">
-              <UtensilsCrossed size={18} className="text-blue-600" /> Dịch vụ &
-              tiêu dùng thêm
-            </h2>
+          {/* Minibar */}
+          {minibar.length > 0 && (
+            <ServiceSection
+              icon={Wine}
+              title="Minibar"
+              hint="Ghi nhận tiêu thụ tại phòng"
+              services={minibar}
+              selected={selected}
+              onSetQty={setQty}
+            />
+          )}
 
-            {booking.serviceItems?.length > 0 && (
-              <ul className="mb-4 space-y-1.5 border-b border-gray-100 pb-4 text-sm">
+          {/* Dịch vụ khác */}
+          {others.length > 0 && (
+            <ServiceSection
+              icon={Sparkles}
+              title="Dịch vụ khác"
+              services={others}
+              selected={selected}
+              onSetQty={setQty}
+            />
+          )}
+
+          {/* Dịch vụ đã ghi nhận trước đó */}
+          {booking.serviceItems?.length > 0 && (
+            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-gray-400">
+                Dịch vụ đã ghi nhận
+              </h2>
+              <ul className="space-y-1.5 text-sm">
                 {booking.serviceItems.map((item) => (
                   <li
                     key={item.bookingServiceItemId ?? item.service?.serviceId}
-                    className="flex justify-between text-gray-500"
+                    className="flex justify-between text-gray-600"
                   >
                     <span>
-                      {item.service?.name} × {item.quantity}{' '}
-                      <span className="text-xs text-gray-400">(đã ghi nhận)</span>
+                      {item.service?.name} × {item.quantity}
                     </span>
-                    <span>{formatCurrency(item.unitPrice * item.quantity)}</span>
+                    <span>
+                      {formatCurrency(item.unitPrice * item.quantity)}
+                    </span>
                   </li>
                 ))}
               </ul>
-            )}
-
-            {services.length === 0 ? (
-              <p className="py-4 text-center text-sm text-gray-400">
-                Chưa có dịch vụ nào được cấu hình.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {services.map((svc) => {
-                  const active = Boolean(selected[svc.serviceId]);
-                  return (
-                    <li
-                      key={svc.serviceId}
-                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
-                        active
-                          ? 'border-blue-300 bg-blue-50/50'
-                          : 'border-gray-200'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={active}
-                        onChange={() => toggleService(svc.serviceId)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-gray-800">
-                          {svc.name}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {svc.price === 0
-                            ? 'Miễn phí'
-                            : `${formatCurrency(svc.price)} / ${svc.unit}`}
-                        </p>
-                      </div>
-                      {active && (
-                        <input
-                          type="number"
-                          min="1"
-                          value={selected[svc.serviceId]}
-                          onChange={(e) =>
-                            setQty(svc.serviceId, Number(e.target.value))
-                          }
-                          className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
-                        />
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+            </section>
+          )}
         </div>
 
         {/* Cột phải */}
@@ -287,8 +334,18 @@ export default function AdminCheckoutPage() {
               Tổng hợp chi phí
             </h2>
             <dl className="space-y-2.5 text-sm">
-              <Row label="Tạm tính" value={formatCurrency(subtotal)} />
+              <Row label="Tiền phòng" value={formatCurrency(roomCharge)} />
+              <Row
+                label="Dịch vụ / minibar"
+                value={formatCurrency(serviceTotal)}
+              />
+              <Row
+                label="Tạm tính"
+                value={formatCurrency(subtotal)}
+                bold
+              />
               <Row label="VAT (8%)" value={formatCurrency(invoice.vatAmount)} />
+              <div className="my-1 border-t border-gray-100" />
               <Row
                 label="Tổng chi phí"
                 value={formatCurrency(totalAmount)}
@@ -304,7 +361,7 @@ export default function AdminCheckoutPage() {
                   Còn lại
                 </dt>
                 <dd
-                  className={`text-xl font-extrabold ${
+                  className={`text-2xl font-extrabold ${
                     dueAmount > 0 ? 'text-red-600' : 'text-gray-900'
                   }`}
                 >
@@ -315,33 +372,64 @@ export default function AdminCheckoutPage() {
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-3 text-base font-bold text-gray-900">
-              Phương thức thanh toán
-            </h2>
-            <div className="space-y-2">
-              <PayOption
-                active={paymentMethod === 'CASH'}
-                onClick={() => setPaymentMethod('CASH')}
-                icon={Banknote}
-                title="Tiền mặt"
-                subtitle="Thanh toán tại quầy"
-              />
-              <PayOption
-                active={paymentMethod === 'PAYOS'}
-                onClick={() => setPaymentMethod('PAYOS')}
-                icon={QrCode}
-                title="Chuyển khoản QR"
-                subtitle="PayOS"
-              />
-            </div>
+            <h2 className="mb-3 text-base font-bold text-gray-900">Thanh toán</h2>
+
+            {dueAmount <= 0 ? (
+              <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                <CheckCircle2 size={16} /> Đơn đã thanh toán đủ — có thể trả phòng.
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                  <span className="text-sm text-gray-500">Cần thu</span>
+                  <span className="text-lg font-bold text-red-600">
+                    {formatCurrency(dueAmount)}
+                  </span>
+                </div>
+
+                <div className="mb-4 space-y-2">
+                  <PayOption
+                    active={paymentMethod === 'CASH'}
+                    onClick={() => setPaymentMethod('CASH')}
+                    icon={Banknote}
+                    title="Tiền mặt"
+                    subtitle="Đếm tiền khách đưa"
+                  />
+                  <PayOption
+                    active={paymentMethod === 'PAYOS'}
+                    onClick={() => setPaymentMethod('PAYOS')}
+                    icon={QrCode}
+                    title="Chuyển khoản QR"
+                    subtitle="Quét mã ngân hàng"
+                  />
+                </div>
+
+                {paymentMethod === 'CASH' ? (
+                  <CashCounter
+                    counts={cashCounts}
+                    onSet={setCash}
+                    received={cashReceived}
+                    due={dueAmount}
+                    change={cashChange}
+                  />
+                ) : (
+                  <TransferPanel
+                    bookingId={bookingId}
+                    amount={dueAmount}
+                    confirmed={transferConfirmed}
+                    onConfirm={() => setTransferConfirmed(true)}
+                  />
+                )}
+              </>
+            )}
           </section>
 
           <div>
             <button
               type="button"
               onClick={handleFinish}
-              disabled={submitting}
-              className="flex w-full flex-col items-center rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+              disabled={submitting || !paymentDone}
+              className="flex w-full flex-col items-center rounded-xl bg-blue-600 px-4 py-3 font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <span className="flex items-center gap-2">
                 {submitting && <Loader2 size={16} className="animate-spin" />}
@@ -352,7 +440,9 @@ export default function AdminCheckoutPage() {
               </span>
             </button>
             <p className="mt-2 text-center text-[11px] uppercase tracking-wider text-gray-400">
-              Phòng sẽ chuyển sang trạng thái "Dọn dẹp"
+              {paymentDone
+                ? 'Phòng sẽ chuyển sang trạng thái "Dọn dẹp"'
+                : 'Hoàn tất thanh toán để bật nút trả phòng'}
             </p>
           </div>
         </div>
@@ -361,11 +451,279 @@ export default function AdminCheckoutPage() {
   );
 }
 
+function ServiceSection({ icon: Icon, title, hint, services, selected, onSetQty }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900">
+          <Icon size={18} className="text-blue-600" /> {title}
+        </h2>
+        {hint && <span className="text-xs italic text-gray-400">{hint}</span>}
+      </div>
+      <div className="grid gap-3 p-5 sm:grid-cols-2">
+        {services.map((svc) => {
+          const qty = selected[svc.serviceId] || 0;
+          const active = qty > 0;
+          const free = svc.price === 0;
+          return (
+            <div
+              key={svc.serviceId}
+              className={`rounded-xl border p-3 transition-colors ${
+                active ? 'border-blue-400 bg-blue-50/50' : 'border-gray-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-gray-800">
+                    {svc.name}
+                  </p>
+                  <p className="mt-0.5 text-xs">
+                    {free ? (
+                      <span className="font-semibold text-emerald-600">
+                        Miễn phí
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">
+                        {formatCurrency(svc.price)} / {svc.unit}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                {!active ? (
+                  <button
+                    type="button"
+                    onClick={() => onSetQty(svc.serviceId, 1)}
+                    className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  >
+                    Thêm
+                  </button>
+                ) : (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onSetQty(svc.serviceId, qty - 1)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="w-5 text-center text-sm font-bold text-gray-800">
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onSetQty(svc.serviceId, qty + 1)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {active && !free && (
+                <p className="mt-2 text-right text-xs font-semibold text-blue-600">
+                  {formatCurrency(svc.price * qty)}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Bảng đếm tiền mặt khách đưa theo từng mệnh giá + tiền thối lại.
+function CashCounter({ counts, onSet, received, due, change }) {
+  return (
+    <div className="rounded-xl border border-gray-200">
+      <div className="grid grid-cols-[1fr_64px_1fr] items-center gap-2 border-b border-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+        <span>Mệnh giá</span>
+        <span className="text-center">Số tờ</span>
+        <span className="text-right">Thành tiền</span>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {VND_DENOMS.map((denom) => {
+          const count = counts[denom] || 0;
+          return (
+            <div
+              key={denom}
+              className="grid grid-cols-[1fr_64px_1fr] items-center gap-2 px-3 py-1.5 text-sm"
+            >
+              <span className="text-gray-600">{formatCurrency(denom)}</span>
+              <input
+                type="number"
+                min="0"
+                value={count || ''}
+                placeholder="0"
+                onChange={(e) => onSet(denom, Number(e.target.value))}
+                className="w-full rounded-md border border-gray-200 px-2 py-1 text-center text-sm focus:border-blue-500 focus:outline-none"
+              />
+              <span className="text-right text-gray-500">
+                {count > 0 ? formatCurrency(denom * count) : '—'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="space-y-1.5 border-t border-gray-100 px-3 py-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-500">Khách đưa</span>
+          <span className="font-bold text-gray-900">
+            {formatCurrency(received)}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Cần thu</span>
+          <span className="text-gray-700">{formatCurrency(due)}</span>
+        </div>
+        <div className="flex justify-between border-t border-dashed border-gray-200 pt-1.5">
+          <span className="font-semibold text-gray-600">
+            {change >= 0 ? 'Tiền thối lại' : 'Còn thiếu'}
+          </span>
+          <span
+            className={`text-base font-extrabold ${
+              change >= 0 ? 'text-emerald-600' : 'text-red-600'
+            }`}
+          >
+            {formatCurrency(Math.abs(change))}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tạo QR PayOS thật để khách quét chuyển khoản, rồi lễ tân kiểm tra / xác nhận đã nhận.
+function TransferPanel({ bookingId, amount, confirmed, onConfirm }) {
+  const [createLink, { data: link, isLoading, error }] =
+    useCreateCheckoutPayosLinkMutation();
+  const [checkPayos, { isFetching: checking }] =
+    useLazyCheckoutPayosStatusQuery();
+
+  const handleCreate = async () => {
+    try {
+      await createLink({ bookingId, amount }).unwrap();
+    } catch (err) {
+      toast.error(
+        err?.data?.message || 'Không tạo được mã QR PayOS. Kiểm tra cấu hình PayOS.',
+      );
+    }
+  };
+
+  const handleCheck = async () => {
+    try {
+      const res = await checkPayos(bookingId).unwrap();
+      if (res?.paid) {
+        toast.success('PayOS xác nhận đã thanh toán');
+        onConfirm();
+      } else {
+        toast.info('Chưa ghi nhận thanh toán — thử lại sau vài giây.');
+      }
+    } catch {
+      toast.error('Không kiểm tra được trạng thái thanh toán');
+    }
+  };
+
+  if (!link) {
+    return (
+      <button
+        type="button"
+        onClick={handleCreate}
+        disabled={isLoading}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {isLoading ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <QrCode size={16} />
+        )}
+        Tạo mã QR PayOS
+        {error && (
+          <span className="text-xs font-normal text-red-100">(thử lại)</span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-gray-200 p-4 text-sm">
+      <div className="flex justify-center">
+        <div className="rounded-lg border border-gray-100 bg-white p-2">
+          {link.qrCode ? (
+            <QRCodeSVG value={link.qrCode} size={160} level="M" />
+          ) : (
+            <p className="max-w-[160px] p-4 text-center text-xs text-gray-400">
+              Không dựng được QR — dùng nút mở link bên dưới.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-gray-400">
+        Quét bằng app ngân hàng / ví bất kỳ (PayOS)
+      </p>
+
+      <dl className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <dt className="text-gray-400">Số tiền</dt>
+          <dd className="font-bold text-red-600">{formatCurrency(amount)}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-gray-400">Mã giao dịch</dt>
+          <dd className="font-mono font-semibold text-gray-700">
+            {link.orderCode}
+          </dd>
+        </div>
+      </dl>
+
+      {link.checkoutUrl && (
+        <a
+          href={link.checkoutUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="block rounded-lg border border-gray-200 py-2 text-center text-xs font-semibold text-blue-600 hover:bg-blue-50"
+        >
+          Mở trang thanh toán PayOS
+        </a>
+      )}
+
+      {confirmed ? (
+        <div className="flex items-center justify-center gap-2 rounded-lg bg-emerald-50 py-2 text-sm font-semibold text-emerald-700">
+          <CheckCircle2 size={16} /> Đã xác nhận nhận chuyển khoản
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleCheck}
+            disabled={checking}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-blue-600 py-2 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-60"
+          >
+            {checking && <Loader2 size={13} className="animate-spin" />}
+            Kiểm tra
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-600 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+          >
+            <CheckCircle2 size={13} /> Xác nhận thủ công
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Row({ label, value, bold, tone }) {
   return (
     <div className="flex justify-between">
       <dt className="text-gray-500">{label}</dt>
-      <dd className={`${bold ? 'font-bold text-gray-900' : 'text-gray-700'} ${tone ?? ''}`}>
+      <dd
+        className={`${bold ? 'font-bold text-gray-900' : 'text-gray-700'} ${
+          tone ?? ''
+        }`}
+      >
         {value}
       </dd>
     </div>
@@ -389,7 +747,9 @@ function PayOption({ active, onClick, icon: Icon, title, subtitle }) {
         <Icon size={16} />
       </span>
       <span>
-        <span className="block text-sm font-semibold text-gray-800">{title}</span>
+        <span className="block text-sm font-semibold text-gray-800">
+          {title}
+        </span>
         <span className="block text-xs text-gray-400">{subtitle}</span>
       </span>
     </button>

@@ -44,7 +44,9 @@ export class PaymentService {
       throw new BadRequestException('Đơn đặt phòng đã được thanh toán');
     }
     if (!booking.payosOrderCode) {
-      throw new BadRequestException('Đơn đặt phòng chưa có mã thanh toán PayOS');
+      throw new BadRequestException(
+        'Đơn đặt phòng chưa có mã thanh toán PayOS',
+      );
     }
 
     const orderCode = Number(booking.payosOrderCode);
@@ -90,6 +92,74 @@ export class PaymentService {
         checkoutUrl: `https://pay.payos.vn/web/${existing.id}`,
         qrCode: null,
       };
+    }
+  }
+
+  // Tạo link/QR PayOS để thu phần tiền còn lại khi lễ tân trả phòng (khác
+  // createLinkForBooking: dùng cho mọi đơn, kể cả đơn tiền mặt, số tiền tuỳ ý).
+  async createCheckoutLink(
+    bookingId: string,
+    amount: number,
+    requester: Requester,
+  ) {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new BadRequestException('Số tiền cần thu không hợp lệ');
+    }
+    // Không chặn theo paymentStatus: đơn có thể đã "PAID" phần đặt cọc lúc check-in
+    // nhưng vẫn phát sinh tiền dịch vụ/phụ thu khi trả phòng. Số tiền cần thu do màn
+    // Check-out tính (đã trừ phần đã trả) và gửi lên qua `amount`.
+    const booking = await this.bookingService.findById(bookingId, requester);
+
+    const orderCode = Number(
+      await this.bookingService.assignFreshPayosOrderCode(bookingId),
+    );
+    const returnUrl = `${this.frontendUrl}/payment/success?bookingId=${bookingId}`;
+    const cancelUrl = `${this.frontendUrl}/payment/cancel?bookingId=${bookingId}`;
+    const expiredAt = Math.floor(Date.now() / 1000) + 15 * 60;
+
+    const link = await this.payos.paymentRequests.create({
+      orderCode,
+      amount,
+      description: `TT ${String(orderCode).slice(-8)}`,
+      returnUrl,
+      cancelUrl,
+      expiredAt,
+      items: [
+        {
+          name: `Phòng ${booking.room?.roomNumber ?? ''}`.trim() || 'Trả phòng',
+          quantity: 1,
+          price: amount,
+        },
+      ],
+      buyerName: booking.guestInfo.fullName,
+      buyerPhone: booking.guestInfo.phone,
+      buyerEmail: booking.guestInfo.email,
+    });
+
+    return {
+      checkoutUrl: link.checkoutUrl,
+      qrCode: link.qrCode,
+      orderCode: String(orderCode),
+      amount,
+      expiredAt: link.expiredAt ?? expiredAt,
+    };
+  }
+
+  // Kiểm tra trạng thái link PayOS vừa tạo ở màn Check-out. Khác syncStatus: KHÔNG
+  // short-circuit theo booking.paymentStatus (đơn có thể đã "PAID" phần đặt cọc) và
+  // KHÔNG tự đánh dấu đã trả — việc chốt tiền do nút "Hoàn tất Check-out" lo.
+  async checkoutSyncStatus(bookingId: string, requester: Requester) {
+    const booking = await this.bookingService.findById(bookingId, requester);
+    if (!booking.payosOrderCode) {
+      return { paid: false, status: 'NO_ORDER' };
+    }
+    try {
+      const info = await this.payos.paymentRequests.get(
+        Number(booking.payosOrderCode),
+      );
+      return { paid: info.status === 'PAID', status: info.status };
+    } catch {
+      return { paid: false, status: 'UNKNOWN' };
     }
   }
 

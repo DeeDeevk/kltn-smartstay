@@ -26,6 +26,8 @@ export const ROOM_STATUS_META = {
     ring: 'ring-violet-100',
     tag: 'bg-violet-600 text-white',
     card: 'border-violet-200',
+    // Phòng đã có khách giữ chỗ -> làm mờ như phòng đang ở, không nhận thêm.
+    muted: true,
   },
   CLEANING: {
     label: 'Đang dọn dẹp',

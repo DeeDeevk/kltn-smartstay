@@ -490,7 +490,6 @@
       "roomNumber": "Room number",
       "roomNumberPlaceholder": "e.g. T101",
       "roomNumberHint": "Leave blank to auto-assign as T{floor}{seq}, e.g. T101 = room 1 on floor 1.",
-      "roomNumberRequired": "Please enter a room number",
       "floor": "Floor",
       "floorInvalid": "Invalid floor",
       "cancel": "Cancel",

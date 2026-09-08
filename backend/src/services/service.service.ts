@@ -24,6 +24,12 @@ export class ServiceService {
       });
     }
 
+    if (query.category) {
+      qb.andWhere('service.category = :category', {
+        category: query.category,
+      });
+    }
+
     return qb.orderBy('service.name', 'ASC').getMany();
   }
 

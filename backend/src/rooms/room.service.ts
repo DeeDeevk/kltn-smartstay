@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
@@ -170,7 +170,21 @@ export class RoomService {
       floor: dto.floor,
       roomType,
     });
-    return this.roomRepo.save(room);
+    try {
+      return await this.roomRepo.save(room);
+    } catch (err) {
+      // Giữa lúc check `existed` ở trên và save() thật, 1 request khác (VD 2 admin cùng
+      // bấm tạo phòng, hoặc số phòng tự sinh trùng nhau) có thể đã chiếm đúng roomNumber
+      // này — ràng buộc UNIQUE ở DB là chốt chặn cuối, dịch lỗi 23505 (Postgres unique
+      // violation) thành 409 thân thiện thay vì để lọt ra 500 chưa được xử lý.
+      if (
+        err instanceof QueryFailedError &&
+        (err as unknown as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException('Số phòng đã tồn tại');
+      }
+      throw err;
+    }
   }
 
   // Số phòng trống kế tiếp trên 1 tầng theo quy ước T{tầng}{NN}.
@@ -181,9 +195,7 @@ export class RoomService {
       const candidate = `T${floor}${String(seq).padStart(2, '0')}`;
       if (!used.has(candidate)) return candidate;
     }
-    throw new ConflictException(
-      'Tầng đã đầy, không thể tự sinh số phòng mới',
-    );
+    throw new ConflictException('Tầng đã đầy, không thể tự sinh số phòng mới');
   }
 
   async updateStatus(roomId: string, dto: UpdateRoomStatusDto): Promise<Room> {

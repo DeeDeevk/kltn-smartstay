@@ -2,15 +2,24 @@ import { createApi } from '@reduxjs/toolkit/query/react';
 import axiosBaseQuery from './axiosBaseQuery';
 import { adminRoomApi } from './adminRoom';
 
+// Booking trả về từ checkIn/cancel/walk-in là 1 object phẳng (có .room), còn checkOut bọc
+// trong { booking, finalInvoice } — dò cả 2 dạng cho gọn thay vì viết riêng mỗi chỗ gọi.
+const extractRoomId = (data) => data?.room?.roomId ?? data?.booking?.room?.roomId;
+
 // Các thao tác đổi trạng thái phòng gián tiếp (check-in -> OCCUPIED, check-out ->
 // CLEANING, walk-in/huỷ -> gán/bỏ phòng) nằm ở slice booking, nên phải chủ động
-// làm mới cache Sơ đồ phòng (slice adminRoomApi) sau khi mutation thành công.
+// làm mới cache Sơ đồ phòng (slice adminRoomApi) sau khi mutation thành công. Chỉ
+// invalidate tag 'LIST' thì đúng lưới Sơ đồ phòng, nhưng KHÔNG refetch được cache
+// getRoom(roomId) riêng lẻ mà AdminRoomDetailPage đang dùng — phải invalidate thêm
+// đúng tag {id: roomId} đó, nếu không trang chi tiết phòng vẫn hiện trạng thái cũ sau
+// khi quay lại từ Check-out cho tới khi cache tự hết hạn.
 const refreshRoomMap = async (_arg, { dispatch, queryFulfilled }) => {
   try {
-    await queryFulfilled;
-    dispatch(
-      adminRoomApi.util.invalidateTags([{ type: 'AdminRoom', id: 'LIST' }]),
-    );
+    const { data } = await queryFulfilled;
+    const tags = [{ type: 'AdminRoom', id: 'LIST' }];
+    const roomId = extractRoomId(data);
+    if (roomId) tags.push({ type: 'AdminRoom', id: roomId });
+    dispatch(adminRoomApi.util.invalidateTags(tags));
   } catch {
     /* mutation lỗi -> giữ nguyên cache sơ đồ phòng */
   }
