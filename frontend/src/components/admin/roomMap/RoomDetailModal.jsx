@@ -9,7 +9,9 @@ import { useGetBookingsQuery } from '../../../services/booking';
 import { useUpdateRoomStatusMutation } from '../../../services/adminRoom';
 import { ROOM_STATUS_META } from '../../../utils/roomStatusStyles';
 
-const STATUS_OPTIONS = Object.keys(ROOM_STATUS_META);
+// 'BOOKED' là trạng thái ảo của Sơ đồ phòng (lọc theo ngày), không phải RoomStatus
+// thật nên không cho phép đặt tay ở đây.
+const STATUS_OPTIONS = Object.keys(ROOM_STATUS_META).filter((s) => s !== 'BOOKED');
 
 export default function RoomDetailModal({ room, onClose }) {
   const [updateStatus, { isLoading: isUpdatingStatus }] = useUpdateRoomStatusMutation();
