@@ -62,6 +62,19 @@ export class Booking {
   @Column({ name: 'roomAmount', type: 'int' })
   roomAmount!: number;
 
+  // Số đêm bị tính thêm do trả phòng muộn (quá 12h trưa ngày check-out) và tiền
+  // phụ thu tương ứng — chỉ được set khi lễ tân hoàn tất check-out.
+  @Column({ name: 'lateNights', type: 'int', default: 0 })
+  lateNights!: number;
+
+  @Column({ name: 'lateCheckoutFee', type: 'int', default: 0 })
+  lateCheckoutFee!: number;
+
+  // Tổng số tiền khách đã trả cho đơn (đặt cọc/thanh toán trước + thu thêm khi
+  // check-out). Dùng để tính "còn lại phải thu" ở màn Check-out.
+  @Column({ name: 'paidAmount', type: 'int', default: 0 })
+  paidAmount!: number;
+
   @Column({
     name: 'status',
     type: 'enum',

@@ -16,6 +16,8 @@ export const ROOM_STATUS_META = {
     ring: 'ring-blue-100',
     tag: 'bg-blue-600 text-white',
     card: 'border-blue-200',
+    // Phòng đang có khách -> làm mờ card cho khác hẳn phòng còn nhận được.
+    muted: true,
   },
   RESERVED: {
     label: 'Đã giữ chỗ',
@@ -48,6 +50,7 @@ export const ROOM_STATUS_META = {
     ring: 'ring-slate-200',
     tag: 'bg-slate-600 text-white',
     card: 'border-slate-300',
+    muted: true,
   },
 };
 

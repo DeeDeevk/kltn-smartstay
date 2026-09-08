@@ -10,7 +10,6 @@ import {
   Loader2,
   ArrowRight,
   AlertCircle,
-  QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useAdminOverviewStats from './useAdminOverviewStats';
@@ -39,10 +38,10 @@ const ROLE_META = {
 
 const QUICK_LINKS = [
   {
-    label: 'Check-in / Check-out',
-    description: 'Quét QR vé đặt phòng để nhận khách hoặc trả phòng',
-    path: '/admin/checkin',
-    icon: QrCode,
+    label: 'Sơ đồ phòng & Check-in',
+    description: 'Trạng thái từng phòng theo tầng, nhận / trả phòng, quét QR vé',
+    path: '/admin/rooms',
+    icon: BedDouble,
     ready: true,
     roles: ['ADMIN', 'STAFF'],
   },
@@ -61,14 +60,6 @@ const QUICK_LINKS = [
     icon: Users,
     ready: true,
     roles: ['ADMIN'],
-  },
-  {
-    label: 'Sơ đồ phòng',
-    description: 'Xem trạng thái từng phòng theo tầng, đổi trạng thái và xem lịch sử',
-    path: '/admin/rooms',
-    icon: BedDouble,
-    ready: true,
-    roles: ['ADMIN', 'STAFF'],
   },
   {
     label: 'Đặt phòng',

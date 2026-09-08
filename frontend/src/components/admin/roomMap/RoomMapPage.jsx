@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   CalendarClock,
@@ -15,22 +16,28 @@ import {
   resolveRoomDisplayStatus,
 } from '../../../utils/roomStatusStyles';
 import RoomStatusCard from './RoomStatusCard';
-import RoomDetailModal from './RoomDetailModal';
 import FloorSidebar from './FloorSidebar';
 import RoomMapFilterBar from './RoomMapFilterBar';
 import ShiftModal from './ShiftModal';
+import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 
 const EMPTY_DRAFT = { checkIn: '', checkOut: '', roomType: '' };
 const LEGEND_STATUSES = ['AVAILABLE', 'BOOKED', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'];
+// Vé đặt phòng chỉ mã hoá bookingId (UUID) — xem utils/bookingQrPayload.
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function RoomMapPage() {
+  const navigate = useNavigate();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [applied, setApplied] = useState(EMPTY_DRAFT);
   const [selectedFloor, setSelectedFloor] = useState('all');
-  const [activeRoom, setActiveRoom] = useState(null);
   const [shiftMode, setShiftMode] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannedBookingId, setScannedBookingId] = useState(null);
+
+  const openRoom = (room) => navigate(`/admin/rooms/${room.roomId}`);
 
   const hasRangeFilter = Boolean(applied.checkIn && applied.checkOut);
 
@@ -107,7 +114,12 @@ export default function RoomMapPage() {
 
   const handleScanSuccess = (decodedText) => {
     setScannerOpen(false);
-    toast.info(`Đã quét mã: ${decodedText.trim()}`);
+    const id = decodedText.trim();
+    if (!UUID_PATTERN.test(id)) {
+      toast.error('Mã QR không hợp lệ — không phải vé đặt phòng của Vika Hotel');
+      return;
+    }
+    setScannedBookingId(id);
   };
 
   return (
@@ -216,7 +228,7 @@ export default function RoomMapPage() {
                       key={room.roomId}
                       room={room}
                       displayStatus={displayStatus}
-                      onClick={setActiveRoom}
+                      onClick={openRoom}
                     />
                   ))}
                 </div>
@@ -226,12 +238,15 @@ export default function RoomMapPage() {
         </div>
       </div>
 
-      <RoomDetailModal room={activeRoom} onClose={() => setActiveRoom(null)} />
       <ShiftModal
         mode={shiftMode}
         open={shiftMode !== null}
         onClose={() => setShiftMode(null)}
         onShiftEnded={refetch}
+      />
+      <QrCheckInModal
+        bookingId={scannedBookingId}
+        onClose={() => setScannedBookingId(null)}
       />
       <QRScannerModal
         isOpen={scannerOpen}
