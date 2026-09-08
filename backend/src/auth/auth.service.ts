@@ -64,6 +64,12 @@ export class AuthService {
     if (existed) {
       throw new ConflictException('Email đã được sử dụng');
     }
+    if (dto.phone) {
+      const existedPhone = await this.userService.findByPhone(dto.phone);
+      if (existedPhone) {
+        throw new ConflictException('Số điện thoại đã được sử dụng');
+      }
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const pending: PendingRegistration = {

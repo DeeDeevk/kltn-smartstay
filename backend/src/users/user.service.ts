@@ -39,6 +39,14 @@ export class UserService {
     if (existed) {
       throw new ConflictException('Email đã được sử dụng');
     }
+    if (data.phone) {
+      const existedPhone = await repo.findOne({
+        where: { phone: data.phone },
+      });
+      if (existedPhone) {
+        throw new ConflictException('Số điện thoại đã được sử dụng');
+      }
+    }
     const user = repo.create({
       ...data,
       role: data.role ?? UserRole.CUSTOMER,
@@ -48,6 +56,10 @@ export class UserService {
   }
   findByEmail(email: string): Promise<User | null> {
     return this.userRepo.findOne({ where: { email } });
+  }
+
+  findByPhone(phone: string): Promise<User | null> {
+    return this.userRepo.findOne({ where: { phone } });
   }
 
   async findById(userId: string): Promise<User> {
@@ -65,6 +77,14 @@ export class UserService {
       idNumber?: string;
     },
   ): Promise<User> {
+    if (data.phone) {
+      const existedPhone = await this.userRepo.findOne({
+        where: { phone: data.phone },
+      });
+      if (existedPhone && existedPhone.userId !== userId) {
+        throw new ConflictException('Số điện thoại đã được sử dụng');
+      }
+    }
     await this.userRepo.update({ userId }, data);
     return this.findById(userId);
   }
