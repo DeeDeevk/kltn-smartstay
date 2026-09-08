@@ -7,18 +7,34 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
+import { Booking } from 'src/bookings/entities/booking.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomStatusDto } from './dto/update-room-status.dto';
 import { QueryAvailabilityDto } from './dto/query-availability.dto';
 import { QueryRoomMapDto } from './dto/query-room-map.dto';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
+import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { RoomTypeService } from 'src/room-types/room-type.service';
+
+// Trạng thái booking được coi là "đang giữ" 1 phòng vật lý trong khoảng ngày.
+const ACTIVE_BOOKING_STATUSES = [
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+  BookingStatus.CHECKED_IN,
+];
+
+export type RoomMapItem = Room & {
+  rangeStatus?: 'AVAILABLE' | 'BOOKED';
+  rangeGuestName?: string | null;
+};
 
 @Injectable()
 export class RoomService {
   constructor(
     @InjectRepository(Room)
     private readonly roomRepo: Repository<Room>,
+    @InjectRepository(Booking)
+    private readonly bookingRepo: Repository<Booking>,
     private readonly roomTypeService: RoomTypeService,
   ) {}
 
@@ -69,10 +85,59 @@ export class RoomService {
     );
   }
 
-  async getRoomMap(query: QueryRoomMapDto): Promise<Room[]> {
-    return this.roomRepo.find({
-      where: query.floorId !== undefined ? { floor: query.floorId } : undefined,
-      order: { roomNumber: 'ASC' },
+  async getRoomMap(query: QueryRoomMapDto): Promise<RoomMapItem[]> {
+    const qb = this.roomRepo
+      .createQueryBuilder('room')
+      .innerJoinAndSelect('room.roomType', 'roomType')
+      .orderBy('room.roomNumber', 'ASC');
+
+    if (query.floorId !== undefined) {
+      qb.andWhere('room.floor = :floorId', { floorId: query.floorId });
+    }
+    if (query.roomTypeId) {
+      qb.andWhere('roomType.roomTypeId = :roomTypeId', {
+        roomTypeId: query.roomTypeId,
+      });
+    }
+
+    const rooms = (await qb.getMany()) as RoomMapItem[];
+
+    // Không lọc theo ngày -> trả nguyên trạng thái phòng.
+    if (!query.checkIn || !query.checkOut) {
+      return rooms;
+    }
+
+    if (new Date(query.checkIn) >= new Date(query.checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    // Các booking đã gán phòng cụ thể và có khoảng ngày giao với [checkIn, checkOut).
+    const overlapping = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .innerJoinAndSelect('booking.room', 'room')
+      .where('booking.status IN (:...statuses)', {
+        statuses: ACTIVE_BOOKING_STATUSES,
+      })
+      .andWhere('booking.checkInDate < :checkOut', { checkOut: query.checkOut })
+      .andWhere('booking.checkOutDate > :checkIn', { checkIn: query.checkIn })
+      .getMany();
+
+    const bookedRoomIds = new Map<string, string | null>();
+    for (const booking of overlapping) {
+      if (booking.room) {
+        bookedRoomIds.set(
+          booking.room.roomId,
+          booking.guestInfo?.fullName ?? null,
+        );
+      }
+    }
+
+    return rooms.map((room) => {
+      const isBooked = bookedRoomIds.has(room.roomId);
+      return Object.assign(room, {
+        rangeStatus: isBooked ? 'BOOKED' : 'AVAILABLE',
+        rangeGuestName: isBooked ? bookedRoomIds.get(room.roomId) : null,
+      } as Pick<RoomMapItem, 'rangeStatus' | 'rangeGuestName'>);
     });
   }
 
