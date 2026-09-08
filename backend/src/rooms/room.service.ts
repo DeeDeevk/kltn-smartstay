@@ -154,19 +154,36 @@ export class RoomService {
       dto.roomTypeId,
     );
 
+    // Không nhập số phòng -> tự đặt theo quy ước T{tầng}{số thứ tự}, vd T101, T205.
+    const roomNumber =
+      dto.roomNumber?.trim() || (await this.nextRoomNumber(dto.floor));
+
     const existed = await this.roomRepo.findOne({
-      where: { roomNumber: dto.roomNumber },
+      where: { roomNumber },
     });
     if (existed) {
       throw new ConflictException('Số phòng đã tồn tại');
     }
 
     const room = this.roomRepo.create({
-      roomNumber: dto.roomNumber,
+      roomNumber,
       floor: dto.floor,
       roomType,
     });
     return this.roomRepo.save(room);
+  }
+
+  // Số phòng trống kế tiếp trên 1 tầng theo quy ước T{tầng}{NN}.
+  private async nextRoomNumber(floor: number): Promise<string> {
+    const floorRooms = await this.roomRepo.find({ where: { floor } });
+    const used = new Set(floorRooms.map((r) => r.roomNumber));
+    for (let seq = 1; seq < 1000; seq += 1) {
+      const candidate = `T${floor}${String(seq).padStart(2, '0')}`;
+      if (!used.has(candidate)) return candidate;
+    }
+    throw new ConflictException(
+      'Tầng đã đầy, không thể tự sinh số phòng mới',
+    );
   }
 
   async updateStatus(roomId: string, dto: UpdateRoomStatusDto): Promise<Room> {

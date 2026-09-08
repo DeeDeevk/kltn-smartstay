@@ -1,8 +1,10 @@
-import { X } from 'lucide-react';
+import { useRef } from 'react';
+import { Download, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
 import getBookingCode from '../../utils/bookingCode';
 import getBookingQrPayload from '../../utils/bookingQrPayload';
+import downloadQrPng from '../../utils/downloadQr';
 import BookingRoomSummary from './BookingRoomSummary';
 import BookingGuestInfoCard from './BookingGuestInfoCard';
 import BookingServiceItemsTable from './BookingServiceItemsTable';
@@ -12,10 +14,13 @@ import BookingPriceSummary from './BookingPriceSummary';
 // 1 component riêng, nhận props hẹp, test được độc lập mà không cần dựng cả modal này.
 export default function BookingDetailModal({ booking, onClose }) {
   const { t } = useTranslation();
+  const qrRef = useRef(null);
   if (!booking) return null;
 
   const bookingCode = getBookingCode(booking.bookingId);
   const qrValue = getBookingQrPayload(booking);
+  const handleSaveQr = () =>
+    downloadQrPng(qrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -46,8 +51,17 @@ export default function BookingDetailModal({ booking, onClose }) {
           <BookingGuestInfoCard guestInfo={booking.guestInfo} />
           <BookingServiceItemsTable items={booking.serviceItems} />
 
-          <div className="flex w-full justify-center">
-            <QRCodeSVG value={qrValue} size={180} level="M" />
+          <div className="flex w-full flex-col items-center gap-3">
+            <div ref={qrRef} className="rounded-xl border border-gray-100 bg-white p-3">
+              <QRCodeSVG value={qrValue} size={180} level="M" />
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveQr}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              <Download size={16} /> {t('checkout.success.saveQr')}
+            </button>
           </div>
         </div>
 

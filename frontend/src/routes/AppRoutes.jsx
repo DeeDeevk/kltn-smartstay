@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft, SearchX } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft, SearchX, Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
@@ -28,9 +28,9 @@ import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
 import PaymentCancelPage from '../components/payment/PaymentCancelPage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
-import CheckInPage from '../components/admin/checkin/CheckInPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
+import AdminCheckoutPage from '../components/admin/roomMap/AdminCheckoutPage'
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
@@ -43,6 +43,7 @@ import ForbiddenPage from './ForbiddenPage'
 import formatCurrency from '../utils/formatCurrency'
 import getBookingCode from '../utils/bookingCode'
 import getBookingQrPayload from '../utils/bookingQrPayload'
+import downloadQrPng from '../utils/downloadQr'
 
 const paymentMethods = [
   { value: 'cash', labelKey: 'checkout.paymentCash', icon: Banknote },
@@ -338,6 +339,10 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
 
   const bookingCode = getBookingCode(booking.bookingId)
   const qrValue = getBookingQrPayload(booking)
+  const qrRef = useRef(null)
+
+  const handleSaveQr = () =>
+    downloadQrPng(qrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`)
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-lg mx-auto text-center space-y-6">
@@ -352,8 +357,18 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
         </p>
       </div>
 
-      <div className="flex justify-center py-2">
-        <QRCodeSVG value={qrValue} size={160} level="M" />
+      <div className="flex flex-col items-center gap-3 py-2">
+        <div ref={qrRef} className="rounded-xl border border-gray-100 bg-white p-3">
+          <QRCodeSVG value={qrValue} size={160} level="M" />
+        </div>
+        <button
+          type="button"
+          onClick={handleSaveQr}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          <Download size={16} /> {t('checkout.success.saveQr')}
+        </button>
+        <p className="max-w-xs text-xs text-gray-400">{t('checkout.success.qrHint')}</p>
       </div>
 
       <div className="bg-gray-50 rounded-xl p-4 text-left text-sm space-y-2">
@@ -788,9 +803,12 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
-          <Route path="checkin" element={<CheckInPage />} />
           <Route path="rooms" element={<RoomMapPage />} />
           <Route path="rooms/:roomId" element={<AdminRoomDetailPage />} />
+          <Route
+            path="rooms/:roomId/checkout/:bookingId"
+            element={<AdminCheckoutPage />}
+          />
           <Route
             path="room-types"
             element={

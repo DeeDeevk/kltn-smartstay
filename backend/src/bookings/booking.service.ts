@@ -16,6 +16,7 @@ import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
 import { AddServiceDto } from './dto/add-service.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { Room } from 'src/rooms/entities/room.entity';
@@ -34,6 +35,8 @@ const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
 // tính trên dịch vụ đi kèm (đồ ăn, giặt ủi... đã có mức thuế/giá riêng).
 const VAT_RATE = 0.08;
+// Giờ trả phòng tiêu chuẩn: quá 12h trưa ngày check-out thì tính thêm đêm lưu trú.
+const CHECKOUT_DEADLINE_HOUR = 12;
 
 interface Requester {
   userId: string;
@@ -249,8 +252,48 @@ export class BookingService {
     if (query.status) {
       qb.andWhere('booking.status = :status', { status: query.status });
     }
+    if (query.statuses?.trim()) {
+      const list = query.statuses
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is BookingStatus =>
+          (Object.values(BookingStatus) as string[]).includes(s),
+        );
+      if (list.length > 0) {
+        qb.andWhere('booking.status IN (:...statusList)', { statusList: list });
+      }
+    }
     if (query.roomId) {
       qb.andWhere('room.roomId = :roomId', { roomId: query.roomId });
+    }
+    if (query.assignableRoomId) {
+      const target = await this.roomRepo.findOne({
+        where: { roomId: query.assignableRoomId },
+      });
+      if (!target) {
+        throw new NotFoundException('Không tìm thấy phòng');
+      }
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('room.roomId = :assignRoomId', {
+            assignRoomId: query.assignableRoomId,
+          }).orWhere(
+            new Brackets((inner) => {
+              inner
+                .where('room.roomId IS NULL')
+                .andWhere('roomType.roomTypeId = :assignRoomTypeId', {
+                  assignRoomTypeId: target.roomType.roomTypeId,
+                })
+                .andWhere('booking.status IN (:...assignStatuses)', {
+                  assignStatuses: [
+                    BookingStatus.PENDING,
+                    BookingStatus.CONFIRMED,
+                  ],
+                });
+            }),
+          );
+        }),
+      );
     }
     if (query.checkIn) {
       qb.andWhere('booking.checkInDate >= :checkIn', {
@@ -357,13 +400,14 @@ export class BookingService {
       booking.paymentStatus !== PaymentStatus.PAID
     ) {
       booking.paymentStatus = PaymentStatus.PAID;
+      booking.paidAmount = this.toDetailResponse(booking).totalAmount;
     }
     await this.bookingRepo.save(booking);
 
     return this.toDetailResponse(booking);
   }
 
-  async checkOut(bookingId: string) {
+  async checkOut(bookingId: string, dto: CheckOutDto = {}) {
     const booking = await this.findByIdRaw(bookingId);
     if (booking.status !== BookingStatus.CHECKED_IN) {
       throw new BadRequestException(
@@ -371,23 +415,65 @@ export class BookingService {
       );
     }
 
+    // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
+    if (dto.extraServices?.length) {
+      const ids = dto.extraServices.map((item) => item.serviceId);
+      const services = await this.serviceService.findActiveByIds(ids);
+      const byId = new Map(services.map((s) => [s.serviceId, s]));
+      if (services.length !== new Set(ids).size) {
+        throw new BadRequestException(
+          'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+        );
+      }
+      await this.bookingServiceItemRepo.save(
+        dto.extraServices.map((item) =>
+          this.bookingServiceItemRepo.create({
+            booking,
+            service: byId.get(item.serviceId),
+            quantity: item.quantity,
+            unitPrice: byId.get(item.serviceId)!.price,
+          }),
+        ),
+      );
+    }
+
+    // Chốt phụ thu trả phòng muộn tại thời điểm này.
+    const late = this.computeLateCheckout(booking);
+    booking.lateNights = late.nights;
+    booking.lateCheckoutFee = late.fee;
     booking.status = BookingStatus.CHECKED_OUT;
     await this.bookingRepo.save(booking);
+
+    // Tính lại hoá đơn sau khi đã thêm dịch vụ + phụ thu.
+    const detail = this.toDetailResponse(await this.findByIdRaw(bookingId));
+
+    if (dto.markPaid) {
+      booking.paymentStatus = PaymentStatus.PAID;
+      booking.paidAmount = detail.totalAmount;
+      if (dto.paymentMethod) {
+        booking.paymentMethod = dto.paymentMethod;
+      }
+      await this.bookingRepo.save(booking);
+    }
 
     if (booking.room) {
       booking.room.status = RoomStatus.CLEANING;
       await this.roomRepo.save(booking.room);
     }
 
-    const detail = this.toDetailResponse(booking);
+    const finalDetail = this.toDetailResponse(await this.findByIdRaw(bookingId));
     return {
-      booking: detail,
+      booking: finalDetail,
       finalInvoice: {
         roomAmount: booking.roomAmount,
-        serviceAmount: detail.serviceAmount,
+        lateNights: late.nights,
+        lateCheckoutFee: late.fee,
+        serviceAmount: finalDetail.serviceAmount,
         discountAmount: booking.discountAmount,
-        vatAmount: detail.vatAmount,
-        totalAmount: detail.totalAmount,
+        vatAmount: finalDetail.vatAmount,
+        totalAmount: finalDetail.totalAmount,
+        paidAmount: finalDetail.paidAmount,
+        dueAmount: finalDetail.dueAmount,
       },
     };
   }
@@ -446,6 +532,7 @@ export class BookingService {
     if (booking.paymentStatus === PaymentStatus.PAID) return booking;
 
     booking.paymentStatus = PaymentStatus.PAID;
+    booking.paidAmount = this.toDetailResponse(booking).totalAmount;
     if (booking.status === BookingStatus.PENDING) {
       booking.status = BookingStatus.CONFIRMED;
     }
@@ -482,11 +569,79 @@ export class BookingService {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    // Thuế GTGT 8% tính trên tiền phòng sau khuyến mãi (không áp dụng cho dịch vụ đi kèm).
-    const netRoomAmount = booking.roomAmount - booking.discountAmount;
+    // Thuế GTGT 8% tính trên tiền phòng (gồm phụ thu trả muộn) sau khuyến mãi,
+    // không áp dụng cho dịch vụ đi kèm.
+    const netRoomAmount =
+      booking.roomAmount + booking.lateCheckoutFee - booking.discountAmount;
     const vatAmount = Math.round(netRoomAmount * VAT_RATE);
     const totalAmount = netRoomAmount + serviceAmount + vatAmount;
-    return { ...booking, serviceAmount, vatAmount, totalAmount };
+    const dueAmount = Math.max(0, totalAmount - booking.paidAmount);
+    return {
+      ...booking,
+      serviceAmount,
+      vatAmount,
+      totalAmount,
+      dueAmount,
+    };
+  }
+
+  // Tính phụ thu trả phòng muộn: mốc chuẩn là 12h trưa ngày check-out, quá giờ đó
+  // mỗi 24h tính thêm 1 đêm theo đơn giá loại phòng.
+  private computeLateCheckout(booking: Booking): {
+    isLate: boolean;
+    deadline: string;
+    nights: number;
+    fee: number;
+  } {
+    const deadline = new Date(`${booking.checkOutDate}T00:00:00`);
+    deadline.setHours(CHECKOUT_DEADLINE_HOUR, 0, 0, 0);
+    const now = new Date();
+    if (now <= deadline) {
+      return { isLate: false, deadline: deadline.toISOString(), nights: 0, fee: 0 };
+    }
+    const nights = Math.ceil(
+      (now.getTime() - deadline.getTime()) / (24 * 60 * 60 * 1000),
+    );
+    return {
+      isLate: true,
+      deadline: deadline.toISOString(),
+      nights,
+      fee: nights * booking.roomType.basePrice,
+    };
+  }
+
+  // Xem trước hoá đơn trả phòng (chưa ghi vào DB) để lễ tân đối chiếu trước khi
+  // bấm hoàn tất: gồm phụ thu trả muộn hiện tại + các dịch vụ đã ghi nhận.
+  async getCheckoutPreview(bookingId: string) {
+    const booking = await this.findByIdRaw(bookingId);
+    if (booking.status !== BookingStatus.CHECKED_IN) {
+      throw new BadRequestException('Đơn không ở trạng thái đang lưu trú');
+    }
+    const late = this.computeLateCheckout(booking);
+
+    const serviceAmount = booking.serviceItems.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    );
+    const netRoomAmount =
+      booking.roomAmount + late.fee - booking.discountAmount;
+    const vatAmount = Math.round(netRoomAmount * VAT_RATE);
+    const totalAmount = netRoomAmount + serviceAmount + vatAmount;
+
+    return {
+      booking: this.toDetailResponse(booking),
+      lateCheckout: late,
+      invoice: {
+        roomAmount: booking.roomAmount,
+        lateCheckoutFee: late.fee,
+        discountAmount: booking.discountAmount,
+        serviceAmount,
+        vatAmount,
+        totalAmount,
+        paidAmount: booking.paidAmount,
+        dueAmount: Math.max(0, totalAmount - booking.paidAmount),
+      },
+    };
   }
 
   private async findByIdRaw(bookingId: string): Promise<Booking> {

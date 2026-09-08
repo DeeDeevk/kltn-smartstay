@@ -18,8 +18,8 @@ import {
   useUpdateRoomStatusMutation,
 } from '../../../services/adminRoom';
 import { useGetBookingsQuery } from '../../../services/booking';
-import BookingDetailModal from '../../booking/BookingDetailModal';
 import StatusPill from '../../booking/StatusPill';
+import RoomBookingDetailModal from './RoomBookingDetailModal';
 import WalkInBookingModal from './WalkInBookingModal';
 import { BOOKING_STATUS_STYLES } from '../../../utils/bookingStatusStyles';
 import { ROOM_STATUS_META } from '../../../utils/roomStatusStyles';
@@ -36,9 +36,9 @@ const BOOKING_STATUS_LABELS = {
 };
 
 const TABS = [
-  { key: 'all', label: 'Tất cả', status: undefined },
+  { key: 'all', label: 'Tất cả' },
   { key: 'staying', label: 'Đang ở', status: 'CHECKED_IN' },
-  { key: 'booked', label: 'Lịch đặt', status: 'CONFIRMED' },
+  { key: 'booked', label: 'Lịch đặt', statuses: 'PENDING,CONFIRMED' },
   { key: 'left', label: 'Đã trả', status: 'CHECKED_OUT' },
 ];
 
@@ -47,7 +47,11 @@ const PAGE_SIZE = 8;
 
 export default function AdminRoomDetailPage() {
   const { roomId } = useParams();
-  const { data: room, isLoading: roomLoading } = useGetRoomQuery(roomId);
+  const {
+    data: room,
+    isLoading: roomLoading,
+    refetch: refetchRoom,
+  } = useGetRoomQuery(roomId);
 
   const [tab, setTab] = useState('all');
   const [draft, setDraft] = useState(EMPTY_SEARCH);
@@ -56,11 +60,12 @@ export default function AdminRoomDetailPage() {
   const [detailBooking, setDetailBooking] = useState(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
 
-  const activeStatus = TABS.find((t) => t.key === tab)?.status;
+  const activeTab = TABS.find((t) => t.key === tab);
 
   const { data, isFetching } = useGetBookingsQuery({
-    roomId,
-    status: activeStatus,
+    assignableRoomId: roomId,
+    status: activeTab?.status,
+    statuses: activeTab?.statuses,
     search: applied.keyword || undefined,
     checkIn: applied.checkIn || undefined,
     checkOut: applied.checkOut || undefined,
@@ -177,8 +182,10 @@ export default function AdminRoomDetailPage() {
         </section>
       </div>
 
-      <BookingDetailModal
+      <RoomBookingDetailModal
         booking={detailBooking}
+        roomId={roomId}
+        onChanged={refetchRoom}
         onClose={() => setDetailBooking(null)}
       />
       {room && (

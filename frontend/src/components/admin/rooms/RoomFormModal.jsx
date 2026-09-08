@@ -27,7 +27,6 @@ export default function RoomFormModal({ open, onClose, roomTypes = [] }) {
   const validate = () => {
     const nextErrors = {};
     if (!formData.roomTypeId) nextErrors.roomTypeId = t('admin.rooms.roomTypeRequired');
-    if (!formData.roomNumber.trim()) nextErrors.roomNumber = t('admin.rooms.roomNumberRequired');
     if (formData.floor === '' || Number(formData.floor) < 0) nextErrors.floor = t('admin.rooms.floorInvalid');
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -37,14 +36,19 @@ export default function RoomFormModal({ open, onClose, roomTypes = [] }) {
     e.preventDefault();
     if (!validate()) return;
 
+    // Bỏ trống số phòng -> backend tự đặt theo quy ước T{tầng}{số}.
     const roomNumber = formData.roomNumber.trim();
     try {
-      await createRoom({
+      const created = await createRoom({
         roomTypeId: formData.roomTypeId,
-        roomNumber,
         floor: Number(formData.floor),
+        ...(roomNumber ? { roomNumber } : {}),
       }).unwrap();
-      toast.success(t('admin.rooms.createSuccess', { roomNumber }));
+      toast.success(
+        t('admin.rooms.createSuccess', {
+          roomNumber: created?.roomNumber || roomNumber,
+        }),
+      );
       onClose();
     } catch (err) {
       // 409 = trùng số phòng — hiển thị lý do cụ thể thay vì lỗi generic.
@@ -113,11 +117,11 @@ export default function RoomFormModal({ open, onClose, roomTypes = [] }) {
             value={formData.roomNumber}
             onChange={handleChange('roomNumber')}
             placeholder={t('admin.rooms.roomNumberPlaceholder')}
-            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.roomNumber ? 'border-red-300' : 'border-gray-200'
-            }`}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          {errors.roomNumber && <p className="mt-1 text-xs text-red-500">{errors.roomNumber}</p>}
+          <p className="mt-1 text-xs text-gray-400">
+            {t('admin.rooms.roomNumberHint')}
+          </p>
         </div>
 
         <div>

@@ -16,6 +16,7 @@ import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
 import { AddServiceDto } from './dto/add-service.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -60,6 +61,14 @@ export class BookingController {
     return this.bookingService.findMyBookings(req.user.userId, query);
   }
 
+  // Xem trước hoá đơn trả phòng (phụ thu trả muộn + dịch vụ đã ghi nhận) trước khi chốt.
+  @Get(':id/checkout-preview')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  checkoutPreview(@Param('id') id: string) {
+    return this.bookingService.getCheckoutPreview(id);
+  }
+
   @Get(':id')
   findOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.bookingService.findById(id, req.user);
@@ -82,8 +91,8 @@ export class BookingController {
   @Post(':id/check-out')
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
-  checkOut(@Param('id') id: string) {
-    return this.bookingService.checkOut(id);
+  checkOut(@Param('id') id: string, @Body() dto: CheckOutDto) {
+    return this.bookingService.checkOut(id, dto);
   }
 
   @Post(':id/services')
