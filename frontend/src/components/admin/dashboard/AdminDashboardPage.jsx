@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Users,
   CalendarRange,
@@ -10,7 +10,6 @@ import {
   Loader2,
   ArrowRight,
   AlertCircle,
-  QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useAdminOverviewStats from './useAdminOverviewStats';
@@ -23,9 +22,10 @@ const BOOKING_STATUS_META = {
   CANCELLED: { label: 'Đã huỷ', dot: 'bg-red-500' },
 };
 
+// Nhãn/màu khớp với chú giải ở Sơ đồ phòng (utils/roomStatusStyles) cho thống nhất.
 const ROOM_STATUS_META = {
   AVAILABLE: { label: 'Trống', dot: 'bg-emerald-500' },
-  OCCUPIED: { label: 'Đang sử dụng', dot: 'bg-blue-500' },
+  OCCUPIED: { label: 'Đang ở', dot: 'bg-blue-500' },
   RESERVED: { label: 'Đã giữ chỗ', dot: 'bg-violet-500' },
   CLEANING: { label: 'Đang dọn dẹp', dot: 'bg-amber-400' },
   MAINTENANCE: { label: 'Bảo trì', dot: 'bg-red-500' },
@@ -39,10 +39,10 @@ const ROLE_META = {
 
 const QUICK_LINKS = [
   {
-    label: 'Check-in / Check-out',
-    description: 'Quét QR vé đặt phòng để nhận khách hoặc trả phòng',
-    path: '/admin/checkin',
-    icon: QrCode,
+    label: 'Sơ đồ phòng & Check-in',
+    description: 'Trạng thái từng phòng theo tầng, nhận / trả phòng, quét QR vé',
+    path: '/admin/rooms',
+    icon: BedDouble,
     ready: true,
     roles: ['ADMIN', 'STAFF'],
   },
@@ -61,14 +61,6 @@ const QUICK_LINKS = [
     icon: Users,
     ready: true,
     roles: ['ADMIN'],
-  },
-  {
-    label: 'Sơ đồ phòng',
-    description: 'Xem trạng thái từng phòng theo tầng, đổi trạng thái và xem lịch sử',
-    path: '/admin/rooms',
-    icon: BedDouble,
-    ready: true,
-    roles: ['ADMIN', 'STAFF'],
   },
   {
     label: 'Đặt phòng',
@@ -152,6 +144,15 @@ function DistributionCard({ title, total, segments, loading }) {
 }
 
 export default function AdminDashboardPage() {
+  const { user } = useAuth();
+  // Nhân viên không có trang Tổng quan — vào /admin thì đưa thẳng về Sơ đồ phòng.
+  if (user?.role === 'STAFF') {
+    return <Navigate to="/admin/rooms" replace />;
+  }
+  return <AdminOverview />;
+}
+
+function AdminOverview() {
   const { user } = useAuth();
   const { stats, loading, error, reload } = useAdminOverviewStats();
 

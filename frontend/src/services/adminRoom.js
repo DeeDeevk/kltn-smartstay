@@ -14,11 +14,24 @@ export const adminRoomApi = createApi({
       invalidatesTags: [{ type: 'AdminRoom', id: 'LIST' }],
     }),
     // Toàn bộ phòng vật lý (mọi tầng) — dùng cho Sơ đồ phòng và lọc phòng trống lúc check-in.
+    // Nhận { roomTypeId, checkIn, checkOut }: khi có đủ checkIn/checkOut, mỗi phòng trả về
+    // kèm rangeStatus ('AVAILABLE' | 'BOOKED') + rangeGuestName theo lịch đặt trong khoảng.
     getRoomMap: builder.query({
-      query: () => ({ url: '/rooms/map', method: 'get' }),
+      query: (params = {}) => {
+        const clean = Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== '' && v != null),
+        );
+        return { url: '/rooms/map', method: 'get', params: clean };
+      },
       providesTags: (result) => [
         { type: 'AdminRoom', id: 'LIST' },
         ...(result ?? []).map((r) => ({ type: 'AdminRoom', id: r.roomId })),
+      ],
+    }),
+    getRoom: builder.query({
+      query: (roomId) => ({ url: `/rooms/${roomId}`, method: 'get' }),
+      providesTags: (result, error, roomId) => [
+        { type: 'AdminRoom', id: roomId },
       ],
     }),
     updateRoomStatus: builder.mutation({
@@ -32,4 +45,9 @@ export const adminRoomApi = createApi({
   }),
 });
 
-export const { useCreateRoomMutation, useGetRoomMapQuery, useUpdateRoomStatusMutation } = adminRoomApi;
+export const {
+  useCreateRoomMutation,
+  useGetRoomMapQuery,
+  useGetRoomQuery,
+  useUpdateRoomStatusMutation,
+} = adminRoomApi;

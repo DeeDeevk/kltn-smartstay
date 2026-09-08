@@ -15,7 +15,13 @@ const ROOM_TYPES: Array<
       'Lựa chọn tiết kiệm và thoải mái nhất, phù hợp cho khách đi công tác hoặc nghỉ ngắn ngày. Giường Queen êm ái, không gian gọn gàng, đầy đủ tiện nghi cơ bản.',
     basePrice: 1200000,
     capacity: 2,
-    amenities: ['Giường Queen', 'Diện tích 22m²', 'Wifi miễn phí', 'Điều hòa', 'TV màn hình phẳng'],
+    amenities: [
+      'Giường Queen',
+      'Diện tích 22m²',
+      'Wifi miễn phí',
+      'Điều hòa',
+      'TV màn hình phẳng',
+    ],
     images: [
       'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?q=80&w=1600&auto=format&fit=crop',
     ],

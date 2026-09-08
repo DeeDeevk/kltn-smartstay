@@ -12,9 +12,11 @@ import {
 import type { Request } from 'express';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
 import { AddServiceDto } from './dto/add-service.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -36,6 +38,17 @@ export class BookingController {
     return this.bookingService.create(req.user.userId, dto);
   }
 
+  // Lễ tân/Admin đặt phòng hộ khách vãng lai cho 1 phòng cụ thể (từ Sơ đồ phòng).
+  @Post('walk-in')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  createWalkIn(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateWalkInBookingDto,
+  ) {
+    return this.bookingService.createWalkIn(req.user.userId, dto);
+  }
+
   @Get()
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
@@ -46,6 +59,14 @@ export class BookingController {
   @Get('my')
   findMy(@Req() req: AuthenticatedRequest, @Query() query: QueryMyBookingDto) {
     return this.bookingService.findMyBookings(req.user.userId, query);
+  }
+
+  // Xem trước hoá đơn trả phòng (phụ thu trả muộn + dịch vụ đã ghi nhận) trước khi chốt.
+  @Get(':id/checkout-preview')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  checkoutPreview(@Param('id') id: string) {
+    return this.bookingService.getCheckoutPreview(id);
   }
 
   @Get(':id')
@@ -70,8 +91,8 @@ export class BookingController {
   @Post(':id/check-out')
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
-  checkOut(@Param('id') id: string) {
-    return this.bookingService.checkOut(id);
+  checkOut(@Param('id') id: string, @Body() dto: CheckOutDto) {
+    return this.bookingService.checkOut(id, dto);
   }
 
   @Post(':id/services')

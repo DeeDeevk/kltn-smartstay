@@ -398,10 +398,7 @@ export class AuthService {
   }
 
   async logout(token: string) {
-    const decoded = this.jwtService.decode(token) as {
-      jti?: string;
-      exp?: number;
-    } | null;
+    const decoded = this.jwtService.decode(token);
 
     if (!decoded?.jti || !decoded?.exp) {
       throw new UnauthorizedException('Token không hợp lệ');
@@ -434,9 +431,7 @@ export class AuthService {
       expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES'),
     } as any);
 
-    const decodedRefresh = this.jwtService.decode(refreshToken) as {
-      exp: number;
-    };
+    const decodedRefresh = this.jwtService.decode(refreshToken);
     const refreshTtl = decodedRefresh.exp - Math.floor(Date.now() / 1000);
     await this.redisClient.set(`refresh:${jti}`, userId, 'EX', refreshTtl);
 

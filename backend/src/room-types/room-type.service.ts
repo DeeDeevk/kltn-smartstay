@@ -77,7 +77,9 @@ export class RoomTypeService {
       .groupBy('room.roomTypeId')
       .getRawMany<{ roomTypeId: string; count: string }>();
 
-    const countMap = new Map(counts.map((c) => [c.roomTypeId, Number(c.count)]));
+    const countMap = new Map(
+      counts.map((c) => [c.roomTypeId, Number(c.count)]),
+    );
     return roomTypes.map((rt) => ({
       ...rt,
       roomCount: countMap.get(rt.roomTypeId) ?? 0,

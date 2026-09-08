@@ -5,20 +5,36 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
+import { Booking } from 'src/bookings/entities/booking.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomStatusDto } from './dto/update-room-status.dto';
 import { QueryAvailabilityDto } from './dto/query-availability.dto';
 import { QueryRoomMapDto } from './dto/query-room-map.dto';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
+import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { RoomTypeService } from 'src/room-types/room-type.service';
+
+// Trạng thái booking được coi là "đang giữ" 1 phòng vật lý trong khoảng ngày.
+const ACTIVE_BOOKING_STATUSES = [
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+  BookingStatus.CHECKED_IN,
+];
+
+export type RoomMapItem = Room & {
+  rangeStatus?: 'AVAILABLE' | 'BOOKED';
+  rangeGuestName?: string | null;
+};
 
 @Injectable()
 export class RoomService {
   constructor(
     @InjectRepository(Room)
     private readonly roomRepo: Repository<Room>,
+    @InjectRepository(Booking)
+    private readonly bookingRepo: Repository<Booking>,
     private readonly roomTypeService: RoomTypeService,
   ) {}
 
@@ -69,10 +85,59 @@ export class RoomService {
     );
   }
 
-  async getRoomMap(query: QueryRoomMapDto): Promise<Room[]> {
-    return this.roomRepo.find({
-      where: query.floorId !== undefined ? { floor: query.floorId } : undefined,
-      order: { roomNumber: 'ASC' },
+  async getRoomMap(query: QueryRoomMapDto): Promise<RoomMapItem[]> {
+    const qb = this.roomRepo
+      .createQueryBuilder('room')
+      .innerJoinAndSelect('room.roomType', 'roomType')
+      .orderBy('room.roomNumber', 'ASC');
+
+    if (query.floorId !== undefined) {
+      qb.andWhere('room.floor = :floorId', { floorId: query.floorId });
+    }
+    if (query.roomTypeId) {
+      qb.andWhere('roomType.roomTypeId = :roomTypeId', {
+        roomTypeId: query.roomTypeId,
+      });
+    }
+
+    const rooms = (await qb.getMany()) as RoomMapItem[];
+
+    // Không lọc theo ngày -> trả nguyên trạng thái phòng.
+    if (!query.checkIn || !query.checkOut) {
+      return rooms;
+    }
+
+    if (new Date(query.checkIn) >= new Date(query.checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    // Các booking đã gán phòng cụ thể và có khoảng ngày giao với [checkIn, checkOut).
+    const overlapping = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .innerJoinAndSelect('booking.room', 'room')
+      .where('booking.status IN (:...statuses)', {
+        statuses: ACTIVE_BOOKING_STATUSES,
+      })
+      .andWhere('booking.checkInDate < :checkOut', { checkOut: query.checkOut })
+      .andWhere('booking.checkOutDate > :checkIn', { checkIn: query.checkIn })
+      .getMany();
+
+    const bookedRoomIds = new Map<string, string | null>();
+    for (const booking of overlapping) {
+      if (booking.room) {
+        bookedRoomIds.set(
+          booking.room.roomId,
+          booking.guestInfo?.fullName ?? null,
+        );
+      }
+    }
+
+    return rooms.map((room) => {
+      const isBooked = bookedRoomIds.has(room.roomId);
+      return Object.assign(room, {
+        rangeStatus: isBooked ? 'BOOKED' : 'AVAILABLE',
+        rangeGuestName: isBooked ? bookedRoomIds.get(room.roomId) : null,
+      } as Pick<RoomMapItem, 'rangeStatus' | 'rangeGuestName'>);
     });
   }
 
@@ -89,19 +154,48 @@ export class RoomService {
       dto.roomTypeId,
     );
 
+    // Không nhập số phòng -> tự đặt theo quy ước T{tầng}{số thứ tự}, vd T101, T205.
+    const roomNumber =
+      dto.roomNumber?.trim() || (await this.nextRoomNumber(dto.floor));
+
     const existed = await this.roomRepo.findOne({
-      where: { roomNumber: dto.roomNumber },
+      where: { roomNumber },
     });
     if (existed) {
       throw new ConflictException('Số phòng đã tồn tại');
     }
 
     const room = this.roomRepo.create({
-      roomNumber: dto.roomNumber,
+      roomNumber,
       floor: dto.floor,
       roomType,
     });
-    return this.roomRepo.save(room);
+    try {
+      return await this.roomRepo.save(room);
+    } catch (err) {
+      // Giữa lúc check `existed` ở trên và save() thật, 1 request khác (VD 2 admin cùng
+      // bấm tạo phòng, hoặc số phòng tự sinh trùng nhau) có thể đã chiếm đúng roomNumber
+      // này — ràng buộc UNIQUE ở DB là chốt chặn cuối, dịch lỗi 23505 (Postgres unique
+      // violation) thành 409 thân thiện thay vì để lọt ra 500 chưa được xử lý.
+      if (
+        err instanceof QueryFailedError &&
+        (err as unknown as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException('Số phòng đã tồn tại');
+      }
+      throw err;
+    }
+  }
+
+  // Số phòng trống kế tiếp trên 1 tầng theo quy ước T{tầng}{NN}.
+  private async nextRoomNumber(floor: number): Promise<string> {
+    const floorRooms = await this.roomRepo.find({ where: { floor } });
+    const used = new Set(floorRooms.map((r) => r.roomNumber));
+    for (let seq = 1; seq < 1000; seq += 1) {
+      const candidate = `T${floor}${String(seq).padStart(2, '0')}`;
+      if (!used.has(candidate)) return candidate;
+    }
+    throw new ConflictException('Tầng đã đầy, không thể tự sinh số phòng mới');
   }
 
   async updateStatus(roomId: string, dto: UpdateRoomStatusDto): Promise<Room> {
