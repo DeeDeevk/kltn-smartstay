@@ -7,11 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { Booking } from './entities/booking.entity';
 import { BookingServiceItem } from './entities/booking-service-item.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
@@ -152,6 +153,94 @@ export class BookingService {
     }
   }
 
+  // Lễ tân tạo đơn cho khách vãng lai ngay tại quầy, gắn thẳng 1 phòng vật lý.
+  // Đơn được tạo ở trạng thái CONFIRMED (đã xác nhận, chờ check-in). Người đăng nhập
+  // (staff) được lưu vào booking.user vì khách vãng lai không có tài khoản.
+  async createWalkIn(staffUserId: string, dto: CreateWalkInBookingDto) {
+    if (new Date(dto.checkIn) >= new Date(dto.checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const room = await this.roomRepo.findOne({ where: { roomId: dto.roomId } });
+    if (!room) {
+      throw new NotFoundException('Không tìm thấy phòng');
+    }
+    if (room.status === RoomStatus.MAINTENANCE) {
+      throw new BadRequestException('Phòng đang bảo trì, không thể nhận khách');
+    }
+
+    const staff = await this.userService.findById(staffUserId);
+    const stayDates = this.getStayDates(dto.checkIn, dto.checkOut);
+    const lockKeys = await this.acquireLocks(`room:${dto.roomId}`, stayDates);
+    try {
+      const overlapping = await this.bookingRepo
+        .createQueryBuilder('booking')
+        .innerJoin('booking.room', 'bookedRoom')
+        .where('bookedRoom.roomId = :roomId', { roomId: dto.roomId })
+        .andWhere('booking.status IN (:...statuses)', {
+          statuses: [
+            BookingStatus.PENDING,
+            BookingStatus.CONFIRMED,
+            BookingStatus.CHECKED_IN,
+          ],
+        })
+        .andWhere('booking.checkInDate < :checkOut', { checkOut: dto.checkOut })
+        .andWhere('booking.checkOutDate > :checkIn', { checkIn: dto.checkIn })
+        .getCount();
+      if (overlapping > 0) {
+        throw new ConflictException(
+          'Phòng đã có lịch đặt giao với khoảng ngày này',
+        );
+      }
+
+      const extraServices = dto.extraServiceIds?.length
+        ? await this.serviceService.findActiveByIds(dto.extraServiceIds)
+        : [];
+      if (extraServices.length !== (dto.extraServiceIds?.length ?? 0)) {
+        throw new BadRequestException(
+          'Một số dịch vụ đi kèm không tồn tại hoặc đã ngưng cung cấp',
+        );
+      }
+
+      const nights = stayDates.length;
+      const roomAmount = room.roomType.basePrice * nights;
+
+      const booking = this.bookingRepo.create({
+        user: staff,
+        roomType: room.roomType,
+        room,
+        checkInDate: dto.checkIn,
+        checkOutDate: dto.checkOut,
+        guestInfo: dto.guestInfo,
+        promotion: null,
+        discountAmount: 0,
+        roomAmount,
+        status: BookingStatus.CONFIRMED,
+        paymentMethod: dto.paymentMethod ?? PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.UNPAID,
+        payosOrderCode: null,
+      } as Partial<Booking>);
+      const saved = await this.bookingRepo.save(booking);
+
+      if (extraServices.length > 0) {
+        await this.bookingServiceItemRepo.save(
+          extraServices.map((service) =>
+            this.bookingServiceItemRepo.create({
+              booking: saved,
+              service,
+              quantity: 1,
+              unitPrice: service.price,
+            }),
+          ),
+        );
+      }
+
+      return this.toDetailResponse(await this.findByIdRaw(saved.bookingId));
+    } finally {
+      await this.releaseLocks(lockKeys);
+    }
+  }
+
   async findAll(query: QueryBookingDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -172,6 +261,24 @@ export class BookingService {
       qb.andWhere('booking.checkOutDate <= :checkOut', {
         checkOut: query.checkOut,
       });
+    }
+    if (query.search?.trim()) {
+      // Mã đơn hiển thị = 8 ký tự đầu UUID (viết hoa) -> so khớp prefix, bỏ tiền tố "BK-".
+      const raw = query.search.trim();
+      const codePrefix = raw.replace(/^bk-/i, '').toLowerCase();
+      qb.andWhere(
+        new Brackets((w) => {
+          w.where('CAST(booking.bookingId AS TEXT) ILIKE :codePrefix', {
+            codePrefix: `${codePrefix}%`,
+          })
+            .orWhere("booking.guestInfo->>'fullName' ILIKE :kw", {
+              kw: `%${raw}%`,
+            })
+            .orWhere("booking.guestInfo->>'email' ILIKE :kw", {
+              kw: `%${raw}%`,
+            });
+        }),
+      );
     }
 
     const [data, total] = await qb
@@ -436,12 +543,12 @@ export class BookingService {
   // Redis Distributed Lock (SETNX theo roomTypeId+ngày) — chống nhiều request
   // cùng đặt trùng loại phòng/ngày khi có nhiều khách thao tác đồng thời
   private async acquireLocks(
-    roomTypeId: string,
+    scope: string,
     dates: string[],
   ): Promise<string[]> {
     const acquired: string[] = [];
     for (const date of dates) {
-      const key = `lock:booking:${roomTypeId}:${date}`;
+      const key = `lock:booking:${scope}:${date}`;
       const result = await this.redisClient.set(
         key,
         '1',

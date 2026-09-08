@@ -10,6 +10,11 @@ export const bookingApi = createApi({
       query: (data) => ({ url: '/bookings', method: 'post', data }),
       invalidatesTags: [{ type: 'Booking', id: 'MY_LIST' }],
     }),
+    // Lễ tân/Admin đặt phòng hộ khách vãng lai cho 1 phòng cụ thể (từ trang Sơ đồ phòng).
+    createWalkInBooking: builder.mutation({
+      query: (data) => ({ url: '/bookings/walk-in', method: 'post', data }),
+      invalidatesTags: [{ type: 'Booking', id: 'STAFF_LIST' }],
+    }),
     getMyBookings: builder.query({
       query: (params) => ({ url: '/bookings/my', method: 'get', params }),
       providesTags: [{ type: 'Booking', id: 'MY_LIST' }],
@@ -78,6 +83,7 @@ export const bookingApi = createApi({
 
 export const {
   useCreateBookingMutation,
+  useCreateWalkInBookingMutation,
   useGetMyBookingsQuery,
   useGetBookingsQuery,
   useGetBookingByIdQuery,

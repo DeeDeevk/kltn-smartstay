@@ -30,6 +30,7 @@ import UserManagementPage from '../components/admin/users/UserManagementPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import CheckInPage from '../components/admin/checkin/CheckInPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
+import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
@@ -789,6 +790,7 @@ export default function AppRoutes() {
           <Route index element={<AdminDashboardPage />} />
           <Route path="checkin" element={<CheckInPage />} />
           <Route path="rooms" element={<RoomMapPage />} />
+          <Route path="rooms/:roomId" element={<AdminRoomDetailPage />} />
           <Route
             path="room-types"
             element={

@@ -12,6 +12,7 @@ import {
 import type { Request } from 'express';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
@@ -34,6 +35,17 @@ export class BookingController {
   @Post()
   create(@Req() req: AuthenticatedRequest, @Body() dto: CreateBookingDto) {
     return this.bookingService.create(req.user.userId, dto);
+  }
+
+  // Lễ tân/Admin đặt phòng hộ khách vãng lai cho 1 phòng cụ thể (từ Sơ đồ phòng).
+  @Post('walk-in')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  createWalkIn(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateWalkInBookingDto,
+  ) {
+    return this.bookingService.createWalkIn(req.user.userId, dto);
   }
 
   @Get()

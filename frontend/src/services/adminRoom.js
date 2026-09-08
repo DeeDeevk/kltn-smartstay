@@ -28,6 +28,12 @@ export const adminRoomApi = createApi({
         ...(result ?? []).map((r) => ({ type: 'AdminRoom', id: r.roomId })),
       ],
     }),
+    getRoom: builder.query({
+      query: (roomId) => ({ url: `/rooms/${roomId}`, method: 'get' }),
+      providesTags: (result, error, roomId) => [
+        { type: 'AdminRoom', id: roomId },
+      ],
+    }),
     updateRoomStatus: builder.mutation({
       query: ({ roomId, status }) => ({
         url: `/rooms/${roomId}/status`,
@@ -39,4 +45,9 @@ export const adminRoomApi = createApi({
   }),
 });
 
-export const { useCreateRoomMutation, useGetRoomMapQuery, useUpdateRoomStatusMutation } = adminRoomApi;
+export const {
+  useCreateRoomMutation,
+  useGetRoomMapQuery,
+  useGetRoomQuery,
+  useUpdateRoomStatusMutation,
+} = adminRoomApi;
