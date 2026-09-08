@@ -116,9 +116,7 @@ export class BookingService {
 
       const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
       const payosOrderCode =
-        paymentMethod === PaymentMethod.PAYOS
-          ? String(Date.now())
-          : null;
+        paymentMethod === PaymentMethod.PAYOS ? String(Date.now()) : null;
 
       const booking = this.bookingRepo.create({
         user,
@@ -227,6 +225,14 @@ export class BookingService {
         payosOrderCode: null,
       } as Partial<Booking>);
       const saved = await this.bookingRepo.save(booking);
+
+      // Phòng đã được giữ cho khách vãng lai -> đánh dấu "Đã giữ chỗ" để sơ đồ phòng
+      // phản ánh đúng, tránh lễ tân khác đặt trùng. Chuyển AVAILABLE khi huỷ / OCCUPIED
+      // khi check-in.
+      if (room.status === RoomStatus.AVAILABLE) {
+        room.status = RoomStatus.RESERVED;
+        await this.roomRepo.save(room);
+      }
 
       if (extraServices.length > 0) {
         await this.bookingServiceItemRepo.save(
@@ -348,6 +354,15 @@ export class BookingService {
     return this.toDetailResponse(booking);
   }
 
+  // Cấp 1 mã orderCode PayOS mới cho booking (ghi đè mã cũ) — dùng khi lễ tân tạo
+  // link chuyển khoản thu phần còn lại lúc trả phòng, số tiền khác với lúc đặt.
+  async assignFreshPayosOrderCode(bookingId: string): Promise<string> {
+    const booking = await this.findByIdRaw(bookingId);
+    booking.payosOrderCode = String(Date.now());
+    await this.bookingRepo.save(booking);
+    return booking.payosOrderCode;
+  }
+
   async confirm(bookingId: string) {
     const booking = await this.findByIdRaw(bookingId);
     if (booking.status !== BookingStatus.PENDING) {
@@ -375,7 +390,11 @@ export class BookingService {
     if (room.roomType.roomTypeId !== booking.roomType.roomTypeId) {
       throw new BadRequestException('Phòng không thuộc loại phòng của đơn đặt');
     }
-    if (room.status !== RoomStatus.AVAILABLE) {
+    // RESERVED = phòng đã được giữ cho chính đơn này (walk-in) -> vẫn cho check-in.
+    if (
+      room.status !== RoomStatus.AVAILABLE &&
+      room.status !== RoomStatus.RESERVED
+    ) {
       throw new BadRequestException('Phòng không sẵn sàng');
     }
 
@@ -601,11 +620,21 @@ export class BookingService {
     // 7 tiếng nếu dùng giờ địa phương thay vì quy đổi rõ ràng sang giờ Việt Nam.
     const [year, month, day] = booking.checkOutDate.split('-').map(Number);
     const deadline = new Date(
-      Date.UTC(year, month - 1, day, CHECKOUT_DEADLINE_HOUR - VIETNAM_UTC_OFFSET_HOURS),
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        CHECKOUT_DEADLINE_HOUR - VIETNAM_UTC_OFFSET_HOURS,
+      ),
     );
     const now = new Date();
     if (now <= deadline) {
-      return { isLate: false, deadline: deadline.toISOString(), nights: 0, fee: 0 };
+      return {
+        isLate: false,
+        deadline: deadline.toISOString(),
+        nights: 0,
+        fee: 0,
+      };
     }
     const nights = Math.ceil(
       (now.getTime() - deadline.getTime()) / (24 * 60 * 60 * 1000),

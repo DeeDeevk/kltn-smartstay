@@ -26,17 +26,13 @@ import {
   useGetServicesQuery,
   useCheckOutMutation,
 } from '../../../services/booking';
+import {
+  useCreateCheckoutPayosLinkMutation,
+  useLazyCheckoutPayosStatusQuery,
+} from '../../../services/payment';
 
 // Mệnh giá tiền mặt VND đang lưu hành, dùng cho bảng đếm tiền khách đưa.
 const VND_DENOMS = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
-
-// Thông tin tài khoản nhận chuyển khoản của khách sạn (cấu hình cứng cho demo).
-const HOTEL_BANK = {
-  bankName: 'MB Bank',
-  bin: '970422',
-  accountNo: '9990001234567',
-  accountName: 'CONG TY TNHH VIKA HOTEL',
-};
 
 const BOOKING_STATUS_LABELS = {
   PENDING: 'Chờ xác nhận',
@@ -80,7 +76,6 @@ export default function AdminCheckoutPage() {
   const [selected, setSelected] = useState({}); // serviceId -> quantity
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [cashCounts, setCashCounts] = useState({}); // denom -> số tờ
-  const [transferShown, setTransferShown] = useState(false);
   const [transferConfirmed, setTransferConfirmed] = useState(false);
 
   const servicesById = useMemo(
@@ -149,8 +144,6 @@ export default function AdminCheckoutPage() {
     dueAmount <= 0 ||
     (paymentMethod === 'CASH' && cashReceived >= dueAmount) ||
     (paymentMethod === 'PAYOS' && transferConfirmed);
-
-  const transferQrValue = `Chuyen khoan VIKA HOTEL | STK ${HOTEL_BANK.accountNo} (${HOTEL_BANK.bankName}) | So tien ${dueAmount} | ND VIKA ${getBookingCode(booking.bookingId)}`;
 
   const setCash = (denom, count) =>
     setCashCounts((prev) => ({ ...prev, [denom]: Math.max(0, count || 0) }));
@@ -421,12 +414,9 @@ export default function AdminCheckoutPage() {
                   />
                 ) : (
                   <TransferPanel
-                    shown={transferShown}
-                    confirmed={transferConfirmed}
-                    qrValue={transferQrValue}
+                    bookingId={bookingId}
                     amount={dueAmount}
-                    note={`VIKA ${getBookingCode(booking.bookingId)}`}
-                    onShow={() => setTransferShown(true)}
+                    confirmed={transferConfirmed}
                     onConfirm={() => setTransferConfirmed(true)}
                   />
                 )}
@@ -603,16 +593,54 @@ function CashCounter({ counts, onSet, received, due, change }) {
   );
 }
 
-// Hiện QR + thông tin tài khoản để khách chuyển khoản, rồi lễ tân xác nhận đã nhận.
-function TransferPanel({ shown, confirmed, qrValue, amount, note, onShow, onConfirm }) {
-  if (!shown) {
+// Tạo QR PayOS thật để khách quét chuyển khoản, rồi lễ tân kiểm tra / xác nhận đã nhận.
+function TransferPanel({ bookingId, amount, confirmed, onConfirm }) {
+  const [createLink, { data: link, isLoading, error }] =
+    useCreateCheckoutPayosLinkMutation();
+  const [checkPayos, { isFetching: checking }] =
+    useLazyCheckoutPayosStatusQuery();
+
+  const handleCreate = async () => {
+    try {
+      await createLink({ bookingId, amount }).unwrap();
+    } catch (err) {
+      toast.error(
+        err?.data?.message || 'Không tạo được mã QR PayOS. Kiểm tra cấu hình PayOS.',
+      );
+    }
+  };
+
+  const handleCheck = async () => {
+    try {
+      const res = await checkPayos(bookingId).unwrap();
+      if (res?.paid) {
+        toast.success('PayOS xác nhận đã thanh toán');
+        onConfirm();
+      } else {
+        toast.info('Chưa ghi nhận thanh toán — thử lại sau vài giây.');
+      }
+    } catch {
+      toast.error('Không kiểm tra được trạng thái thanh toán');
+    }
+  };
+
+  if (!link) {
     return (
       <button
         type="button"
-        onClick={onShow}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+        onClick={handleCreate}
+        disabled={isLoading}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
       >
-        <QrCode size={16} /> Tạo mã QR chuyển khoản
+        {isLoading ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <QrCode size={16} />
+        )}
+        Tạo mã QR PayOS
+        {error && (
+          <span className="text-xs font-normal text-red-100">(thử lại)</span>
+        )}
       </button>
     );
   }
@@ -621,48 +649,67 @@ function TransferPanel({ shown, confirmed, qrValue, amount, note, onShow, onConf
     <div className="space-y-3 rounded-xl border border-gray-200 p-4 text-sm">
       <div className="flex justify-center">
         <div className="rounded-lg border border-gray-100 bg-white p-2">
-          <QRCodeSVG value={qrValue} size={148} level="M" />
+          {link.qrCode ? (
+            <QRCodeSVG value={link.qrCode} size={160} level="M" />
+          ) : (
+            <p className="max-w-[160px] p-4 text-center text-xs text-gray-400">
+              Không dựng được QR — dùng nút mở link bên dưới.
+            </p>
+          )}
         </div>
       </div>
+
+      <p className="text-center text-xs text-gray-400">
+        Quét bằng app ngân hàng / ví bất kỳ (PayOS)
+      </p>
+
       <dl className="space-y-1 text-xs">
-        <div className="flex justify-between">
-          <dt className="text-gray-400">Ngân hàng</dt>
-          <dd className="font-semibold text-gray-700">{HOTEL_BANK.bankName}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-gray-400">Số tài khoản</dt>
-          <dd className="font-mono font-semibold text-gray-700">
-            {HOTEL_BANK.accountNo}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-gray-400">Chủ tài khoản</dt>
-          <dd className="font-semibold text-gray-700">
-            {HOTEL_BANK.accountName}
-          </dd>
-        </div>
         <div className="flex justify-between">
           <dt className="text-gray-400">Số tiền</dt>
           <dd className="font-bold text-red-600">{formatCurrency(amount)}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-gray-400">Nội dung</dt>
-          <dd className="font-semibold text-gray-700">{note}</dd>
+          <dt className="text-gray-400">Mã giao dịch</dt>
+          <dd className="font-mono font-semibold text-gray-700">
+            {link.orderCode}
+          </dd>
         </div>
       </dl>
+
+      {link.checkoutUrl && (
+        <a
+          href={link.checkoutUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="block rounded-lg border border-gray-200 py-2 text-center text-xs font-semibold text-blue-600 hover:bg-blue-50"
+        >
+          Mở trang thanh toán PayOS
+        </a>
+      )}
 
       {confirmed ? (
         <div className="flex items-center justify-center gap-2 rounded-lg bg-emerald-50 py-2 text-sm font-semibold text-emerald-700">
           <CheckCircle2 size={16} /> Đã xác nhận nhận chuyển khoản
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
-        >
-          <CheckCircle2 size={16} /> Xác nhận đã nhận tiền
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleCheck}
+            disabled={checking}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-blue-600 py-2 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-60"
+          >
+            {checking && <Loader2 size={13} className="animate-spin" />}
+            Kiểm tra
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-600 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+          >
+            <CheckCircle2 size={13} /> Xác nhận thủ công
+          </button>
+        </div>
       )}
     </div>
   );

@@ -14,10 +14,11 @@ import { useAuth } from '../../../context/AuthContext';
 
 // Đường dẫn (path) cho từng mục menu, kèm roles được thấy mục đó. NavLink tự xử lý
 // trạng thái active nên không cần cờ 'active' cứng.
+// Nhân viên (STAFF) chỉ làm việc trên Sơ đồ phòng; các mục quản lý còn lại chỉ Admin.
 const MENU_ITEMS = [
-  { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true, roles: ['ADMIN', 'STAFF'] },
+  { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true, roles: ['ADMIN'] },
   { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: true, roles: ['ADMIN', 'STAFF'] },
-  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false, roles: ['ADMIN', 'STAFF'] },
+  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false, roles: ['ADMIN'] },
   { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true, roles: ['ADMIN'] },
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },
 ];

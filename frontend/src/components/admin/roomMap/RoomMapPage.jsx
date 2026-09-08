@@ -24,7 +24,21 @@ import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 
 const EMPTY_DRAFT = { checkIn: '', checkOut: '', roomType: '' };
-const LEGEND_STATUSES = ['AVAILABLE', 'BOOKED', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'];
+// Chú giải mặc định theo trạng thái phòng thật; khi lọc theo khoảng ngày thì thay
+// RESERVED/OCCUPIED bằng "BOOKED" ảo (phòng có lịch đè trong khoảng đó).
+const LEGEND_STATUSES = [
+  'AVAILABLE',
+  'RESERVED',
+  'OCCUPIED',
+  'CLEANING',
+  'MAINTENANCE',
+];
+const LEGEND_STATUSES_RANGE = [
+  'AVAILABLE',
+  'BOOKED',
+  'CLEANING',
+  'MAINTENANCE',
+];
 // Vé đặt phòng chỉ mã hoá bookingId (UUID) — xem utils/bookingQrPayload.
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -198,7 +212,9 @@ export default function RoomMapPage() {
           selectedFloor={selectedFloor}
           onSelectFloor={setSelectedFloor}
           statusCounts={statusCounts}
-          legendStatuses={LEGEND_STATUSES}
+          legendStatuses={
+            hasRangeFilter ? LEGEND_STATUSES_RANGE : LEGEND_STATUSES
+          }
         />
 
         <div className="min-w-0 flex-1 space-y-5">

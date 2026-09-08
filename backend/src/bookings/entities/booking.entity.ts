@@ -103,7 +103,12 @@ export class Booking {
   paymentStatus!: PaymentStatus;
 
   // Mã đơn hàng số nguyên duy nhất PayOS yêu cầu — chỉ có khi paymentMethod = PAYOS
-  @Column({ name: 'payosOrderCode', type: 'bigint', nullable: true, unique: true })
+  @Column({
+    name: 'payosOrderCode',
+    type: 'bigint',
+    nullable: true,
+    unique: true,
+  })
   payosOrderCode!: string | null;
 
   @OneToMany(() => BookingServiceItem, (item) => item.booking, {

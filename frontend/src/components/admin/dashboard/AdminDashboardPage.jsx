@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Users,
   CalendarRange,
@@ -22,9 +22,10 @@ const BOOKING_STATUS_META = {
   CANCELLED: { label: 'Đã huỷ', dot: 'bg-red-500' },
 };
 
+// Nhãn/màu khớp với chú giải ở Sơ đồ phòng (utils/roomStatusStyles) cho thống nhất.
 const ROOM_STATUS_META = {
   AVAILABLE: { label: 'Trống', dot: 'bg-emerald-500' },
-  OCCUPIED: { label: 'Đang sử dụng', dot: 'bg-blue-500' },
+  OCCUPIED: { label: 'Đang ở', dot: 'bg-blue-500' },
   RESERVED: { label: 'Đã giữ chỗ', dot: 'bg-violet-500' },
   CLEANING: { label: 'Đang dọn dẹp', dot: 'bg-amber-400' },
   MAINTENANCE: { label: 'Bảo trì', dot: 'bg-red-500' },
@@ -143,6 +144,15 @@ function DistributionCard({ title, total, segments, loading }) {
 }
 
 export default function AdminDashboardPage() {
+  const { user } = useAuth();
+  // Nhân viên không có trang Tổng quan — vào /admin thì đưa thẳng về Sơ đồ phòng.
+  if (user?.role === 'STAFF') {
+    return <Navigate to="/admin/rooms" replace />;
+  }
+  return <AdminOverview />;
+}
+
+function AdminOverview() {
   const { user } = useAuth();
   const { stats, loading, error, reload } = useAdminOverviewStats();
 

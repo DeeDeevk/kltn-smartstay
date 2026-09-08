@@ -195,9 +195,7 @@ export class RoomService {
       const candidate = `T${floor}${String(seq).padStart(2, '0')}`;
       if (!used.has(candidate)) return candidate;
     }
-    throw new ConflictException(
-      'Tầng đã đầy, không thể tự sinh số phòng mới',
-    );
+    throw new ConflictException('Tầng đã đầy, không thể tự sinh số phòng mới');
   }
 
   async updateStatus(roomId: string, dto: UpdateRoomStatusDto): Promise<Room> {
