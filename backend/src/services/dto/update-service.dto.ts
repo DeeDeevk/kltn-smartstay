@@ -1,6 +1,18 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { ServiceCategory } from 'src/common/enums/service-category.enum';
 
 export class UpdateServiceDto {
+  @IsOptional()
+  @IsEnum(ServiceCategory)
+  category?: ServiceCategory;
+
   @IsOptional()
   @IsString()
   name?: string;

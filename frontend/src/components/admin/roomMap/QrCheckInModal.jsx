@@ -195,8 +195,7 @@ export default function QrCheckInModal({ bookingId, onClose }) {
           ) : (
             <div className="rounded-2xl border border-gray-200 p-5">
               <h4 className="mb-4 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-400">
-                <DoorOpen size={14} /> Chọn phòng trống để gán (
-                {booking.roomType?.name})
+                <DoorOpen size={14} /> Chọn phòng trống
               </h4>
 
               {booking.room?.roomId ? (

@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useGetRoomMapQuery } from '../../../services/adminRoom';
+import { useAuth } from '../../../context/AuthContext';
 import {
   ROOM_STATUS_META,
   resolveRoomDisplayStatus,
@@ -30,6 +31,10 @@ const UUID_PATTERN =
 
 export default function RoomMapPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Danh sách ca + doanh thu là chức năng quản lý -> chỉ Admin. "Thông tin ca" /
+  // "Kết ca" là thao tác trực quầy nên cả Admin lẫn nhân viên đều thấy.
+  const isAdmin = user?.role === 'ADMIN';
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [applied, setApplied] = useState(EMPTY_DRAFT);
   const [selectedFloor, setSelectedFloor] = useState('all');
@@ -134,16 +139,20 @@ export default function RoomMapPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-            <GhostButton
-              icon={ClipboardList}
-              label="Danh sách ca"
-              onClick={() => setShiftMode('list')}
-            />
-            <GhostButton
-              icon={TrendingUp}
-              label="Doanh thu"
-              onClick={() => setShiftMode('revenue')}
-            />
+            {isAdmin && (
+              <>
+                <GhostButton
+                  icon={ClipboardList}
+                  label="Danh sách ca"
+                  onClick={() => setShiftMode('list')}
+                />
+                <GhostButton
+                  icon={TrendingUp}
+                  label="Doanh thu"
+                  onClick={() => setShiftMode('revenue')}
+                />
+              </>
+            )}
             <GhostButton
               icon={CalendarClock}
               label="Thông tin ca"

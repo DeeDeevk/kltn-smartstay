@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import Redis from 'ioredis';
 import { Booking } from './entities/booking.entity';
 import { BookingServiceItem } from './entities/booking-service-item.entity';
@@ -37,6 +37,9 @@ const LOCK_TTL_MS = 5000;
 const VAT_RATE = 0.08;
 // Giờ trả phòng tiêu chuẩn: quá 12h trưa ngày check-out thì tính thêm đêm lưu trú.
 const CHECKOUT_DEADLINE_HOUR = 12;
+// Việt Nam không có giờ mùa hè, lệch cố định UTC+7 quanh năm — dùng để quy đổi "12h trưa
+// giờ Việt Nam" ra mốc UTC tuyệt đối, độc lập với timezone của server chạy backend.
+const VIETNAM_UTC_OFFSET_HOURS = 7;
 
 interface Requester {
   userId: string;
@@ -247,7 +250,7 @@ export class BookingService {
   async findAll(query: QueryBookingDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
-    const qb = this.baseQuery();
+    const qb = this.filterQuery();
 
     if (query.status) {
       qb.andWhere('booking.status = :status', { status: query.status });
@@ -324,31 +327,19 @@ export class BookingService {
       );
     }
 
-    const [data, total] = await qb
-      .orderBy('booking.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
-
-    return { data: data.map((b) => this.toDetailResponse(b)), total };
+    return this.paginate(qb, page, limit);
   }
 
   async findMyBookings(userId: string, query: QueryMyBookingDto) {
     const page = query.page ?? 1;
     const limit = 10;
-    const qb = this.baseQuery().where('user.userId = :userId', { userId });
+    const qb = this.filterQuery().where('user.userId = :userId', { userId });
 
     if (query.status) {
       qb.andWhere('booking.status = :status', { status: query.status });
     }
 
-    const [data, total] = await qb
-      .orderBy('booking.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
-
-    return { data: data.map((b) => this.toDetailResponse(b)), total };
+    return this.paginate(qb, page, limit);
   }
 
   async findById(bookingId: string, requester: Requester) {
@@ -407,75 +398,87 @@ export class BookingService {
     return this.toDetailResponse(booking);
   }
 
+  // Toàn bộ thao tác ghi (thêm dịch vụ, chốt phụ thu trả muộn, đổi trạng thái đơn,
+  // đổi trạng thái phòng) được gộp trong 1 transaction — trước đây là các lệnh save()
+  // rời rạc, lỗi/crash giữa chừng có thể để lại đơn CHECKED_OUT nhưng phòng vẫn OCCUPIED
+  // (hoặc ngược lại), sai lệch vĩnh viễn giữa Sơ đồ phòng và trạng thái đơn thật.
   async checkOut(bookingId: string, dto: CheckOutDto = {}) {
-    const booking = await this.findByIdRaw(bookingId);
-    if (booking.status !== BookingStatus.CHECKED_IN) {
-      throw new BadRequestException(
-        'Đơn phải ở trạng thái đang lưu trú trước khi check-out',
-      );
-    }
+    return this.bookingRepo.manager.transaction(async (manager) => {
+      const bookingRepo = manager.getRepository(Booking);
+      const roomRepo = manager.getRepository(Room);
 
-    // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
-    if (dto.extraServices?.length) {
-      const ids = dto.extraServices.map((item) => item.serviceId);
-      const services = await this.serviceService.findActiveByIds(ids);
-      const byId = new Map(services.map((s) => [s.serviceId, s]));
-      if (services.length !== new Set(ids).size) {
+      const booking = await bookingRepo.findOne({ where: { bookingId } });
+      if (!booking) {
+        throw new NotFoundException('Không tìm thấy đơn đặt phòng');
+      }
+      if (booking.status !== BookingStatus.CHECKED_IN) {
         throw new BadRequestException(
-          'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+          'Đơn phải ở trạng thái đang lưu trú trước khi check-out',
         );
       }
-      await this.bookingServiceItemRepo.save(
-        dto.extraServices.map((item) =>
-          this.bookingServiceItemRepo.create({
-            booking,
-            service: byId.get(item.serviceId),
-            quantity: item.quantity,
-            unitPrice: byId.get(item.serviceId)!.price,
-          }),
-        ),
-      );
-    }
 
-    // Chốt phụ thu trả phòng muộn tại thời điểm này.
-    const late = this.computeLateCheckout(booking);
-    booking.lateNights = late.nights;
-    booking.lateCheckoutFee = late.fee;
-    booking.status = BookingStatus.CHECKED_OUT;
-    await this.bookingRepo.save(booking);
-
-    // Tính lại hoá đơn sau khi đã thêm dịch vụ + phụ thu.
-    const detail = this.toDetailResponse(await this.findByIdRaw(bookingId));
-
-    if (dto.markPaid) {
-      booking.paymentStatus = PaymentStatus.PAID;
-      booking.paidAmount = detail.totalAmount;
-      if (dto.paymentMethod) {
-        booking.paymentMethod = dto.paymentMethod;
+      // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
+      if (dto.extraServices?.length) {
+        const ids = dto.extraServices.map((item) => item.serviceId);
+        const services = await this.serviceService.findActiveByIds(ids);
+        const byId = new Map(services.map((s) => [s.serviceId, s]));
+        if (services.length !== new Set(ids).size) {
+          throw new BadRequestException(
+            'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+          );
+        }
+        const serviceItemRepo = manager.getRepository(BookingServiceItem);
+        const newItems = await serviceItemRepo.save(
+          dto.extraServices.map((item) =>
+            serviceItemRepo.create({
+              booking,
+              service: byId.get(item.serviceId),
+              quantity: item.quantity,
+              unitPrice: byId.get(item.serviceId)!.price,
+            }),
+          ),
+        );
+        // Cập nhật thẳng vào bộ nhớ để toDetailResponse() bên dưới tính đúng ngay,
+        // khỏi phải load lại từ DB.
+        booking.serviceItems = [...booking.serviceItems, ...newItems];
       }
-      await this.bookingRepo.save(booking);
-    }
 
-    if (booking.room) {
-      booking.room.status = RoomStatus.CLEANING;
-      await this.roomRepo.save(booking.room);
-    }
+      // Chốt phụ thu trả phòng muộn tại thời điểm này.
+      const late = this.computeLateCheckout(booking);
+      booking.lateNights = late.nights;
+      booking.lateCheckoutFee = late.fee;
+      booking.status = BookingStatus.CHECKED_OUT;
 
-    const finalDetail = this.toDetailResponse(await this.findByIdRaw(bookingId));
-    return {
-      booking: finalDetail,
-      finalInvoice: {
-        roomAmount: booking.roomAmount,
-        lateNights: late.nights,
-        lateCheckoutFee: late.fee,
-        serviceAmount: finalDetail.serviceAmount,
-        discountAmount: booking.discountAmount,
-        vatAmount: finalDetail.vatAmount,
-        totalAmount: finalDetail.totalAmount,
-        paidAmount: finalDetail.paidAmount,
-        dueAmount: finalDetail.dueAmount,
-      },
-    };
+      if (dto.markPaid) {
+        booking.paymentStatus = PaymentStatus.PAID;
+        booking.paidAmount = this.toDetailResponse(booking).totalAmount;
+        if (dto.paymentMethod) {
+          booking.paymentMethod = dto.paymentMethod;
+        }
+      }
+      await bookingRepo.save(booking);
+
+      if (booking.room) {
+        booking.room.status = RoomStatus.CLEANING;
+        await roomRepo.save(booking.room);
+      }
+
+      const finalDetail = this.toDetailResponse(booking);
+      return {
+        booking: finalDetail,
+        finalInvoice: {
+          roomAmount: booking.roomAmount,
+          lateNights: late.nights,
+          lateCheckoutFee: late.fee,
+          serviceAmount: finalDetail.serviceAmount,
+          discountAmount: booking.discountAmount,
+          vatAmount: finalDetail.vatAmount,
+          totalAmount: finalDetail.totalAmount,
+          paidAmount: finalDetail.paidAmount,
+          dueAmount: finalDetail.dueAmount,
+        },
+      };
+    });
   }
 
   async addService(bookingId: string, dto: AddServiceDto) {
@@ -593,8 +596,13 @@ export class BookingService {
     nights: number;
     fee: number;
   } {
-    const deadline = new Date(`${booking.checkOutDate}T00:00:00`);
-    deadline.setHours(CHECKOUT_DEADLINE_HOUR, 0, 0, 0);
+    // Xây mốc bằng Date.UTC() (giờ tuyệt đối) thay vì new Date(...).setHours() (giờ địa
+    // phương của server) — server chạy ở UTC (phổ biến khi deploy cloud) sẽ tính sai lệch
+    // 7 tiếng nếu dùng giờ địa phương thay vì quy đổi rõ ràng sang giờ Việt Nam.
+    const [year, month, day] = booking.checkOutDate.split('-').map(Number);
+    const deadline = new Date(
+      Date.UTC(year, month - 1, day, CHECKOUT_DEADLINE_HOUR - VIETNAM_UTC_OFFSET_HOURS),
+    );
     const now = new Date();
     if (now <= deadline) {
       return { isLate: false, deadline: deadline.toISOString(), nights: 0, fee: 0 };
@@ -661,6 +669,55 @@ export class BookingService {
       .leftJoinAndSelect('booking.promotion', 'promotion')
       .leftJoinAndSelect('booking.serviceItems', 'serviceItems')
       .leftJoinAndSelect('serviceItems.service', 'service');
+  }
+
+  // Dùng cho danh sách có phân trang: KHÔNG join serviceItems (quan hệ 1-nhiều). Join
+  // thẳng 1-nhiều rồi skip/take là lỗi kinh điển của TypeORM — mỗi service item nhân
+  // thêm 1 dòng SQL trước khi LIMIT/OFFSET được áp, làm sai cả tổng số lẫn danh sách trả
+  // về (đơn có dịch vụ có thể bị thiếu/lặp giữa các trang). Chỉ lọc + phân trang theo
+  // bookingId ở đây, paginate() bên dưới sẽ fetch lại đầy đủ quan hệ theo đúng ID đó.
+  private filterQuery() {
+    return this.bookingRepo
+      .createQueryBuilder('booking')
+      .leftJoin('booking.user', 'user')
+      .leftJoin('booking.roomType', 'roomType')
+      .leftJoin('booking.room', 'room');
+  }
+
+  private async paginate(
+    qb: SelectQueryBuilder<Booking>,
+    page: number,
+    limit: number,
+  ) {
+    const total = await qb.clone().getCount();
+    if (total === 0) {
+      return { data: [], total: 0 };
+    }
+
+    // Lưu ý: .skip()/.take() chỉ được TypeORM dịch đúng ra LIMIT/OFFSET khi dùng chung
+    // với getMany() — với getRawMany() phải gọi thẳng .limit()/.offset(), nếu không
+    // TypeORM âm thầm bỏ qua giới hạn và trả về toàn bộ kết quả (đã kiểm chứng bằng
+    // cách in getSql() ra so sánh 2 cách viết).
+    const idRows = await qb
+      .clone()
+      .select('booking.bookingId', 'bookingId')
+      .orderBy('booking.createdAt', 'DESC')
+      .limit(limit)
+      .offset((page - 1) * limit)
+      .getRawMany<{ bookingId: string }>();
+    const ids = idRows.map((row) => row.bookingId);
+    if (ids.length === 0) {
+      return { data: [], total };
+    }
+
+    const rows = await this.baseQuery()
+      .where('booking.bookingId IN (:...ids)', { ids })
+      .getMany();
+    // IN (...) không giữ thứ tự đã phân trang — sắp lại theo đúng thứ tự ID ở trên.
+    const order = new Map(ids.map((id, index) => [id, index]));
+    rows.sort((a, b) => order.get(a.bookingId)! - order.get(b.bookingId)!);
+
+    return { data: rows.map((b) => this.toDetailResponse(b)), total };
   }
 
   private async countOverlappingBookings(
