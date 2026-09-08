@@ -93,11 +93,13 @@ export function AuthProvider({ children }) {
     return data
   }
 
+  // Xác minh OTP chỉ để kích hoạt/tạo tài khoản. KHÔNG lưu token ở đây — người dùng
+  // sẽ tự đăng nhập lại sau khi đăng ký thành công (xem RegisterForm.handleVerified).
   const verifyOtp = async ({ email, otp }) => {
     const data = await store
       .dispatch(authApi.endpoints.verifyOtp.initiate({ email, otp }))
       .unwrap()
-    return applySession(data)
+    return data
   }
 
   const resendOtp = async (email) => {

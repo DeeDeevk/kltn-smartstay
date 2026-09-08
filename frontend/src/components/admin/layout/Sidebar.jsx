@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BedDouble,
   BarChart3,
@@ -9,8 +9,10 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import vikaLogo from '../../../assets/icon/icon.png';
 import { useAuth } from '../../../context/AuthContext';
+import ConfirmModal from '../../common/ConfirmModal';
 
 // Đường dẫn (path) cho từng mục menu, kèm roles được thấy mục đó. NavLink tự xử lý
 // trạng thái active nên không cần cờ 'active' cứng.
@@ -31,6 +33,8 @@ const ROLE_LABELS = {
 
 export default function Sidebar({ collapsed = false, onToggle }) {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   const displayName = user?.name || user?.username || 'Tài khoản';
   const avatarUrl = user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2563eb&color=fff`;
@@ -39,10 +43,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   // ProtectedRoute (isAuthenticated đổi -> tự nó điều hướng), khiến state.from bị
   // để lại sai giá trị và ảnh hưởng tới lượt đăng nhập tiếp theo của người khác.
   const handleLogout = () => {
-    logout();
+    setConfirmLogout(true);
   };
 
   return (
+    <>
     <aside
       className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ${
         collapsed ? 'w-20' : 'w-64'
@@ -132,5 +137,19 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         </button>
       </div>
     </aside>
+
+    <ConfirmModal
+      open={confirmLogout}
+      danger
+      title={t('auth.logoutConfirmTitle')}
+      message={t('auth.logoutConfirmMessage')}
+      confirmLabel={t('auth.logout')}
+      onConfirm={() => {
+        setConfirmLogout(false);
+        logout();
+      }}
+      onClose={() => setConfirmLogout(false)}
+    />
+    </>
   );
 }

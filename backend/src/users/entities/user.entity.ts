@@ -19,7 +19,7 @@ export class User {
   @Column({ name: 'email', length: 100, unique: true })
   email!: string;
 
-  @Column({ name: 'phone', length: 15, nullable: true })
+  @Column({ name: 'phone', length: 15, nullable: true, unique: true })
   phone!: string;
 
   @Column({ name: 'idNumber', length: 20, nullable: true })
