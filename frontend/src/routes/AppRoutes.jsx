@@ -27,6 +27,7 @@ import BookingHistoryPage from '../components/user/BookingHistoryPage'
 import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
 import PaymentCancelPage from '../components/payment/PaymentCancelPage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
+import StaffManagementPage from '../components/admin/users/StaffManagementPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
@@ -822,6 +823,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <UserManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="staff"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <StaffManagementPage />
               </ProtectedRoute>
             }
           />

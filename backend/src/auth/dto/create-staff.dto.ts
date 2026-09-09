@@ -1,5 +1,7 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString } from 'class-validator';
 
+// Không nhận password từ client — AuthService.createStaff() tự sinh mật khẩu
+// tạm và gửi qua email cho nhân viên, admin không tự đặt/nhìn thấy mật khẩu.
 export class CreateStaffDto {
   @IsEmail()
   email!: string;
@@ -11,7 +13,11 @@ export class CreateStaffDto {
   @IsString()
   phone?: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(6)
-  password!: string;
+  idNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
 }

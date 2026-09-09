@@ -66,7 +66,20 @@ export class UserController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.userService.findById(id);
+    return this.userService.findDetailForAdmin(id);
+  }
+
+  // Admin sửa thông tin cá nhân của một user khác (vd. từ màn Quản lý nhân viên).
+  // Dùng chung UpdateProfileDto với PATCH /users/me — chỉ gồm các trường hồ sơ
+  // (fullName/phone/idNumber/address), không đổi được email/role/status ở đây.
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  updateUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.userService.updateProfile(id, dto);
   }
 
   @Patch(':id/role')

@@ -10,6 +10,18 @@ export const userApi = createApi({
       query: (params) => ({ url: '/users', method: 'get', params }),
       providesTags: ['User'],
     }),
+    getUser: builder.query({
+      query: (userId) => ({ url: `/users/${userId}`, method: 'get' }),
+      providesTags: (result, error, userId) => [{ type: 'User', id: userId }],
+    }),
+    updateUser: builder.mutation({
+      query: ({ userId, data }) => ({
+        url: `/users/${userId}`,
+        method: 'patch',
+        data,
+      }),
+      invalidatesTags: (result, error, { userId }) => [{ type: 'User', id: userId }, 'User'],
+    }),
     updateUserRole: builder.mutation({
       query: ({ userId, role }) => ({
         url: `/users/${userId}/role`,
@@ -29,12 +41,19 @@ export const userApi = createApi({
     changePassword: builder.mutation({
       query: (payload) => ({ url: '/users/me/password', method: 'patch', data: payload }),
     }),
+    createStaff: builder.mutation({
+      query: (payload) => ({ url: '/auth/create-staff', method: 'post', data: payload }),
+      invalidatesTags: ['User'],
+    }),
   }),
 });
 
 export const {
   useGetUsersQuery,
+  useGetUserQuery,
+  useUpdateUserMutation,
   useUpdateUserRoleMutation,
   useUpdateUserStatusMutation,
   useChangePasswordMutation,
+  useCreateStaffMutation,
 } = userApi;

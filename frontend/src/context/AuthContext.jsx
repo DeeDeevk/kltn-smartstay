@@ -123,6 +123,18 @@ export function AuthProvider({ children }) {
     return nextUser
   }
 
+  // Lấy lại hồ sơ mới nhất từ /auth/me mà KHÔNG cần đăng nhập lại — dùng sau khi
+  // đổi mật khẩu bắt buộc (ForceChangePasswordModal) để gỡ cờ mustChangePassword
+  // khỏi state hiện tại thay vì bắt người dùng F5 trang.
+  const refreshUser = async () => {
+    const { data: profile } = await apiClient.get('/auth/me')
+    const current = user || readStoredUser() || {}
+    const nextUser = { ...profile, name: profile.fullName, avatar: current.avatar ?? '' }
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser))
+    setUser(nextUser)
+    return nextUser
+  }
+
   const logout = async () => {
     try {
       await apiClient.post('/auth/logout')
@@ -141,6 +153,7 @@ export function AuthProvider({ children }) {
     verifyOtp,
     resendOtp,
     updateProfile,
+    refreshUser,
     logout,
   }), [user])
 

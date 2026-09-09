@@ -5,6 +5,7 @@ import {
   Settings,
   CalendarRange,
   Users,
+  IdCard,
   LogOut,
   ChevronLeft,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const MENU_ITEMS = [
   { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: false, roles: ['ADMIN'] },
   { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true, roles: ['ADMIN'] },
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },
+  { icon: IdCard, label: 'Quản lý nhân viên', path: '/admin/staff', ready: true, roles: ['ADMIN'] },
 ];
 
 const ROLE_LABELS = {

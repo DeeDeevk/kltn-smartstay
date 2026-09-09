@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -10,10 +11,12 @@ import { User } from './entities/user.entity';
 import { Account } from '../auth/entities/account.entity';
 import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { AuthProvider } from '../auth/enums/auth-provider.enum';
 import { QueryUserDto } from './dto/query-user.dto';
+import { REDIS_CLIENT } from 'src/redis/redis.module';
 
 @Injectable()
 export class UserService {
@@ -22,6 +25,7 @@ export class UserService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Account)
     private readonly accountRepo: Repository<Account>,
+    @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
   ) {}
 
   // manager: truyền vào khi cần gộp chung transaction với việc tạo Account (đăng ký)
@@ -30,6 +34,8 @@ export class UserService {
       email: string;
       fullName: string;
       phone?: string;
+      idNumber?: string;
+      address?: string;
       role?: UserRole;
     },
     manager?: EntityManager,
@@ -66,6 +72,23 @@ export class UserService {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     return user;
+  }
+
+  // Dùng riêng cho màn chi tiết của Admin (vd. Quản lý nhân viên) — kèm theo
+  // danh sách phương thức đăng nhập (LOCAL/GOOGLE) mà GET /users/:id thường không cần,
+  // nên tách khỏi findById() để không kéo thêm query cho các nơi khác đang gọi nó
+  // (getMe, refresh, updateRole, updateStatus...).
+  async findDetailForAdmin(
+    userId: string,
+  ): Promise<User & { authProviders: AuthProvider[] }> {
+    const user = await this.findById(userId);
+    const accounts = await this.accountRepo.find({
+      where: { user: { userId } },
+    });
+    return {
+      ...user,
+      authProviders: accounts.map((account) => account.provider),
+    };
   }
 
   async updateProfile(
@@ -149,5 +172,8 @@ export class UserService {
 
     account.password = await bcrypt.hash(newPassword, 10);
     await this.accountRepo.save(account);
+    // Đổi mật khẩu thành công -> gỡ cờ "bắt buộc đổi mật khẩu" (nếu có, vd. tài
+    // khoản nhân viên do Admin tạo với mật khẩu tạm — xem AuthService.createStaff).
+    await this.redisClient.del(`must-change-password:${userId}`);
   }
 }
