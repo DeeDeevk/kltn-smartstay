@@ -93,21 +93,31 @@ export class AuthService {
 
   // Chỉ Admin gọi được (kiểm tra role ở AuthController). Khác register(): tạo
   // User + Account(LOCAL) ngay lập tức, không qua OTP, vì admin đã xác thực
-  // danh tính nhân viên ngoài đời.
+  // danh tính nhân viên ngoài đời. Mật khẩu do hệ thống tự sinh (admin không tự
+  // đặt) và được gửi cho nhân viên qua email — admin không bao giờ thấy mật khẩu này.
   async createStaff(dto: CreateStaffDto) {
     const existed = await this.userService.findByEmail(dto.email);
     if (existed) {
       throw new ConflictException('Email đã được sử dụng');
     }
+    if (dto.phone) {
+      const existedPhone = await this.userService.findByPhone(dto.phone);
+      if (existedPhone) {
+        throw new ConflictException('Số điện thoại đã được sử dụng');
+      }
+    }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const tempPassword = this.generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-    return this.dataSource.transaction(async (manager) => {
-      const newUser = await this.userService.create(
+    const newUser = await this.dataSource.transaction(async (manager) => {
+      const created = await this.userService.create(
         {
           email: dto.email,
           fullName: dto.fullName,
           phone: dto.phone,
+          idNumber: dto.idNumber,
+          address: dto.address,
           role: UserRole.STAFF,
         },
         manager,
@@ -116,15 +126,50 @@ export class AuthService {
       const accountRepo = manager.getRepository(Account);
       await accountRepo.save(
         accountRepo.create({
-          user: newUser,
+          user: created,
           provider: AuthProvider.LOCAL,
-          providerAccountId: newUser.email,
+          providerAccountId: created.email,
           password: passwordHash,
         }),
       );
 
-      return newUser;
+      // Gửi email ngay trong transaction: nếu gửi thất bại thì rollback luôn tài
+      // khoản vừa tạo, tránh sinh ra nhân viên "mồ côi" không ai biết mật khẩu
+      // (mật khẩu chỉ tồn tại trong email, không lưu ở đâu khác dạng plaintext).
+      await this.mailService.sendStaffCredentials(
+        dto.email,
+        dto.fullName,
+        tempPassword,
+      );
+
+      return created;
     });
+
+    // Đánh dấu "bắt buộc đổi mật khẩu ở lần đăng nhập đầu" bằng key Redis (theo
+    // đúng cách dự án đang dùng Redis cho OTP/lock) thay vì thêm cột DB mới —
+    // không đặt TTL, chỉ tự xoá khi đổi mật khẩu thành công (UserService.changePassword).
+    await this.redisClient.set(`must-change-password:${newUser.userId}`, '1');
+
+    return this.userService.findById(newUser.userId);
+  }
+
+  // Sinh mật khẩu tạm: 10 ký tự, đảm bảo có cả chữ và số, loại các ký tự dễ
+  // nhầm lẫn khi đọc trong email (0/O, 1/l/I...).
+  private generateTempPassword(): string {
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const all = letters + digits;
+    const pick = (charset: string) => charset[randomInt(charset.length)];
+
+    const chars = [pick(letters), pick(letters), pick(digits), pick(digits)];
+    while (chars.length < 10) {
+      chars.push(pick(all));
+    }
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
   }
 
   async login(dto: LoginDto) {
@@ -394,7 +439,11 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    return this.userService.findById(userId);
+    const user = await this.userService.findById(userId);
+    const mustChangePassword = Boolean(
+      await this.redisClient.exists(`must-change-password:${userId}`),
+    );
+    return { ...user, mustChangePassword };
   }
 
   async logout(token: string) {

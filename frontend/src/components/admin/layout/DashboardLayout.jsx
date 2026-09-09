@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import ForceChangePasswordModal from '../auth/ForceChangePasswordModal';
+import { useAuth } from '../../../context/AuthContext';
 
 const STORAGE_KEY = 'admin.sidebarCollapsed';
 
@@ -9,6 +11,7 @@ const STORAGE_KEY = 'admin.sidebarCollapsed';
 // trang cụ thể bằng cách truyền children — cả hai cách đều giữ chung Sidebar/Header.
 // Trạng thái thu gọn sidebar được nhớ trong localStorage cho các lần sau.
 export default function DashboardLayout({ children }) {
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === '1';
@@ -36,6 +39,8 @@ export default function DashboardLayout({ children }) {
       >
         <div className="p-8">{children ?? <Outlet />}</div>
       </main>
+
+      {user?.mustChangePassword && <ForceChangePasswordModal />}
     </div>
   );
 }
