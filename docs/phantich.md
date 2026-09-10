@@ -11,7 +11,7 @@ Giải quyết triệt để bài toán tranh chấp dữ liệu khi có nhiều
 2. Công nghệ Sử dụng (Tech Stack Thực Tế)
    Backend:
 
-Framework: NestJS (xây dựng theo kiến trúc Modular Monolith, phân tách rõ ràng các module: Auth, User, Room, RoomType, Booking, Payment, Shift).
+Framework: NestJS (xây dựng theo kiến trúc Modular Monolith, phân tách rõ ràng theo bounded context: Auth, Account, User, Reservations (gồm Room, RoomType, Booking là các aggregate của cùng nghiệp vụ đặt phòng), Payment, Shift, Dashboard). Các module chỉ giao tiếp qua service công khai của nhau, không truy cập repository/entity của module khác.
 
 Database: PostgreSQL kết hợp TypeORM.
 

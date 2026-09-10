@@ -28,6 +28,8 @@ import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
 import PaymentCancelPage from '../components/payment/PaymentCancelPage'
 import UserManagementPage from '../components/admin/users/UserManagementPage'
 import StaffManagementPage from '../components/admin/users/StaffManagementPage'
+import ShiftSchedulePage from '../components/admin/shifts/ShiftSchedulePage'
+import MySchedulePage from '../components/admin/shifts/MySchedulePage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
@@ -834,6 +836,15 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="schedule"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <ShiftSchedulePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="schedule/me" element={<MySchedulePage />} />
         </Route>
         <Route
           path="/admin/checkout"

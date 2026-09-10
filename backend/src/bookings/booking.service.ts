@@ -575,6 +575,17 @@ export class BookingService {
     return this.bookingRepo.save(booking);
   }
 
+  // Số lượng booking gom theo trạng thái — phục vụ DashboardService (thống kê
+  // tổng quan) mà không để module Dashboard truy cập thẳng repository Booking.
+  countGroupedByStatus(): Promise<Array<{ group: string; count: string }>> {
+    return this.bookingRepo
+      .createQueryBuilder('booking')
+      .select('booking.status', 'group')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('booking.status')
+      .getRawMany<{ group: string; count: string }>();
+  }
+
   private assertCanView(booking: Booking, requester: Requester): void {
     const isOwner = booking.user.userId === requester.userId;
     const role = requester.role as UserRole;
