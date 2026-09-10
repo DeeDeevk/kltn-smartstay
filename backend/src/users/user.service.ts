@@ -1,31 +1,23 @@
 import {
-  BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
-import { Account } from '../auth/entities/account.entity';
 import { EntityManager, Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
-import Redis from 'ioredis';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
-import { AuthProvider } from '../auth/enums/auth-provider.enum';
+import { AuthProvider } from 'src/common/enums/auth-provider.enum';
 import { QueryUserDto } from './dto/query-user.dto';
-import { REDIS_CLIENT } from 'src/redis/redis.module';
+import { AccountService } from '../accounts/account.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(Account)
-    private readonly accountRepo: Repository<Account>,
-    @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
+    private readonly accountService: AccountService,
   ) {}
 
   // manager: truyền vào khi cần gộp chung transaction với việc tạo Account (đăng ký)
@@ -82,13 +74,8 @@ export class UserService {
     userId: string,
   ): Promise<User & { authProviders: AuthProvider[] }> {
     const user = await this.findById(userId);
-    const accounts = await this.accountRepo.find({
-      where: { user: { userId } },
-    });
-    return {
-      ...user,
-      authProviders: accounts.map((account) => account.provider),
-    };
+    const authProviders = await this.accountService.listProvidersByUserId(userId);
+    return { ...user, authProviders };
   }
 
   async updateProfile(
@@ -139,6 +126,17 @@ export class UserService {
     return { data, total, page, limit };
   }
 
+  // Số lượng user gom theo vai trò — phục vụ DashboardService (thống kê tổng quan)
+  // mà không để module Dashboard truy cập thẳng repository User.
+  countGroupedByRole(): Promise<Array<{ group: string; count: string }>> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .select('user.role', 'group')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('user.role')
+      .getRawMany<{ group: string; count: string }>();
+  }
+
   async updateRole(userId: string, role: UserRole): Promise<User> {
     await this.findById(userId);
     await this.userRepo.update({ userId }, { role });
@@ -151,29 +149,17 @@ export class UserService {
     return this.findById(userId);
   }
 
-  async changePassword(
+  changePassword(
     userId: string,
     oldPassword: string,
     newPassword: string,
   ): Promise<void> {
-    const account = await this.accountRepo.findOne({
-      where: { user: { userId }, provider: AuthProvider.LOCAL },
-    });
-    if (!account?.password) {
-      throw new BadRequestException(
-        'Tài khoản này chưa đăng ký đăng nhập bằng mật khẩu',
-      );
-    }
-
-    const matched = await bcrypt.compare(oldPassword, account.password);
-    if (!matched) {
-      throw new UnauthorizedException('Mật khẩu cũ không đúng');
-    }
-
-    account.password = await bcrypt.hash(newPassword, 10);
-    await this.accountRepo.save(account);
-    // Đổi mật khẩu thành công -> gỡ cờ "bắt buộc đổi mật khẩu" (nếu có, vd. tài
-    // khoản nhân viên do Admin tạo với mật khẩu tạm — xem AuthService.createStaff).
-    await this.redisClient.del(`must-change-password:${userId}`);
+    // Mật khẩu thuộc về Account (module accounts) — uỷ quyền để không truy cập
+    // repository của module khác từ đây.
+    return this.accountService.changeLocalPassword(
+      userId,
+      oldPassword,
+      newPassword,
+    );
   }
 }

@@ -4,20 +4,20 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { OAuth2Client } from 'google-auth-library';
 import { UserService } from '../users/user.service';
+import { AccountService } from '../accounts/account.service';
 import { RegisterDTO } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
-import { AuthProvider } from './enums/auth-provider.enum';
-import { Account } from './entities/account.entity';
+import { AuthProvider } from '../common/enums/auth-provider.enum';
 import { randomUUID, randomInt } from 'crypto';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -45,11 +45,10 @@ export class AuthService {
 
   constructor(
     private readonly userService: UserService,
+    private readonly accountService: AccountService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
-    @InjectRepository(Account)
-    private readonly accountRepo: Repository<Account>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly mailService: MailService,
   ) {
@@ -123,14 +122,13 @@ export class AuthService {
         manager,
       );
 
-      const accountRepo = manager.getRepository(Account);
-      await accountRepo.save(
-        accountRepo.create({
+      await this.accountService.createLocal(
+        {
           user: created,
-          provider: AuthProvider.LOCAL,
           providerAccountId: created.email,
-          password: passwordHash,
-        }),
+          passwordHash,
+        },
+        manager,
       );
 
       // Gửi email ngay trong transaction: nếu gửi thất bại thì rollback luôn tài
@@ -181,9 +179,7 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản đã bị khóa');
     }
 
-    const account = await this.accountRepo.findOne({
-      where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
-    });
+    const account = await this.accountService.findLocalByUserId(user.userId);
     if (!account?.password) {
       throw new UnauthorizedException(
         'Tài khoản này chưa đăng ký đăng nhập bằng mật khẩu',
@@ -229,14 +225,13 @@ export class AuthService {
         manager,
       );
 
-      const accountRepo = manager.getRepository(Account);
-      await accountRepo.save(
-        accountRepo.create({
+      await this.accountService.createLocal(
+        {
           user: newUser,
-          provider: AuthProvider.LOCAL,
           providerAccountId: newUser.email,
-          password: pending.passwordHash,
-        }),
+          passwordHash: pending.passwordHash,
+        },
+        manager,
       );
 
       return newUser;
@@ -284,9 +279,7 @@ export class AuthService {
   async forgotPassword(email: string) {
     const user = await this.userService.findByEmail(email);
     if (user) {
-      const account = await this.accountRepo.findOne({
-        where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
-      });
+      const account = await this.accountService.findLocalByUserId(user.userId);
       // Chỉ gửi OTP nếu user tồn tại VÀ có đăng nhập bằng mật khẩu (LOCAL).
       // Vẫn trả về cùng 1 message ở dưới trong mọi trường hợp để tránh lộ
       // thông tin email nào tồn tại trong hệ thống.
@@ -323,17 +316,15 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản không tồn tại');
     }
 
-    const account = await this.accountRepo.findOne({
-      where: { user: { userId: user.userId }, provider: AuthProvider.LOCAL },
-    });
+    const account = await this.accountService.findLocalByUserId(user.userId);
     if (!account) {
       throw new UnauthorizedException(
         'Tài khoản này đăng nhập bằng Google, không thể đặt lại mật khẩu',
       );
     }
 
-    account.password = await bcrypt.hash(newPassword, 10);
-    await this.accountRepo.save(account);
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await this.accountService.updatePassword(account, newPasswordHash);
     await this.redisClient.del(`reset-otp:${email}`);
 
     return { message: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập lại' };
@@ -368,8 +359,6 @@ export class AuthService {
     const googleSub = payload.sub;
 
     const user = await this.dataSource.transaction(async (manager) => {
-      const accountRepo = manager.getRepository(Account);
-
       // Tạo User qua UserService (không thao tác repository trực tiếp) để mọi luồng
       // tạo tài khoản (đăng ký thường lẫn Google) đều đi qua cùng 1 nơi.
       let existingUser = await this.userService.findByEmail(email);
@@ -384,22 +373,17 @@ export class AuthService {
         throw new UnauthorizedException('Tài khoản đã bị khóa');
       }
 
-      const existingAccount = await accountRepo.findOne({
-        where: {
-          user: { userId: existingUser.userId },
-          provider: AuthProvider.GOOGLE,
-        },
-      });
+      const existingAccount = await this.accountService.findByUserIdAndProvider(
+        existingUser.userId,
+        AuthProvider.GOOGLE,
+        manager,
+      );
       if (!existingAccount) {
         // Auto-link: email đã được Google xác thực nên đủ tin cậy để gắn
         // thêm Account(GOOGLE) vào User hiện có (kể cả nếu trước đó đăng ký bằng mật khẩu).
-        await accountRepo.save(
-          accountRepo.create({
-            user: existingUser,
-            provider: AuthProvider.GOOGLE,
-            providerAccountId: googleSub,
-            password: null,
-          }),
+        await this.accountService.createGoogle(
+          { user: existingUser, providerAccountId: googleSub },
+          manager,
         );
       }
 

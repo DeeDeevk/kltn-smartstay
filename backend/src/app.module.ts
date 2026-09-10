@@ -8,14 +8,13 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { UserModule } from './users/user.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
-import { RoomTypeModule } from './room-types/room-type.module';
-import { RoomModule } from './rooms/room.module';
+import { ReservationsModule } from './reservations/reservations.module';
 import { ServiceModule } from './services/service.module';
 import { PromotionModule } from './promotions/promotion.module';
-import { BookingModule } from './bookings/booking.module';
 import { UploadModule } from './uploads/upload.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PaymentModule } from './payments/payment.module';
+import { ShiftModule } from './shifts/shift.module';
 
 @Module({
   imports: [
@@ -37,14 +36,13 @@ import { PaymentModule } from './payments/payment.module';
     }),
     UserModule,
     AuthModule,
-    RoomTypeModule,
-    RoomModule,
+    ReservationsModule,
     ServiceModule,
     PromotionModule,
-    BookingModule,
     DashboardModule,
     UploadModule,
     PaymentModule,
+    ShiftModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

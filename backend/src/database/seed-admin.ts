@@ -2,10 +2,10 @@ import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/entities/user.entity';
-import { Account } from '../auth/entities/account.entity';
+import { Account } from '../accounts/entities/account.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
-import { AuthProvider } from '../auth/enums/auth-provider.enum';
+import { AuthProvider } from '../common/enums/auth-provider.enum';
 
 async function run() {
   const dataSource = new DataSource({

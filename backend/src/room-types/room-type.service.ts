@@ -86,6 +86,12 @@ export class RoomTypeService {
     }));
   }
 
+  // Tổng số loại phòng — phục vụ DashboardService (thống kê tổng quan) mà không
+  // để module Dashboard truy cập thẳng repository RoomType.
+  count(): Promise<number> {
+    return this.roomTypeRepo.count();
+  }
+
   async findActiveById(roomTypeId: string): Promise<RoomType> {
     const roomType = await this.roomTypeRepo.findOne({
       where: { roomTypeId, status: RoomTypeStatus.ACTIVE },

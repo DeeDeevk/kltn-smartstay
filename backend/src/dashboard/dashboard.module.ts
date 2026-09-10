@@ -1,14 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from 'src/users/entities/user.entity';
-import { Booking } from 'src/bookings/entities/booking.entity';
-import { Room } from 'src/rooms/entities/room.entity';
-import { RoomType } from 'src/room-types/entities/room-type.entity';
 import { DashboardService } from './dashboard.service';
 import { DashboardController } from './dashboard.controller';
+import { UserModule } from '../users/user.module';
+import { ReservationsModule } from '../reservations/reservations.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Booking, Room, RoomType])],
+  imports: [UserModule, ReservationsModule],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

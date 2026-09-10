@@ -203,4 +203,15 @@ export class RoomService {
     room.status = dto.status;
     return this.roomRepo.save(room);
   }
+
+  // Số lượng phòng gom theo trạng thái — phục vụ DashboardService (thống kê tổng
+  // quan) mà không để module Dashboard truy cập thẳng repository Room.
+  countGroupedByStatus(): Promise<Array<{ group: string; count: string }>> {
+    return this.roomRepo
+      .createQueryBuilder('room')
+      .select('room.status', 'group')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('room.status')
+      .getRawMany<{ group: string; count: string }>();
+  }
 }

@@ -1,15 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from 'src/users/entities/user.entity';
-import { Booking } from 'src/bookings/entities/booking.entity';
-import { Room } from 'src/rooms/entities/room.entity';
-import { RoomType } from 'src/room-types/entities/room-type.entity';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
+import { UserService } from '../users/user.service';
+import { BookingService } from '../bookings/booking.service';
+import { RoomService } from '../rooms/room.service';
+import { RoomTypeService } from '../room-types/room-type.service';
 
-// Gộp raw rows dạng { [groupCol]: string, count: string } (Postgres trả count là string)
+// Gộp raw rows dạng { group: string, count: string } (Postgres trả count là string)
 // thành map đầy đủ mọi giá trị enum, giá trị nào không xuất hiện trong rows thì mặc định 0.
 function toCountMap<T extends string>(
   rows: Array<{ group: string; count: string }>,
@@ -25,15 +23,16 @@ function toCountMap<T extends string>(
   return map;
 }
 
+// Dashboard chỉ tổng hợp số liệu — lấy qua service công khai của từng module
+// (User/Booking/Room/RoomType) chứ không truy cập repository của chúng, giữ đúng
+// ranh giới modular monolith.
 @Injectable()
 export class DashboardService {
   constructor(
-    @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(Booking)
-    private readonly bookingRepo: Repository<Booking>,
-    @InjectRepository(Room) private readonly roomRepo: Repository<Room>,
-    @InjectRepository(RoomType)
-    private readonly roomTypeRepo: Repository<RoomType>,
+    private readonly userService: UserService,
+    private readonly bookingService: BookingService,
+    private readonly roomService: RoomService,
+    private readonly roomTypeService: RoomTypeService,
   ) {}
 
   async getOverview() {
@@ -43,25 +42,10 @@ export class DashboardService {
       roomsByStatusRows,
       roomTypeTotal,
     ] = await Promise.all([
-      this.userRepo
-        .createQueryBuilder('user')
-        .select('user.role', 'group')
-        .addSelect('COUNT(*)', 'count')
-        .groupBy('user.role')
-        .getRawMany<{ group: string; count: string }>(),
-      this.bookingRepo
-        .createQueryBuilder('booking')
-        .select('booking.status', 'group')
-        .addSelect('COUNT(*)', 'count')
-        .groupBy('booking.status')
-        .getRawMany<{ group: string; count: string }>(),
-      this.roomRepo
-        .createQueryBuilder('room')
-        .select('room.status', 'group')
-        .addSelect('COUNT(*)', 'count')
-        .groupBy('room.status')
-        .getRawMany<{ group: string; count: string }>(),
-      this.roomTypeRepo.count(),
+      this.userService.countGroupedByRole(),
+      this.bookingService.countGroupedByStatus(),
+      this.roomService.countGroupedByStatus(),
+      this.roomTypeService.count(),
     ]);
 
     const usersByRole = toCountMap(usersByRoleRows, Object.values(UserRole));

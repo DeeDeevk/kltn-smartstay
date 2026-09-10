@@ -10,6 +10,8 @@ import { bookingApi } from '../services/booking';
 import { paymentApi } from '../services/payment';
 import { chatApi } from '../services/chat';
 import { reviewApi } from '../services/review';
+import { shiftTypeApi } from '../services/shiftType';
+import { shiftAssignmentApi } from '../services/shiftAssignment';
 
 export const store = configureStore({
     reducer: {
@@ -24,6 +26,8 @@ export const store = configureStore({
         [paymentApi.reducerPath]: paymentApi.reducer,
         [chatApi.reducerPath]: chatApi.reducer,
         [reviewApi.reducerPath]: reviewApi.reducer,
+        [shiftTypeApi.reducerPath]: shiftTypeApi.reducer,
+        [shiftAssignmentApi.reducerPath]: shiftAssignmentApi.reducer,
     },
     // Adding the api middleware enables caching, invalidation, polling,
     // and other useful features of `rtk-query`.
@@ -38,7 +42,9 @@ export const store = configureStore({
             bookingApi.middleware,
             paymentApi.middleware,
             chatApi.middleware,
-            reviewApi.middleware
+            reviewApi.middleware,
+            shiftTypeApi.middleware,
+            shiftAssignmentApi.middleware
         ),
 });
 
