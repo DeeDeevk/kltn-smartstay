@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -37,6 +38,40 @@ function diffDays(fromKey: string, toKey: string): number {
   const a = new Date(`${fromKey}T00:00:00`).getTime();
   const b = new Date(`${toKey}T00:00:00`).getTime();
   return Math.round((b - a) / 86_400_000);
+}
+
+// Cho phép vô ca sớm tối đa 30 phút trước giờ bắt đầu ca — thực tế nhân viên
+// thường tới sớm để nhận bàn giao từ ca trước.
+const CHECK_IN_EARLY_GRACE_MINUTES = 30;
+
+// Cột 'time' của Postgres trả 'HH:mm:ss'; phòng trường hợp chỉ có 'HH:mm'.
+function normalizeTime(time: string): string {
+  return time.length === 5 ? `${time}:00` : time;
+}
+
+// Khung thời gian thực tế của 1 ca = workDate + giờ bắt đầu/kết thúc của loại ca.
+// Nếu giờ kết thúc <= giờ bắt đầu (vd. Ca đêm 22:00-06:00) thì ca kết thúc vào
+// ngày hôm sau.
+function buildShiftWindow(
+  workDate: string,
+  startTime: string,
+  endTime: string,
+): { start: Date; end: Date } {
+  const start = new Date(`${workDate}T${normalizeTime(startTime)}`);
+  const end = new Date(`${workDate}T${normalizeTime(endTime)}`);
+  if (end <= start) {
+    end.setDate(end.getDate() + 1);
+  }
+  return { start, end };
+}
+
+// Tự format thay vì toLocaleString để không phụ thuộc dữ liệu ICU của Node.
+function formatHm(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatDayMonth(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 @Injectable()
@@ -209,5 +244,90 @@ export class ShiftAssignmentService {
 
     await this.shiftAssignmentRepo.delete({ shiftAssignmentId });
     return { message: 'Đã gỡ lịch phân ca' };
+  }
+
+  // Nhân viên "vô ca": chỉ cho phép trên đúng ca của chính mình, ca còn ở trạng
+  // thái SCHEDULED, và thời điểm hiện tại phải nằm trong khung giờ của ca (được
+  // phép sớm hơn giờ bắt đầu tối đa CHECK_IN_EARLY_GRACE_MINUTES phút).
+  // Việc kiểm tra khung giờ đã bao hàm luôn "đúng ngày", đồng thời xử lý được cả
+  // ca qua đêm (kết thúc sang ngày hôm sau).
+  async checkIn(
+    shiftAssignmentId: string,
+    requesterId: string,
+  ): Promise<ShiftAssignment> {
+    const assignment = await this.findOwnedAssignmentOrThrow(
+      shiftAssignmentId,
+      requesterId,
+    );
+
+    if (assignment.status !== ShiftAssignmentStatus.SCHEDULED) {
+      throw new BadRequestException(
+        'Ca này không ở trạng thái chờ vô ca (đã vô ca, đã kết ca hoặc đã bị đánh dấu vắng mặt)',
+      );
+    }
+
+    const { start, end } = buildShiftWindow(
+      assignment.workDate,
+      assignment.shiftType.startTime,
+      assignment.shiftType.endTime,
+    );
+    const earliest = new Date(
+      start.getTime() - CHECK_IN_EARLY_GRACE_MINUTES * 60_000,
+    );
+    const now = new Date();
+
+    if (now < earliest) {
+      throw new BadRequestException(
+        `Chưa đến giờ vô ca. Ca "${assignment.shiftType.name}" bắt đầu lúc ${formatHm(start)} ngày ${formatDayMonth(start)}, chỉ được vô ca sớm nhất từ ${formatHm(earliest)}.`,
+      );
+    }
+    if (now > end) {
+      throw new BadRequestException(
+        `Ca "${assignment.shiftType.name}" đã kết thúc lúc ${formatHm(end)} ngày ${formatDayMonth(end)}, không thể vô ca.`,
+      );
+    }
+
+    assignment.status = ShiftAssignmentStatus.CHECKEDIN;
+    assignment.checkInAt = now;
+    return this.shiftAssignmentRepo.save(assignment);
+  }
+
+  // Nhân viên "kết ca": chỉ cho phép trên đúng ca của chính mình và phải đang
+  // ở trạng thái CHECKEDIN (đã vô ca trước đó).
+  async checkOut(
+    shiftAssignmentId: string,
+    requesterId: string,
+  ): Promise<ShiftAssignment> {
+    const assignment = await this.findOwnedAssignmentOrThrow(
+      shiftAssignmentId,
+      requesterId,
+    );
+
+    if (assignment.status !== ShiftAssignmentStatus.CHECKEDIN) {
+      throw new BadRequestException('Phải vô ca trước khi có thể kết ca');
+    }
+
+    assignment.status = ShiftAssignmentStatus.CHECKEDOUT;
+    assignment.checkOutAt = new Date();
+    return this.shiftAssignmentRepo.save(assignment);
+  }
+
+  // Dùng chung cho checkIn/checkOut: nạp ca kèm quan hệ staff, và chặn ngay nếu
+  // không phải ca của chính người gọi — không tin shiftAssignmentId gửi lên là đủ.
+  private async findOwnedAssignmentOrThrow(
+    shiftAssignmentId: string,
+    requesterId: string,
+  ): Promise<ShiftAssignment> {
+    const assignment = await this.shiftAssignmentRepo.findOne({
+      where: { shiftAssignmentId },
+      relations: { staff: true, shiftType: true },
+    });
+    if (!assignment) {
+      throw new NotFoundException('Không tìm thấy lịch phân ca');
+    }
+    if (assignment.staff.userId !== requesterId) {
+      throw new ForbiddenException('Đây không phải ca làm việc của bạn');
+    }
+    return assignment;
   }
 }

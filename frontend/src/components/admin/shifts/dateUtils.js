@@ -42,3 +42,51 @@ export function todayKey() {
 export function isPastDateKey(key) {
   return key < todayKey();
 }
+
+// ---------------------------------------------------------------------------
+// Khung giờ ca — phải khớp với backend (shift-assignment.service.ts). Phần dưới
+// chỉ dùng để gợi ý trên giao diện (dựa vào giờ máy người dùng); backend vẫn là
+// nơi kiểm tra chính thức khi bấm vô ca.
+// ---------------------------------------------------------------------------
+
+export const CHECK_IN_EARLY_GRACE_MINUTES = 30;
+
+function normalizeTime(time) {
+  return time && time.length === 5 ? `${time}:00` : time;
+}
+
+function formatHm(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+// Ca kết thúc <= giờ bắt đầu (vd. Ca đêm 22:00-06:00) thì kết thúc vào ngày hôm sau.
+export function buildShiftWindow(workDate, startTime, endTime) {
+  const start = new Date(`${workDate}T${normalizeTime(startTime)}`);
+  const end = new Date(`${workDate}T${normalizeTime(endTime)}`);
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+// { allowed, reason } — reason dùng làm tooltip/chú thích khi chưa cho vô ca.
+export function getCheckInAvailability(assignment, now = new Date()) {
+  if (!assignment?.shiftType?.startTime || !assignment?.shiftType?.endTime) {
+    return { allowed: false, reason: '' };
+  }
+  const { start, end } = buildShiftWindow(
+    assignment.workDate,
+    assignment.shiftType.startTime,
+    assignment.shiftType.endTime,
+  );
+  const earliest = new Date(start.getTime() - CHECK_IN_EARLY_GRACE_MINUTES * 60_000);
+
+  if (now < earliest) {
+    return {
+      allowed: false,
+      reason: `Chưa đến giờ vô ca — ca bắt đầu lúc ${formatHm(start)}, được vô ca từ ${formatHm(earliest)}`,
+    };
+  }
+  if (now > end) {
+    return { allowed: false, reason: `Ca đã kết thúc lúc ${formatHm(end)}` };
+  }
+  return { allowed: true, reason: '' };
+}

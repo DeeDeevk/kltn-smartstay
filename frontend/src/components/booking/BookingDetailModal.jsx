@@ -23,11 +23,10 @@ export default function BookingDetailModal({ booking, onClose }) {
     downloadQrPng(qrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    // Không đóng khi bấm ra ngoài (backdrop) — thống nhất với component Modal dùng
+    // chung, tránh lỡ tay đóng mất. Chỉ đóng qua nút X / nút Đóng.
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white p-6">
           <div>
             <h2 className="text-xl font-bold text-gray-900">{t('booking.history.detail.title')}</h2>
