@@ -5,12 +5,17 @@ import {
   CalendarClock,
   ClipboardList,
   Loader2,
+  LogIn,
   LogOut,
   QrCode,
   RefreshCw,
-  TrendingUp,
 } from 'lucide-react';
 import { useGetRoomMapQuery } from '../../../services/adminRoom';
+import {
+  useGetMyShiftAssignmentsQuery,
+  useCheckInShiftAssignmentMutation,
+  useCheckOutShiftAssignmentMutation,
+} from '../../../services/shiftAssignment';
 import { useAuth } from '../../../context/AuthContext';
 import {
   ROOM_STATUS_META,
@@ -19,9 +24,27 @@ import {
 import RoomStatusCard from './RoomStatusCard';
 import FloorSidebar from './FloorSidebar';
 import RoomMapFilterBar from './RoomMapFilterBar';
-import ShiftModal from './ShiftModal';
 import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
+import Modal from '../../common/Modal';
+import ConfirmModal from '../../common/ConfirmModal';
+import { todayKey } from '../shifts/dateUtils';
+import useCheckInAvailability from '../shifts/useCheckInAvailability';
+
+const SHIFT_STATUS_LABELS = {
+  SCHEDULED: 'Chưa vô ca',
+  CHECKEDIN: 'Đang làm việc',
+  CHECKEDOUT: 'Đã kết ca',
+  ABSENT: 'Vắng mặt',
+};
+
+function formatShiftTime(dateTimeString) {
+  if (!dateTimeString) return null;
+  return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 const EMPTY_DRAFT = { checkIn: '', checkOut: '', roomType: '' };
 // Chú giải mặc định theo trạng thái phòng thật; khi lọc theo khoảng ngày thì thay
@@ -46,17 +69,61 @@ const UUID_PATTERN =
 export default function RoomMapPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  // Danh sách ca + doanh thu là chức năng quản lý -> chỉ Admin. "Thông tin ca" /
-  // "Kết ca" là thao tác trực quầy nên cả Admin lẫn nhân viên đều thấy.
+  // "Danh sách ca" (xem/phân ca cho mọi nhân viên) là chức năng quản lý -> chỉ
+  // Admin. "Thông tin ca" / "Vô ca" / "Kết ca" là thao tác trực quầy của chính
+  // người đang đăng nhập nên cả Admin lẫn nhân viên đều thấy.
   const isAdmin = user?.role === 'ADMIN';
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [applied, setApplied] = useState(EMPTY_DRAFT);
   const [selectedFloor, setSelectedFloor] = useState('all');
-  const [shiftMode, setShiftMode] = useState(null);
+  const [shiftInfoOpen, setShiftInfoOpen] = useState(false);
+  const [checkOutConfirmOpen, setCheckOutConfirmOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedBookingId, setScannedBookingId] = useState(null);
 
   const openRoom = (room) => navigate(`/admin/rooms/${room.roomId}`);
+
+  // Ca làm việc hôm nay của chính người đang đăng nhập — dùng đúng dữ liệu
+  // thật từ ShiftAssignment (không còn dữ liệu giả lập).
+  const todayKeyValue = todayKey();
+  const { data: todayAssignments = [] } = useGetMyShiftAssignmentsQuery({
+    from: todayKeyValue,
+    to: todayKeyValue,
+  });
+  // Ưu tiên hiện ca đang CHECKEDIN (cần kết ca), rồi tới ca SCHEDULED sớm nhất
+  // (cần vô ca); nếu mọi ca hôm nay đã CHECKEDOUT thì lấy ca đầu để hiện trạng thái.
+  const activeAssignment =
+    todayAssignments.find((a) => a.status === 'CHECKEDIN') ??
+    todayAssignments.find((a) => a.status === 'SCHEDULED') ??
+    todayAssignments[0] ??
+    null;
+
+  // Chưa tới giờ ca thì nút "Vô ca" bị mờ kèm lý do (backend vẫn chặn lại lần nữa).
+  const checkInAvailability = useCheckInAvailability(activeAssignment);
+
+  const [checkIn, { isLoading: isCheckingIn }] = useCheckInShiftAssignmentMutation();
+  const [checkOut, { isLoading: isCheckingOut }] = useCheckOutShiftAssignmentMutation();
+
+  const handleCheckIn = async () => {
+    if (!activeAssignment) return;
+    try {
+      await checkIn(activeAssignment.shiftAssignmentId).unwrap();
+      toast.success(`Đã vô ca "${activeAssignment.shiftType.name}"`);
+    } catch (err) {
+      toast.error(err.message || 'Không thể vô ca');
+    }
+  };
+
+  const handleConfirmCheckOut = async () => {
+    if (!activeAssignment) return;
+    try {
+      await checkOut(activeAssignment.shiftAssignmentId).unwrap();
+      toast.success(`Đã kết ca "${activeAssignment.shiftType.name}"`);
+      setCheckOutConfirmOpen(false);
+    } catch (err) {
+      toast.error(err.message || 'Không thể kết ca');
+    }
+  };
 
   const hasRangeFilter = Boolean(applied.checkIn && applied.checkOut);
 
@@ -154,23 +221,16 @@ export default function RoomMapPage() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
             {isAdmin && (
-              <>
-                <GhostButton
-                  icon={ClipboardList}
-                  label="Danh sách ca"
-                  onClick={() => setShiftMode('list')}
-                />
-                <GhostButton
-                  icon={TrendingUp}
-                  label="Doanh thu"
-                  onClick={() => setShiftMode('revenue')}
-                />
-              </>
+              <GhostButton
+                icon={ClipboardList}
+                label="Phân ca nhân viên"
+                onClick={() => navigate('/admin/schedule')}
+              />
             )}
             <GhostButton
               icon={CalendarClock}
               label="Thông tin ca"
-              onClick={() => setShiftMode('info')}
+              onClick={() => setShiftInfoOpen(true)}
             />
           </div>
 
@@ -182,13 +242,44 @@ export default function RoomMapPage() {
             <QrCode size={16} /> Quét mã QR
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShiftMode('end')}
-            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
-          >
-            <LogOut size={16} /> Kết ca
-          </button>
+          {activeAssignment?.status === 'SCHEDULED' && (
+            // Bọc span để tooltip vẫn hiện được khi nút đang bị disable.
+            <span
+              className="inline-flex"
+              title={checkInAvailability.reason || undefined}
+            >
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={isCheckingIn || !checkInAvailability.allowed}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCheckingIn ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
+                Vô ca
+              </button>
+            </span>
+          )}
+          {activeAssignment?.status === 'CHECKEDIN' && (
+            <button
+              type="button"
+              onClick={() => setCheckOutConfirmOpen(true)}
+              disabled={isCheckingOut}
+              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCheckingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+              Kết ca
+            </button>
+          )}
+          {activeAssignment?.status === 'CHECKEDOUT' && (
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-500">
+              Đã kết ca lúc {formatShiftTime(activeAssignment.checkOutAt)}
+            </span>
+          )}
+          {!activeAssignment && (
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-4 py-2.5 text-sm text-gray-400">
+              Không có ca hôm nay
+            </span>
+          )}
 
           <button
             type="button"
@@ -247,7 +338,7 @@ export default function RoomMapPage() {
                 <h3 className="mb-3 inline-flex rounded-md bg-gray-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-gray-500">
                   Tầng {floor}
                 </h3>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
                   {entries.map(({ room, displayStatus }) => (
                     <RoomStatusCard
                       key={room.roomId}
@@ -263,12 +354,63 @@ export default function RoomMapPage() {
         </div>
       </div>
 
-      <ShiftModal
-        mode={shiftMode}
-        open={shiftMode !== null}
-        onClose={() => setShiftMode(null)}
-        onShiftEnded={refetch}
+      <Modal open={shiftInfoOpen} onClose={() => setShiftInfoOpen(false)} title="Thông tin ca">
+        {!activeAssignment ? (
+          <p className="py-6 text-center text-sm text-gray-400">
+            Bạn không có ca làm việc nào hôm nay.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-100 text-sm">
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-gray-500">Loại ca</span>
+              <span className="font-semibold text-gray-900">
+                {activeAssignment.shiftType.name} (
+                {activeAssignment.shiftType.startTime?.slice(0, 5)}-
+                {activeAssignment.shiftType.endTime?.slice(0, 5)})
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-gray-500">Trạng thái</span>
+              <span className="font-semibold text-gray-900">
+                {SHIFT_STATUS_LABELS[activeAssignment.status] ?? activeAssignment.status}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-gray-500">Vô ca lúc</span>
+              <span className="font-semibold text-gray-900">
+                {formatShiftTime(activeAssignment.checkInAt) ?? '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-gray-500">Kết ca lúc</span>
+              <span className="font-semibold text-gray-900">
+                {formatShiftTime(activeAssignment.checkOutAt) ?? '—'}
+              </span>
+            </div>
+            {activeAssignment.note && (
+              <div className="py-2.5">
+                <span className="text-gray-500">Ghi chú: </span>
+                <span className="text-gray-900">{activeAssignment.note}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmModal
+        open={checkOutConfirmOpen}
+        title="Kết ca"
+        message={
+          activeAssignment
+            ? `Kết thúc ca "${activeAssignment.shiftType.name}" hôm nay? Sau khi kết ca sẽ không vô ca lại được cho ca này.`
+            : ''
+        }
+        confirmLabel="Kết ca"
+        loading={isCheckingOut}
+        onConfirm={handleConfirmCheckOut}
+        onClose={() => setCheckOutConfirmOpen(false)}
       />
+
       <QrCheckInModal
         bookingId={scannedBookingId}
         onClose={() => setScannedBookingId(null)}

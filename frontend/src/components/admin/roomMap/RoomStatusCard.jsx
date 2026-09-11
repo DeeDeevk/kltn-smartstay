@@ -54,13 +54,15 @@ export default function RoomStatusCard({ room, displayStatus, onClick }) {
         <BedDouble size={30} strokeWidth={1.5} />
       </div>
 
-      <div className="flex items-end justify-between">
-        <span className="flex items-center gap-1 text-xs text-gray-400">
+      {/* flex-wrap + whitespace-nowrap: khi ô hẹp (vd. mở rộng sidebar), giá tụt
+          nguyên cụm xuống dòng dưới thay vì bị ngắt giữa chừng ("4.500.000 đ/" | "đêm"). */}
+      <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
+        <span className="flex shrink-0 items-center gap-1 text-xs text-gray-400">
           <Users size={13} /> {room.roomType?.capacity ?? '—'}
         </span>
         {room.roomType?.basePrice != null && (
           <span
-            className={`text-sm font-bold ${
+            className={`ml-auto whitespace-nowrap text-sm font-bold ${
               muted ? 'text-gray-400' : 'text-blue-600'
             }`}
           >

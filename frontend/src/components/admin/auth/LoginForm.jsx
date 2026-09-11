@@ -92,12 +92,16 @@ export default function LoginForm() {
           </p>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={handleSubmit} autoComplete="off">
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t('auth.email')}</label>
             <div className="relative">
               <input
                 type="email"
+                name="login-email"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -112,6 +116,8 @@ export default function LoginForm() {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="login-password"
+                autoComplete="new-password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"

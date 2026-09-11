@@ -73,4 +73,25 @@ export class ShiftAssignmentController {
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.shiftAssignmentService.remove(id);
   }
+
+  // Vô ca / kết ca: không giới hạn theo role (STAFF lẫn ADMIN đều có thể được
+  // phân ca) — quyền thao tác được service kiểm tra theo đúng chủ sở hữu ca,
+  // không dựa vào role.
+  @Post(':id/check-in')
+  @UseGuards(JwtAuthGuard)
+  checkIn(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shiftAssignmentService.checkIn(id, req.user.userId);
+  }
+
+  @Post(':id/check-out')
+  @UseGuards(JwtAuthGuard)
+  checkOut(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shiftAssignmentService.checkOut(id, req.user.userId);
+  }
 }
