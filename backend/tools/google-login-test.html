@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Test Google Login</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  label { display: block; margin-top: 12px; font-weight: 600; }
+  input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+  pre { background: #f4f4f4; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  button { margin-top: 12px; padding: 8px 16px; cursor: pointer; }
+  h3 { margin-top: 24px; }
+</style>
+</head>
+<body>
+  <h2>Test đăng nhập Google → backend</h2>
+
+  <label>Google Client ID</label>
+  <input id="clientId" value="394225186148-tlb0inmvm9a7v7helh8fb2ov1b1a1m3f.apps.googleusercontent.com" />
+
+  <label>Backend URL</label>
+  <input id="backendUrl" value="http://localhost:3000/api/v1/auth/google" />
+
+  <div id="buttonDiv" style="margin-top:16px;"></div>
+
+  <h3>1. ID token nhận từ Google</h3>
+  <pre id="idTokenBox">(chưa có)</pre>
+
+  <button id="testBtn" disabled>2. Gửi idToken lên backend (/auth/google)</button>
+
+  <h3>3. Response từ backend</h3>
+  <pre id="resultBox">(chưa gọi)</pre>
+
+  <script>
+    let currentIdToken = null;
+
+    function handleCredentialResponse(response) {
+      currentIdToken = response.credential;
+      document.getElementById('idTokenBox').textContent = currentIdToken;
+      document.getElementById('testBtn').disabled = false;
+    }
+
+    function init() {
+      google.accounts.id.initialize({
+        client_id: document.getElementById('clientId').value,
+        callback: handleCredentialResponse,
+      });
+      google.accounts.id.renderButton(document.getElementById('buttonDiv'), {
+        theme: 'outline',
+        size: 'large',
+      });
+    }
+    window.onload = init;
+
+    document.getElementById('testBtn').addEventListener('click', async () => {
+      const resultBox = document.getElementById('resultBox');
+      resultBox.textContent = 'Đang gọi...';
+      try {
+        const res = await fetch(document.getElementById('backendUrl').value, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: currentIdToken }),
+        });
+        const data = await res.json();
+        resultBox.textContent = `HTTP ${res.status}\n` + JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultBox.textContent = 'Lỗi: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

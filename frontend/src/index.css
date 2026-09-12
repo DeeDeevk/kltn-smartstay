@@ -113,6 +113,23 @@ body {
 	}
 }
 
+.dropdown-menu-in {
+	transform-origin: top right;
+	animation: dropdownIn 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes dropdownIn {
+	from {
+		opacity: 0;
+		transform: scale(0.96) translateY(-4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
 .auth-hero-image {
 	opacity: 0;
 	animation: authHeroFade 900ms ease forwards;
@@ -202,7 +219,8 @@ body {
 	.hero-title,
 	.hero-subtitle,
 	.hero-badge,
-	.hero-scroll-cue {
+	.hero-scroll-cue,
+	.dropdown-menu-in {
 		animation: none;
 		transition: none;
 	}

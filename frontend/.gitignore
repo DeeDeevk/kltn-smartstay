@@ -28,4 +28,8 @@ node_modules
 node_modules/
 dist
 dist/
+.claude/
 .git
+
+.agents/
+skills-lock.json

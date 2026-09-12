@@ -1,0 +1,119 @@
+@startuml vika-modular-monolith
+!pragma layout smetana
+' Nếu máy có cài Graphviz, có thể xoá dòng pragma ở trên để layout đẹp hơn.
+
+title <size:18>**Kiến trúc Modular Monolith – Vika Hotel Booking**</size>
+
+top to bottom direction
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam roundCorner 10
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam ArrowColor #455A64
+skinparam ArrowFontSize 11
+skinparam package {
+  FontStyle bold
+  BorderColor #607D8B
+}
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #546E7A
+}
+
+actor "Người dùng\n(Khách · Lễ tân · Admin)" as USER
+
+package "Frontend – React SPA (Responsive)" as FE #E3F2FD {
+  rectangle FE_DESK [
+    **Desktop**
+    {{
+    salt
+    {+
+      {* Vika Hotel | Phòng | Đặt phòng | Ưu đãi | Đăng nhập }
+      {
+        "Ngày nhận  " | "Ngày trả   " | "2 khách" | [Tìm phòng]
+      }
+      .
+      {# <&image> Deluxe | <&image> Suite | <&image> Family
+         800.000đ | 1.500.000đ | 1.200.000đ }
+    }
+    }}
+  ]
+
+  rectangle FE_MOB [
+    **Mobile**
+    {{
+    salt
+    {+
+      { <&menu> | **Vika Hotel** | <&person> }
+      "Ngày nhận"
+      "Ngày trả "
+      [   Tìm phòng   ]
+      {# <&image> Deluxe · 800.000đ }
+      {# <&image> Suite · 1.500.000đ }
+    }
+    }}
+  ]
+
+  rectangle "Pages · Redux (RTK Query) · Axios" as FE_CORE
+}
+
+package "Backend – NestJS Modular Monolith" as BE #FFF8E1 {
+
+  rectangle "**API Layer**\nREST /api/v1 · JWT & Role Guard · Validation" as API
+
+  package "Business Modules" as MODS #FFFDE7 {
+    rectangle "Auth" as M_AUTH
+    rectangle "User" as M_USER
+    rectangle "Account" as M_ACC
+    rectangle "Upload" as M_UP
+
+    rectangle "Reservations\n(Room · RoomType · Booking)" as M_RES
+    rectangle "Service" as M_SVC
+    rectangle "Promotion" as M_PROMO
+    rectangle "Shift" as M_SHIFT
+
+    rectangle "Payment" as M_PAY
+    rectangle "Dashboard" as M_DASH
+    rectangle "Revenue" as M_REV
+  }
+
+  rectangle "**Infrastructure**\nTypeORM · Redis Client · Mail · Config" as INFRA #ECEFF1
+}
+
+database "PostgreSQL" as PG #E8F5E9
+database "Redis" as RDS #E8F5E9
+rectangle "**Dịch vụ ngoài**\nPayOS · Cloudinary · Google OAuth · Brevo SMTP" as EXT #F3E5F5
+
+' Xếp các module thành lưới 3 hàng
+M_AUTH -[hidden]down- M_RES
+M_RES -[hidden]down- M_PAY
+M_USER -[hidden]down- M_SVC
+M_SVC -[hidden]down- M_DASH
+M_ACC -[hidden]down- M_PROMO
+M_PROMO -[hidden]down- M_REV
+M_UP -[hidden]down- M_SHIFT
+
+' Ép Infrastructure & dịch vụ ngoài nằm dưới hàng module cuối
+M_DASH -[hidden]down- INFRA
+M_PAY -[hidden]down- INFRA
+M_REV -[hidden]down- EXT
+
+USER -down-> FE_DESK
+USER -down-> FE_MOB
+FE_DESK -down-> FE_CORE
+FE_MOB -down-> FE_CORE
+FE_CORE -down-> API : HTTPS · REST/JSON
+API -down-> MODS
+MODS -down-> INFRA
+MODS -down-> EXT
+INFRA -down-> PG
+INFRA -down-> RDS
+
+legend right
+  Mỗi module: Controller → Service → Entity
+  Module chỉ gọi nhau qua **Service được export**
+endlegend
+
+@enduml

@@ -14,7 +14,10 @@ export class RolesGuard implements CanActivate {
     );
 
     if (!requiredRoles || requiredRoles.length === 0) {
-      return true; // route không gắn @Roles() -> cho qua, không giới hạn
+      // Gắn RolesGuard mà quên khai báo @Roles() là lỗi cấu hình — fail-closed
+      // (từ chối) thay vì fail-open, để lỗi cấu hình lộ ra ngay thay vì âm thầm
+      // mở route cho mọi người.
+      return false;
     }
 
     const user = context.switchToHttp().getRequest();

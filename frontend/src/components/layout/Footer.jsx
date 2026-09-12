@@ -1,10 +1,12 @@
 import React from 'react';
 import { Globe, MessageCircle, Send, Mail, Phone, MapPin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Logo from "../../assets/icon/icon.png";
 
 export default function Footer() {
+  const { t } = useTranslation();
   return (
-    <footer className="bg-gray-950 text-gray-300 pt-20 pb-8 relative overflow-hidden">
+    <footer id="lien-he" className="bg-gray-950 text-gray-300 pt-20 pb-8 relative overflow-hidden scroll-mt-20">
       {/* Decorative glow */}
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-80 w-[36rem] rounded-full bg-blue-600/20 blur-3xl" />
 
@@ -17,7 +19,7 @@ export default function Footer() {
               <span className="text-xl font-bold text-white tracking-tight">VIKA HOTEL</span>
             </div>
             <p className="max-w-sm text-gray-400 text-sm leading-relaxed">
-              Trải nghiệm nghỉ dưỡng tuyệt vời nhất ngay tại trung tâm thành phố với dịch vụ 5 sao.
+              {t('footer.blurb')}
             </p>
             <div className="flex gap-3 pt-1">
               {[Globe, MessageCircle, Send].map((Icon, i) => (
@@ -34,27 +36,27 @@ export default function Footer() {
 
           {/* Links 1 */}
           <div className="min-w-0">
-            <h4 className="font-bold text-white mb-6 whitespace-nowrap">Về Vika Hotel</h4>
+            <h4 className="font-bold text-white mb-6 whitespace-nowrap">{t('footer.about')}</h4>
             <ul className="space-y-4 text-sm text-gray-400">
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Về chúng tôi</a></li>
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Cơ hội nghề nghiệp</a></li>
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Blog du lịch</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.aboutUs')}</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.careers')}</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.blog')}</a></li>
             </ul>
           </div>
 
           {/* Links 2 */}
           <div className="min-w-0">
-            <h4 className="font-bold text-white mb-6 whitespace-nowrap">Hỗ Trợ</h4>
+            <h4 className="font-bold text-white mb-6 whitespace-nowrap">{t('footer.support')}</h4>
             <ul className="space-y-4 text-sm text-gray-400">
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Trung tâm trợ giúp</a></li>
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Chính sách bảo mật</a></li>
-              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">Liên hệ</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.helpCenter')}</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.privacyPolicy')}</a></li>
+              <li><a href="#" className="inline-flex whitespace-nowrap hover:text-blue-400 transition-colors">{t('footer.contactUs')}</a></li>
             </ul>
           </div>
 
           {/* Contact */}
           <div className="min-w-0">
-            <h4 className="font-bold text-white mb-6 whitespace-nowrap">Liên Hệ</h4>
+            <h4 className="font-bold text-white mb-6 whitespace-nowrap">{t('footer.contactHeading')}</h4>
             <ul className="space-y-4 text-sm text-gray-400">
               <li className="flex items-start gap-3">
                 <MapPin size={18} className="shrink-0 text-blue-400 mt-0.5" />
@@ -73,11 +75,11 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-white/10 pt-8 flex flex-col gap-4 text-sm text-gray-500 md:flex-row md:justify-between md:items-center">
-          <p className="whitespace-nowrap">&copy; 2026 Vika Hotel. All rights reserved.</p>
+          <p className="whitespace-nowrap">{t('footer.copyright')}</p>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">Điều khoản</a>
-            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">Bảo mật</a>
-            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">Sitemap</a>
+            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">{t('footer.terms')}</a>
+            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">{t('footer.privacy')}</a>
+            <a href="#" className="whitespace-nowrap hover:text-gray-300 transition-colors">{t('footer.sitemap')}</a>
           </div>
         </div>
       </div>

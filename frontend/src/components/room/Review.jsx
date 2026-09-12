@@ -1,15 +1,17 @@
 import StarIcon from "../../assets/icon/star.png";
+import { useTranslation } from "react-i18next";
 
 export default function Review({ user, rating, comment, created_at }) {
+  const { t, i18n } = useTranslation();
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', {
+    return new Date(dateString).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
   };
 
-  const username = user?.name || "Khách hàng";
+  const username = user?.name || t('room.reviews.defaultGuestName');
   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random`;
 
   return (
