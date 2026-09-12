@@ -15,6 +15,7 @@ import { UploadModule } from './uploads/upload.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PaymentModule } from './payments/payment.module';
 import { ShiftModule } from './shifts/shift.module';
+import { RevenueModule } from './revenue/revenue.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ShiftModule } from './shifts/shift.module';
     UploadModule,
     PaymentModule,
     ShiftModule,
+    RevenueModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
