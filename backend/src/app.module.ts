@@ -35,6 +35,9 @@ import { ChatModule } from './chat/chat.module';
         database: config.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
         synchronize: config.get<string>('DB_SYNCHRONIZE') === 'true',
+        ssl: config.get<string>('DB_SSL') === 'true' 
+          ? { rejectUnauthorized: false } 
+          : false,
       }),
     }),
     UserModule,
