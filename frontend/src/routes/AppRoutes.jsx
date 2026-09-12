@@ -30,6 +30,8 @@ import UserManagementPage from '../components/admin/users/UserManagementPage'
 import StaffManagementPage from '../components/admin/users/StaffManagementPage'
 import ShiftSchedulePage from '../components/admin/shifts/ShiftSchedulePage'
 import MySchedulePage from '../components/admin/shifts/MySchedulePage'
+import RevenueSummaryPage from '../components/admin/revenue/RevenueSummaryPage'
+import RevenueByStaffPage from '../components/admin/revenue/RevenueByStaffPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
@@ -845,6 +847,22 @@ export default function AppRoutes() {
             }
           />
           <Route path="schedule/me" element={<MySchedulePage />} />
+          <Route
+            path="revenue"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <RevenueSummaryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="revenue/staff"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <RevenueByStaffPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route
           path="/admin/checkout"

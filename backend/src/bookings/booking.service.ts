@@ -211,6 +211,7 @@ export class BookingService {
 
       const booking = this.bookingRepo.create({
         user: staff,
+        staff,
         roomType: room.roomType,
         room,
         checkInDate: dto.checkIn,
@@ -373,7 +374,10 @@ export class BookingService {
     return this.toDetailResponse(booking);
   }
 
-  async checkIn(bookingId: string, dto: CheckInDto) {
+  // staffUserId: lễ tân đang thực hiện check-in — thời điểm này khách được phục
+  // vụ và đơn CASH được thu tiền, nên quy doanh thu của đơn về người này (ghi đè
+  // người tạo đơn nếu khác).
+  async checkIn(bookingId: string, dto: CheckInDto, staffUserId?: string) {
     const booking = await this.findByIdRaw(bookingId);
     if (booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException(
@@ -403,6 +407,9 @@ export class BookingService {
 
     booking.room = room;
     booking.status = BookingStatus.CHECKED_IN;
+    if (staffUserId) {
+      booking.staff = await this.userService.findById(staffUserId);
+    }
     // Đơn CASH được lễ tân thu tiền mặt trực tiếp ngay lúc check-in (khác đơn PayOS đã
     // có luồng xác nhận thanh toán riêng qua webhook/sync) — đánh dấu đã thanh toán luôn.
     if (
@@ -573,6 +580,25 @@ export class BookingService {
 
     booking.paymentStatus = PaymentStatus.FAILED;
     return this.bookingRepo.save(booking);
+  }
+
+  // Các đơn có phát sinh lưu trú thật (đã/đang ở) và có đêm nghỉ giao với khoảng
+  // [from, to] — nguồn dữ liệu thô cho module Revenue tự phân bổ doanh thu theo
+  // đêm. Trả về entity kèm quan hệ, module Revenue không đụng repository Booking.
+  findStaysOverlapping(from: string, to: string): Promise<Booking[]> {
+    return this.bookingRepo
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.roomType', 'roomType')
+      .leftJoinAndSelect('booking.staff', 'staff')
+      .leftJoinAndSelect('booking.serviceItems', 'serviceItems')
+      .where('booking.status IN (:...statuses)', {
+        statuses: [BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT],
+      })
+      // Giao nhau giữa [checkInDate, checkOutDate) và [from, to]
+      .andWhere('booking.checkInDate <= :to', { to })
+      .andWhere('booking.checkOutDate > :from', { from })
+      .orderBy('booking.checkInDate', 'ASC')
+      .getMany();
   }
 
   // Số lượng booking gom theo trạng thái — phục vụ DashboardService (thống kê

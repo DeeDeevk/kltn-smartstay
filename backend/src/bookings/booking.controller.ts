@@ -84,8 +84,12 @@ export class BookingController {
   @Post(':id/check-in')
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
-  checkIn(@Param('id') id: string, @Body() dto: CheckInDto) {
-    return this.bookingService.checkIn(id, dto);
+  checkIn(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: CheckInDto,
+  ) {
+    return this.bookingService.checkIn(id, dto, req.user.userId);
   }
 
   @Post(':id/check-out')

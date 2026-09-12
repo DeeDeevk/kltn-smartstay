@@ -32,6 +32,13 @@ export class Booking {
   @JoinColumn({ name: 'userId' })
   user!: User;
 
+  // Nhân viên phụ trách đơn (theo ERD: Booking.staffId). Gán khi lễ tân tạo đơn
+  // khách vãng lai và khi lễ tân thực hiện check-in — dùng để quy doanh thu về
+  // từng nhân viên. Đơn khách tự đặt online mà chưa check-in thì để null.
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL', eager: true })
+  @JoinColumn({ name: 'staffId' })
+  staff!: User | null;
+
   @ManyToOne(() => RoomType, { onDelete: 'RESTRICT', eager: true })
   @JoinColumn({ name: 'roomTypeId' })
   roomType!: RoomType;

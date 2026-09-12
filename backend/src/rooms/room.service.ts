@@ -204,6 +204,11 @@ export class RoomService {
     return this.roomRepo.save(room);
   }
 
+  // Tổng số phòng vật lý — dùng cho công suất phòng & RevPAR ở module Revenue.
+  count(): Promise<number> {
+    return this.roomRepo.count();
+  }
+
   // Số lượng phòng gom theo trạng thái — phục vụ DashboardService (thống kê tổng
   // quan) mà không để module Dashboard truy cập thẳng repository Room.
   countGroupedByStatus(): Promise<Array<{ group: string; count: string }>> {

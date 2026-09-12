@@ -1,0 +1,168 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="vika-modular-monolith" name="Modular Monolith">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1120" pageHeight="1260" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===================== TIÊU ĐỀ & NGƯỜI DÙNG ===================== -->
+        <mxCell id="title" value="&lt;b&gt;Kiến trúc Modular Monolith – Vika Hotel Booking&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontColor=#263238;" vertex="1" parent="1">
+          <mxGeometry x="40" y="8" width="1040" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="user" value="Người dùng&lt;br&gt;&lt;font style=&quot;font-size:11px&quot; color=&quot;#607D8B&quot;&gt;Khách · Lễ tân · Admin&lt;/font&gt;" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#E3F2FD;strokeColor=#37474F;strokeWidth=2;fontSize=12;fontStyle=1;fontColor=#263238;" vertex="1" parent="1">
+          <mxGeometry x="545" y="58" width="30" height="58" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== FRONTEND ===================== -->
+        <mxCell id="fe" value="FRONTEND · React SPA (Responsive)" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;container=1;collapsible=0;verticalAlign=top;align=left;spacingLeft=18;spacingTop=10;fontStyle=1;fontSize=15;fontColor=#1565C0;fillColor=#F3F8FE;strokeColor=#90CAF9;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="1040" height="255" as="geometry" />
+        </mxCell>
+
+        <mxCell id="desk_bg" value="" style="ellipse;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;strokeWidth=2;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="322" y="52" width="96" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="desk_icon" value="" style="shape=image;html=1;imageAspect=0;aspect=fixed;image=data:image/svg+xml,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMTU2NUMwIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIyIiB5PSIzIiB3aWR0aD0iMjAiIGhlaWdodD0iMTQiIHJ4PSIyIiBmaWxsPSIjQkJERUZCIi8+PGxpbmUgeDE9IjgiIHkxPSIyMSIgeDI9IjE2IiB5Mj0iMjEiLz48bGluZSB4MT0iMTIiIHkxPSIxNyIgeDI9IjEyIiB5Mj0iMjEiLz48L3N2Zz4=;" vertex="1" parent="fe">
+          <mxGeometry x="342" y="72" width="56" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="desk_lbl" value="&lt;b&gt;Desktop&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot; color=&quot;#607D8B&quot;&gt;Trình duyệt web&lt;/font&gt;" style="text;html=1;align=right;verticalAlign=middle;fontSize=14;fontColor=#0D47A1;" vertex="1" parent="fe">
+          <mxGeometry x="150" y="78" width="160" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mob_bg" value="" style="ellipse;html=1;fillColor=#E3F2FD;strokeColor=#90CAF9;strokeWidth=2;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="622" y="52" width="96" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="mob_icon" value="" style="shape=image;html=1;imageAspect=0;aspect=fixed;image=data:image/svg+xml,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMTU2NUMwIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSI2IiB5PSIyIiB3aWR0aD0iMTIiIGhlaWdodD0iMjAiIHJ4PSIyLjUiIGZpbGw9IiNCQkRFRkIiLz48bGluZSB4MT0iMTEiIHkxPSIxOC41IiB4Mj0iMTMiIHkyPSIxOC41Ii8+PC9zdmc+;" vertex="1" parent="fe">
+          <mxGeometry x="642" y="72" width="56" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="mob_lbl" value="&lt;b&gt;Mobile&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot; color=&quot;#607D8B&quot;&gt;Web responsive&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#0D47A1;" vertex="1" parent="fe">
+          <mxGeometry x="730" y="78" width="160" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fe_core" value="⚛️ &lt;b&gt;React SPA&lt;/b&gt;&amp;nbsp;&amp;nbsp;·&amp;nbsp;&amp;nbsp;Pages · React Router · Redux Toolkit (RTK Query) · Axios" style="rounded=1;arcSize=30;html=1;fillColor=#FFFFFF;strokeColor=#1E88E5;strokeWidth=2;shadow=1;fontSize=13;fontColor=#0D47A1;" vertex="1" parent="fe">
+          <mxGeometry x="220" y="185" width="600" height="46" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== BACKEND ===================== -->
+        <mxCell id="be" value="BACKEND · NestJS Modular Monolith (1 process · 1 lần deploy)" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;container=1;collapsible=0;verticalAlign=top;align=left;spacingLeft=18;spacingTop=10;fontStyle=1;fontSize=15;fontColor=#E65100;fillColor=#FFF8F0;strokeColor=#FFCC80;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="460" width="1040" height="510" as="geometry" />
+        </mxCell>
+
+        <mxCell id="api" value="🛡️ &lt;b&gt;API Layer&lt;/b&gt;&lt;br&gt;Controllers · REST /api/v1 · JWT &amp;amp; Role Guard · ValidationPipe · Rate limit" style="rounded=1;arcSize=25;html=1;fillColor=#FFFFFF;strokeColor=#FB8C00;strokeWidth=2;shadow=1;fontSize=12;fontColor=#3E2723;" vertex="1" parent="be">
+          <mxGeometry x="220" y="50" width="600" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mods" value="BUSINESS MODULES" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;container=1;collapsible=0;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontStyle=1;fontSize=13;fontColor=#EF6C00;fillColor=#FFFFFF;strokeColor=#FFCC80;strokeWidth=2;dashed=1;dashPattern=8 4;" vertex="1" parent="be">
+          <mxGeometry x="40" y="130" width="960" height="270" as="geometry" />
+        </mxCell>
+
+        <!-- Hàng 1 -->
+        <mxCell id="m_auth" value="🔐 &lt;b&gt;Auth&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Đăng nhập · OTP · JWT&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="35" y="45" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_user" value="👤 &lt;b&gt;User&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Hồ sơ · Nhân viên&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="265" y="45" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_acc" value="🔑 &lt;b&gt;Account&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Tài khoản · Mật khẩu&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="495" y="45" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_up" value="🖼️ &lt;b&gt;Upload&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Tải ảnh lên&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="725" y="45" width="200" height="56" as="geometry" />
+        </mxCell>
+
+        <!-- Hàng 2 -->
+        <mxCell id="m_res" value="🏨 &lt;b&gt;Reservations&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Room · RoomType · Booking&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;strokeWidth=2;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="35" y="115" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_svc" value="🛎️ &lt;b&gt;Service&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Dịch vụ đi kèm&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="265" y="115" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_promo" value="🏷️ &lt;b&gt;Promotion&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Mã khuyến mãi&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="495" y="115" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_shift" value="🕒 &lt;b&gt;Shift&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Phân ca · Chấm công&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="725" y="115" width="200" height="56" as="geometry" />
+        </mxCell>
+
+        <!-- Hàng 3 -->
+        <mxCell id="m_pay" value="💳 &lt;b&gt;Payment&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Thanh toán PayOS&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="150" y="185" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_dash" value="📊 &lt;b&gt;Dashboard&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Thống kê tổng quan&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="380" y="185" width="200" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="m_rev" value="💰 &lt;b&gt;Revenue&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#8D6E63&quot;&gt;Báo cáo doanh thu&lt;/font&gt;" style="rounded=1;arcSize=18;html=1;fillColor=#FFFFFF;strokeColor=#FFE0B2;strokeWidth=1.5;shadow=1;fontSize=13;fontColor=#3E2723;" vertex="1" parent="mods">
+          <mxGeometry x="610" y="185" width="200" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="infra" value="⚙️ &lt;b&gt;Infrastructure&lt;/b&gt;&lt;br&gt;TypeORM · Redis Client · Mail (nodemailer) · Config" style="rounded=1;arcSize=25;html=1;fillColor=#F5F7F8;strokeColor=#90A4AE;strokeWidth=2;shadow=1;fontSize=12;fontColor=#263238;" vertex="1" parent="be">
+          <mxGeometry x="220" y="430" width="600" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== DỮ LIỆU ===================== -->
+        <mxCell id="data" value="TẦNG DỮ LIỆU · Docker" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;container=1;collapsible=0;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#2E7D32;fillColor=#F1F8E9;strokeColor=#A5D6A7;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="260" y="1020" width="520" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="pg" value="&lt;b&gt;PostgreSQL 16&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Dữ liệu nghiệp vụ&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#C8E6C9;strokeColor=#43A047;strokeWidth=1.5;shadow=1;fontSize=12;fontColor=#1B5E20;" vertex="1" parent="data">
+          <mxGeometry x="80" y="45" width="140" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" value="&lt;b&gt;Redis 7&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;OTP · Token · Lock&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FFCDD2;strokeColor=#E53935;strokeWidth=1.5;shadow=1;fontSize=12;fontColor=#B71C1C;" vertex="1" parent="data">
+          <mxGeometry x="300" y="45" width="140" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== DỊCH VỤ NGOÀI ===================== -->
+        <mxCell id="ext" value="DỊCH VỤ BÊN NGOÀI" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;container=1;collapsible=0;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#6A1B9A;fillColor=#FAF3FC;strokeColor=#CE93D8;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="820" y="1020" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="x_payos" value="💳 PayOS" style="rounded=1;arcSize=30;html=1;fillColor=#FFFFFF;strokeColor=#E1BEE7;shadow=1;fontSize=11;fontStyle=1;fontColor=#4A148C;" vertex="1" parent="ext">
+          <mxGeometry x="15" y="45" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="x_cld" value="☁️ Cloudinary" style="rounded=1;arcSize=30;html=1;fillColor=#FFFFFF;strokeColor=#E1BEE7;shadow=1;fontSize=11;fontStyle=1;fontColor=#4A148C;" vertex="1" parent="ext">
+          <mxGeometry x="135" y="45" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="x_google" value="🔑 Google OAuth" style="rounded=1;arcSize=30;html=1;fillColor=#FFFFFF;strokeColor=#E1BEE7;shadow=1;fontSize=11;fontStyle=1;fontColor=#4A148C;" vertex="1" parent="ext">
+          <mxGeometry x="15" y="95" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="x_brevo" value="✉️ Brevo SMTP" style="rounded=1;arcSize=30;html=1;fillColor=#FFFFFF;strokeColor=#E1BEE7;shadow=1;fontSize=11;fontStyle=1;fontColor=#4A148C;" vertex="1" parent="ext">
+          <mxGeometry x="135" y="95" width="110" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== GHI CHÚ ===================== -->
+        <mxCell id="note" value="💡 &lt;b&gt;Quy tắc Modular Monolith:&lt;/b&gt; mỗi module tự quản lý Controller → Service → Entity của mình; các module chỉ gọi nhau qua &lt;b&gt;Service được export&lt;/b&gt;, không truy cập trực tiếp Repository của module khác." style="rounded=1;arcSize=20;html=1;whiteSpace=wrap;fillColor=#FFFDE7;strokeColor=#FFE082;dashed=1;align=left;spacingLeft=16;spacingRight=16;fontSize=12;fontColor=#5D4037;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1195" width="1040" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== MŨI TÊN ===================== -->
+        <mxCell id="e_user_desk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#78909C;strokeWidth=1.5;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="user" target="desk_bg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_mob" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#78909C;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="user" target="mob_bg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_desk_core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#78909C;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="desk_bg" target="fe_core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mob_core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#78909C;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="mob_bg" target="fe_core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_core_api" value="HTTPS · REST/JSON · /api/v1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=6;strokeColor=#1E88E5;strokeWidth=2.5;fontSize=12;fontStyle=1;fontColor=#1565C0;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="fe_core" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_api_mods" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#FB8C00;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="mods">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mods_infra" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#78909C;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="mods" target="infra">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mods_ext" value="gọi API" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#AB47BC;strokeWidth=1.5;dashed=1;fontSize=11;fontColor=#6A1B9A;labelBackgroundColor=#FFFFFF;exitX=0.90625;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="mods" target="ext">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_infra_pg" value="SQL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#43A047;strokeWidth=1.5;fontSize=11;fontColor=#2E7D32;labelBackgroundColor=#FFFFFF;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="infra" target="pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_infra_redis" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=blockThin;endFill=1;endSize=5;strokeColor=#E53935;strokeWidth=1.5;exitX=0.6167;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="infra" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
