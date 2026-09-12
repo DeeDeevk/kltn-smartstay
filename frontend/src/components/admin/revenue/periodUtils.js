@@ -86,5 +86,7 @@ export function formatCurrencyShort(value) {
   if (Math.abs(n) >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)} tỷ`;
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} tr`;
   if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
+  // Dưới 1.000 vẫn phải kèm đơn vị, nếu không số tiền nhỏ (vd. RevPAR = 24)
+  // trông như một con số đếm chứ không phải tiền.
+  return `${n}đ`;
 }

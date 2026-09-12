@@ -101,9 +101,10 @@ export default function UserMenu() {
       title={t('auth.logoutConfirmTitle')}
       message={t('auth.logoutConfirmMessage')}
       confirmLabel={t('auth.logout')}
-      onConfirm={() => {
+      onConfirm={async () => {
         setConfirmLogout(false);
-        logout();
+        await logout();
+        navigate('/login');
       }}
       onClose={() => setConfirmLogout(false)}
     />

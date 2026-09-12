@@ -35,6 +35,16 @@ const MENU_ITEMS = [
   { icon: UserRoundCheck, label: 'Doanh thu nhân viên', path: '/admin/revenue/staff', ready: true, roles: ['ADMIN'] },
 ];
 
+// Mục nào có path là tiền tố của một mục khác (vd. /admin/schedule là tiền tố của
+// /admin/schedule/me) thì phải khớp CHÍNH XÁC, nếu không NavLink sẽ bật active cho
+// cả hai khi đang ở trang con. Các mục còn lại vẫn khớp theo tiền tố để trang chi
+// tiết (vd. /admin/rooms/:roomId) giữ sáng đúng mục cha của nó.
+const EXACT_MATCH_PATHS = new Set(
+  MENU_ITEMS.filter((item) =>
+    MENU_ITEMS.some((other) => other !== item && other.path.startsWith(`${item.path}/`)),
+  ).map((item) => item.path),
+);
+
 const ROLE_LABELS = {
   ADMIN: 'Quản trị viên',
   STAFF: 'Nhân viên',
@@ -93,7 +103,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             <NavLink
               key={index}
               to={item.path}
-              end={item.path === '/admin'}
+              end={EXACT_MATCH_PATHS.has(item.path)}
               title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
                 `${base} ${

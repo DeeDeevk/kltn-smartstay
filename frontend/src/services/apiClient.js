@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api
 // 401 từ các endpoint này là kết quả cuối cùng của chính chúng (sai mật khẩu, refresh
 // token không hợp lệ, OTP sai...), không phải do access token hết hạn, nên không nên
 // thử refresh + retry cho các request này.
-const SKIP_REFRESH_URLS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/verify-otp', '/auth/resend-otp']
+const SKIP_REFRESH_URLS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/verify-otp', '/auth/resend-otp', '/auth/forgot-password', '/auth/verify-reset-otp', '/auth/reset-password']
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
