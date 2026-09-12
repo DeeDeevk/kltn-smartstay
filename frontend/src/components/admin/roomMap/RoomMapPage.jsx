@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -10,7 +11,8 @@ import {
   QrCode,
   RefreshCw,
 } from 'lucide-react';
-import { useGetRoomMapQuery } from '../../../services/adminRoom';
+import { adminRoomApi, useGetRoomMapQuery } from '../../../services/adminRoom';
+import { useSocket } from '../../../context/SocketContext';
 import {
   useGetMyShiftAssignmentsQuery,
   useCheckInShiftAssignmentMutation,
@@ -135,6 +137,19 @@ export default function RoomMapPage() {
     checkIn: applied.checkIn,
     checkOut: applied.checkOut,
   });
+
+  // Phòng đổi trạng thái ở tab/máy khác (check-in, check-out, đổi trạng thái tay...)
+  // -> bắn cache 'LIST' để mọi admin/staff đang mở Sơ đồ phòng tự thấy, khỏi bấm
+  // "Làm mới" thủ công.
+  const dispatch = useDispatch();
+  const socket = useSocket();
+  useEffect(() => {
+    const handleRoomStatusChanged = () => {
+      dispatch(adminRoomApi.util.invalidateTags([{ type: 'AdminRoom', id: 'LIST' }]));
+    };
+    socket.on('room:status-changed', handleRoomStatusChanged);
+    return () => socket.off('room:status-changed', handleRoomStatusChanged);
+  }, [socket, dispatch]);
 
   const floors = useMemo(
     () => [...new Set(rooms.map((r) => r.floor))].sort((a, b) => a - b),

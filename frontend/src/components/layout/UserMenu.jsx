@@ -104,6 +104,7 @@ export default function UserMenu() {
       onConfirm={() => {
         setConfirmLogout(false);
         logout();
+        navigate('/');
       }}
       onClose={() => setConfirmLogout(false)}
     />

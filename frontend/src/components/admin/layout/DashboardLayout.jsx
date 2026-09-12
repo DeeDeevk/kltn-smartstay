@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import ForceChangePasswordModal from '../auth/ForceChangePasswordModal';
 import { useAuth } from '../../../context/AuthContext';
+import useAdminRealtimeNotifications from '../../../hooks/useAdminRealtimeNotifications';
 
 const STORAGE_KEY = 'admin.sidebarCollapsed';
 
@@ -12,6 +13,7 @@ const STORAGE_KEY = 'admin.sidebarCollapsed';
 // Trạng thái thu gọn sidebar được nhớ trong localStorage cho các lần sau.
 export default function DashboardLayout({ children }) {
   const { user } = useAuth();
+  useAdminRealtimeNotifications();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === '1';

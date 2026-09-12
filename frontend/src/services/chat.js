@@ -1,21 +1,35 @@
-import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
+import { createApi } from '@reduxjs/toolkit/query/react';
+import axiosBaseQuery from './axiosBaseQuery';
 
+// Chat thật giữa khách hàng và lễ tân (thay bot echo giả trước đây) — nội dung tin
+// nhắn gửi/nhận qua socket (xem Chatbot.jsx, StaffChatPage.jsx), slice này chỉ lo
+// phần REST: lấy/tạo hội thoại và tải lịch sử tin nhắn.
 export const chatApi = createApi({
-  reducerPath: "chatApi",
-  baseQuery: fakeBaseQuery(),
+  reducerPath: 'chatApi',
+  baseQuery: axiosBaseQuery(),
+  tagTypes: ['Conversation'],
   endpoints: (builder) => ({
-    sendMessage: builder.mutation({
-      async queryFn(payload) {
-        const message = payload?.message || "";
-        return {
-          data: {
-            output: `Tôi đã nhận được: ${message}`,
-            text: `Tôi đã nhận được: ${message}`,
-          },
-        };
-      },
+    getOrCreateConversation: builder.mutation({
+      query: () => ({ url: '/chat/conversations', method: 'post' }),
+    }),
+    getConversations: builder.query({
+      query: () => ({ url: '/chat/conversations', method: 'get' }),
+      providesTags: [{ type: 'Conversation', id: 'LIST' }],
+    }),
+    getMessages: builder.query({
+      query: (conversationId) => ({
+        url: `/chat/conversations/${conversationId}/messages`,
+        method: 'get',
+      }),
+      providesTags: (result, error, conversationId) => [
+        { type: 'Conversation', id: conversationId },
+      ],
     }),
   }),
 });
 
-export const { useSendMessageMutation } = chatApi;
+export const {
+  useGetOrCreateConversationMutation,
+  useGetConversationsQuery,
+  useGetMessagesQuery,
+} = chatApi;
