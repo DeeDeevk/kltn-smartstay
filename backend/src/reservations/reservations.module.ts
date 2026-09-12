@@ -18,6 +18,7 @@ import { ServiceModule } from '../services/service.module';
 import { PromotionModule } from '../promotions/promotion.module';
 import { UserModule } from '../users/user.module';
 import { RedisModule } from '../redis/redis.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 // Bounded context "Đặt phòng": Room, RoomType, Booking (+ BookingServiceItem) là
 // các aggregate của cùng một nghiệp vụ và tham chiếu vòng lẫn nhau (booking gắn
@@ -31,6 +32,7 @@ import { RedisModule } from '../redis/redis.module';
     PromotionModule,
     UserModule,
     RedisModule,
+    RealtimeModule,
   ],
   controllers: [RoomController, RoomTypeController, BookingController],
   providers: [RoomService, RoomTypeService, BookingService],

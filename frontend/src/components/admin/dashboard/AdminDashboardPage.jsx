@@ -63,11 +63,12 @@ const QUICK_LINKS = [
     roles: ['ADMIN'],
   },
   {
-    label: 'Đặt phòng',
-    description: 'Xử lý đặt phòng, check-in / check-out',
+    label: 'Quản lý đặt phòng',
+    description: 'Tra cứu, xác nhận, huỷ và theo dõi toàn bộ đơn đặt phòng',
+    path: '/admin/bookings',
     icon: CalendarRange,
-    ready: false,
-    roles: ['ADMIN', 'STAFF'],
+    ready: true,
+    roles: ['ADMIN'],
   },
   {
     label: 'Báo cáo doanh thu',

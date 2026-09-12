@@ -1,15 +1,16 @@
 import { AuthProvider } from './context/AuthContext'
+import { SocketProvider } from './context/SocketContext'
 import AppRoutes from './routes/AppRoutes'
-import Chatbot from './components/Chatbot'
 
 function App() {
 
   return (
     <AuthProvider>
-      <div className="flex min-h-screen flex-col bg-white">
-        <AppRoutes />
-        <Chatbot />
-      </div>
+      <SocketProvider>
+        <div className="flex min-h-screen flex-col bg-white">
+          <AppRoutes />
+        </div>
+      </SocketProvider>
     </AuthProvider>
   )
 }

@@ -158,6 +158,7 @@ export default function Header() {
         onConfirm={() => {
           setConfirmLogout(false);
           logout();
+          navigate('/');
         }}
         onClose={() => setConfirmLogout(false)}
       />

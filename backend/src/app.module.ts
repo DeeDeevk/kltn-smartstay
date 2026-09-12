@@ -16,6 +16,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { PaymentModule } from './payments/payment.module';
 import { ShiftModule } from './shifts/shift.module';
 import { RevenueModule } from './revenue/revenue.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { RevenueModule } from './revenue/revenue.module';
     PaymentModule,
     ShiftModule,
     RevenueModule,
+    RealtimeModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

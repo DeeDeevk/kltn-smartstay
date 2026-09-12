@@ -30,6 +30,7 @@ import { ServiceService } from 'src/services/service.service';
 import { PromotionService } from 'src/promotions/promotion.service';
 import { UserService } from 'src/users/user.service';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -60,6 +61,7 @@ export class BookingService {
     private readonly serviceService: ServiceService,
     private readonly promotionService: PromotionService,
     private readonly userService: UserService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async create(userId: string, dto: CreateBookingDto) {
@@ -151,7 +153,16 @@ export class BookingService {
         await this.promotionService.incrementUsage(promotionId);
       }
 
-      return this.toDetailResponse(await this.findByIdRaw(saved.bookingId));
+      const detail = this.toDetailResponse(
+        await this.findByIdRaw(saved.bookingId),
+      );
+      this.realtimeGateway.emitBookingCreated({
+        bookingId: detail.bookingId,
+        guestName: dto.guestInfo?.fullName,
+        checkIn: dto.checkIn,
+        checkOut: dto.checkOut,
+      });
+      return detail;
     } finally {
       await this.releaseLocks(lockKeys);
     }
@@ -233,6 +244,10 @@ export class BookingService {
       if (room.status === RoomStatus.AVAILABLE) {
         room.status = RoomStatus.RESERVED;
         await this.roomRepo.save(room);
+        this.realtimeGateway.emitRoomStatusChanged({
+          roomId: room.roomId,
+          status: room.status,
+        });
       }
 
       if (extraServices.length > 0) {
@@ -371,6 +386,11 @@ export class BookingService {
     }
     booking.status = BookingStatus.CONFIRMED;
     await this.bookingRepo.save(booking);
+    this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
+      bookingId: booking.bookingId,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
+    });
     return this.toDetailResponse(booking);
   }
 
@@ -404,6 +424,10 @@ export class BookingService {
 
     room.status = RoomStatus.OCCUPIED;
     await this.roomRepo.save(room);
+    this.realtimeGateway.emitRoomStatusChanged({
+      roomId: room.roomId,
+      status: room.status,
+    });
 
     booking.room = room;
     booking.status = BookingStatus.CHECKED_IN;
@@ -420,6 +444,11 @@ export class BookingService {
       booking.paidAmount = this.toDetailResponse(booking).totalAmount;
     }
     await this.bookingRepo.save(booking);
+    this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
+      bookingId: booking.bookingId,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
+    });
 
     return this.toDetailResponse(booking);
   }
@@ -483,10 +512,19 @@ export class BookingService {
         }
       }
       await bookingRepo.save(booking);
+      this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
+        bookingId: booking.bookingId,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+      });
 
       if (booking.room) {
         booking.room.status = RoomStatus.CLEANING;
         await roomRepo.save(booking.room);
+        this.realtimeGateway.emitRoomStatusChanged({
+          roomId: booking.room.roomId,
+          status: booking.room.status,
+        });
       }
 
       const finalDetail = this.toDetailResponse(booking);
@@ -541,10 +579,19 @@ export class BookingService {
     booking.status = BookingStatus.CANCELLED;
     booking.cancelReason = dto.reason;
     await this.bookingRepo.save(booking);
+    this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
+      bookingId: booking.bookingId,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
+    });
 
     if (booking.room) {
       booking.room.status = RoomStatus.AVAILABLE;
       await this.roomRepo.save(booking.room);
+      this.realtimeGateway.emitRoomStatusChanged({
+        roomId: booking.room.roomId,
+        status: booking.room.status,
+      });
     }
 
     return { message: 'Đã huỷ đơn đặt phòng' };
@@ -565,7 +612,17 @@ export class BookingService {
     if (booking.status === BookingStatus.PENDING) {
       booking.status = BookingStatus.CONFIRMED;
     }
-    return this.bookingRepo.save(booking);
+    const saved = await this.bookingRepo.save(booking);
+    this.realtimeGateway.emitBookingPaid({
+      bookingId: saved.bookingId,
+      guestName: saved.guestInfo?.fullName,
+    });
+    this.realtimeGateway.emitBookingUpdatedForCustomer(saved.user.userId, {
+      bookingId: saved.bookingId,
+      status: saved.status,
+      paymentStatus: saved.paymentStatus,
+    });
+    return saved;
   }
 
   // Gọi khi PayOS báo giao dịch đã kết thúc mà không thành công (CANCELLED/EXPIRED/FAILED)
@@ -579,7 +636,13 @@ export class BookingService {
     if (booking.paymentStatus === PaymentStatus.PAID) return booking;
 
     booking.paymentStatus = PaymentStatus.FAILED;
-    return this.bookingRepo.save(booking);
+    const saved = await this.bookingRepo.save(booking);
+    this.realtimeGateway.emitBookingUpdatedForCustomer(saved.user.userId, {
+      bookingId: saved.bookingId,
+      status: saved.status,
+      paymentStatus: saved.paymentStatus,
+    });
+    return saved;
   }
 
   // Các đơn có phát sinh lưu trú thật (đã/đang ở) và có đêm nghỉ giao với khoảng
