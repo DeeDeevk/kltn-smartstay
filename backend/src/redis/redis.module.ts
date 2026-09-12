@@ -12,6 +12,9 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
         return new Redis({
           host: configService.get<string>('REDIS_HOST', 'localhost'),
           port: configService.get<number>('REDIS_PORT', 6379),
+          username: configService.get<string>('REDIS_USERNAME'),
+          password: configService.get<string>('REDIS_PASSWORD'),
+          tls: configService.get<string>('REDIS_TLS') === 'true' ? {} : undefined,
         });
       },
       inject: [ConfigService],
