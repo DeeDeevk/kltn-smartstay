@@ -46,6 +46,13 @@ export class ShiftAssignment {
   @Column({ name: 'checkOutAt', type: 'timestamp', nullable: true })
   checkOutAt!: Date | null;
 
+  // Tiền mặt có sẵn trong két lúc vô ca / tiền đếm được lúc kết ca — dùng để chốt két.
+  @Column({ name: 'openingCash', type: 'int', nullable: true })
+  openingCash!: number | null;
+
+  @Column({ name: 'closingCash', type: 'int', nullable: true })
+  closingCash!: number | null;
+
   @Column({ name: 'note', type: 'text', nullable: true })
   note!: string | null;
 

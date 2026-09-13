@@ -3,6 +3,7 @@ import { Booking } from '../bookings/entities/booking.entity';
 import { BookingService } from '../bookings/booking.service';
 import { RoomService } from '../rooms/room.service';
 import { QueryRevenueDto, RevenueGroupBy } from './dto/query-revenue.dto';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 
 // Thuế GTGT trên tiền phòng — giữ đồng bộ với BookingService.
 const VAT_RATE = 0.08;
@@ -71,6 +72,7 @@ export class RevenueService {
   constructor(
     private readonly bookingService: BookingService,
     private readonly roomService: RoomService,
+    private readonly paymentTransactionService: PaymentTransactionService,
   ) {}
 
   // Báo cáo doanh thu tổng cho Admin.
@@ -129,10 +131,18 @@ export class RevenueService {
       byTypeMap.set(slice.roomTypeId, entry);
     }
 
+    // Tiền thực thu trong kỳ theo phương thức (tính theo lúc thu tiền, khác doanh thu
+    // ở trên vốn chia theo đêm lưu trú). Chỉ có số liệu từ khi có sổ thu tiền.
+    const collections = await this.paymentTransactionService.sumByMethod(
+      new Date(`${from}T00:00:00`),
+      new Date(`${to}T23:59:59.999`),
+    );
+
     return {
       from,
       to,
       groupBy,
+      collections,
       totals: {
         ...totals,
         roomNightsSold,

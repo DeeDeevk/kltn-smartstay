@@ -67,10 +67,12 @@ export class MailService {
       'MAIL_FROM_NAME',
       'Vika Hotel',
     );
-    const loginUrl = `${this.configService.get<string>(
-      'CORS_ORIGIN',
-      'http://localhost:5173',
-    )}/login`;
+    // CORS_ORIGIN có thể chứa nhiều domain — domain đầu tiên là frontend chính.
+    const frontendUrl = this.configService
+      .get<string>('CORS_ORIGIN', 'http://localhost:5173')
+      .split(',')[0]
+      .trim();
+    const loginUrl = `${frontendUrl}/login`;
 
     try {
       const result = await this.transporter.sendMail({

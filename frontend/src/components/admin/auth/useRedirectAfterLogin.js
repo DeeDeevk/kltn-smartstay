@@ -2,8 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 // STAFF (lễ tân) và ADMIN đều vào chung khu quản trị /admin — Sidebar tự lọc menu theo
 // role, còn các trang riêng của Admin (quản lý tài khoản, loại phòng...) tự chặn ở route.
-const ADMIN_AREA_ROLES = ['ADMIN', 'STAFF'];
-const ADMIN_LANDING_PATH = '/admin';
+export const ADMIN_AREA_ROLES = ['ADMIN', 'STAFF'];
+export const ADMIN_LANDING_PATH = '/admin';
 
 // Dieu huong sau khi dang nhap thanh cong - dung chung cho dang nhap bang mat khau,
 // dang nhap bang Google va dang ky bang Google.
