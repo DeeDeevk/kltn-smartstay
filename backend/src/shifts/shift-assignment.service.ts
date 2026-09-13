@@ -74,6 +74,32 @@ function formatDayMonth(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Vô ca trễ không quá số phút này vẫn tính là đúng giờ.
+const LATE_GRACE_MINUTES = 15;
+
+export type ShiftAssignmentWithLate = ShiftAssignment & {
+  isLate: boolean;
+  lateMinutes: number;
+};
+
+// Tính trễ lúc trả dữ liệu (không lưu DB): so checkInAt với giờ bắt đầu ca. Hệ quả:
+// nếu sau này sửa giờ bắt đầu của loại ca, các ca cũ cũng được tính lại theo giờ mới.
+function withLateInfo(assignment: ShiftAssignment): ShiftAssignmentWithLate {
+  if (!assignment.checkInAt) {
+    return { ...assignment, isLate: false, lateMinutes: 0 };
+  }
+  const { start } = buildShiftWindow(
+    assignment.workDate,
+    assignment.shiftType.startTime,
+    assignment.shiftType.endTime,
+  );
+  const delay = Math.floor(
+    (new Date(assignment.checkInAt).getTime() - start.getTime()) / 60_000,
+  );
+  const isLate = delay > LATE_GRACE_MINUTES;
+  return { ...assignment, isLate, lateMinutes: isLate ? delay : 0 };
+}
+
 @Injectable()
 export class ShiftAssignmentService {
   constructor(
@@ -86,8 +112,10 @@ export class ShiftAssignmentService {
 
   // Admin xem lịch phân ca — lọc theo khoảng ngày (thường là 1 tuần) và tuỳ
   // chọn theo 1 nhân viên cụ thể.
-  findForAdmin(query: QueryShiftAssignmentDto): Promise<ShiftAssignment[]> {
-    return this.shiftAssignmentRepo.find({
+  async findForAdmin(
+    query: QueryShiftAssignmentDto,
+  ): Promise<ShiftAssignmentWithLate[]> {
+    const assignments = await this.shiftAssignmentRepo.find({
       where: {
         workDate: Between(query.from, query.to),
         ...(query.staffId ? { staff: { userId: query.staffId } } : {}),
@@ -95,15 +123,16 @@ export class ShiftAssignmentService {
       relations: { staff: true, shiftType: true },
       order: { workDate: 'ASC' },
     });
+    return assignments.map(withLateInfo);
   }
 
   // Staff xem lịch của chính mình — luôn khoá theo userId đang đăng nhập, không
   // nhận staffId từ query để tránh xem được lịch của người khác.
-  findForStaff(
+  async findForStaff(
     staffId: string,
     query: Pick<QueryShiftAssignmentDto, 'from' | 'to'>,
-  ): Promise<ShiftAssignment[]> {
-    return this.shiftAssignmentRepo.find({
+  ): Promise<ShiftAssignmentWithLate[]> {
+    const assignments = await this.shiftAssignmentRepo.find({
       where: {
         staff: { userId: staffId },
         workDate: Between(query.from, query.to),
@@ -111,6 +140,7 @@ export class ShiftAssignmentService {
       relations: { shiftType: true },
       order: { workDate: 'ASC' },
     });
+    return assignments.map(withLateInfo);
   }
 
   private readonly DUPLICATE_MESSAGE =
@@ -254,7 +284,7 @@ export class ShiftAssignmentService {
   async checkIn(
     shiftAssignmentId: string,
     requesterId: string,
-  ): Promise<ShiftAssignment> {
+  ): Promise<ShiftAssignmentWithLate> {
     const assignment = await this.findOwnedAssignmentOrThrow(
       shiftAssignmentId,
       requesterId,
@@ -289,7 +319,7 @@ export class ShiftAssignmentService {
 
     assignment.status = ShiftAssignmentStatus.CHECKEDIN;
     assignment.checkInAt = now;
-    return this.shiftAssignmentRepo.save(assignment);
+    return withLateInfo(await this.shiftAssignmentRepo.save(assignment));
   }
 
   // Nhân viên "kết ca": chỉ cho phép trên đúng ca của chính mình và phải đang
@@ -297,7 +327,7 @@ export class ShiftAssignmentService {
   async checkOut(
     shiftAssignmentId: string,
     requesterId: string,
-  ): Promise<ShiftAssignment> {
+  ): Promise<ShiftAssignmentWithLate> {
     const assignment = await this.findOwnedAssignmentOrThrow(
       shiftAssignmentId,
       requesterId,
@@ -309,7 +339,7 @@ export class ShiftAssignmentService {
 
     assignment.status = ShiftAssignmentStatus.CHECKEDOUT;
     assignment.checkOutAt = new Date();
-    return this.shiftAssignmentRepo.save(assignment);
+    return withLateInfo(await this.shiftAssignmentRepo.save(assignment));
   }
 
   // Dùng chung cho checkIn/checkOut: nạp ca kèm quan hệ staff, và chặn ngay nếu
