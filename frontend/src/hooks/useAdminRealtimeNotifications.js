@@ -14,8 +14,8 @@ export default function useAdminRealtimeNotifications() {
     const refreshBookingList = () =>
       dispatch(bookingApi.util.invalidateTags([{ type: 'Booking', id: 'STAFF_LIST' }]));
 
-    const handleBookingCreated = (payload) => {
-      toast.info(`Có đơn đặt phòng mới${payload?.guestName ? ` từ ${payload.guestName}` : ''}!`);
+    const handleBookingCreated = () => {
+      toast.info('Có đơn đặt phòng mới!');
       refreshBookingList();
     };
     const handleBookingPaid = (payload) => {
