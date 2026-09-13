@@ -98,8 +98,14 @@ export default function RevenueSummaryPage() {
             <StatCard
               icon={TrendingUp}
               label="ADR / RevPAR"
-              value={`${formatCurrencyShort(metrics.adr)} / ${formatCurrencyShort(metrics.revpar)}`}
-              hint="Giá bán TB mỗi phòng / doanh thu trên mỗi phòng hiện có"
+              value={
+                <span className="flex flex-wrap items-baseline gap-x-1.5 text-lg">
+                  <span>{formatCurrency(metrics.adr)}</span>
+                  <span className="text-sm font-medium text-gray-300">/</span>
+                  <span>{formatCurrency(metrics.revpar)}</span>
+                </span>
+              }
+              hint="ADR: giá bán TB mỗi đêm phòng · RevPAR: doanh thu trên mỗi phòng hiện có"
               tone="text-indigo-600"
             />
           </div>

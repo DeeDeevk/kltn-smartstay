@@ -25,6 +25,9 @@ import { MailService } from '../mail/mail.service';
 
 const OTP_TTL_SECONDS = 90;
 const MAX_OTP_ATTEMPTS = 5;
+// Luồng quên mật khẩu có 3 bước (nhập email -> nhập OTP -> nhập mật khẩu mới)
+// nên cần thời gian sống dài hơn OTP đăng ký.
+const RESET_OTP_TTL_SECONDS = 300;
 
 interface PendingRegistration {
   fullName: string;
@@ -289,12 +292,12 @@ export class AuthService {
           `reset-otp:${email}`,
           otp,
           'EX',
-          OTP_TTL_SECONDS,
+          RESET_OTP_TTL_SECONDS,
         );
         await this.mailService.sendPasswordResetOtp(
           email,
           otp,
-          OTP_TTL_SECONDS,
+          RESET_OTP_TTL_SECONDS,
         );
       }
     }
@@ -303,6 +306,17 @@ export class AuthService {
       message:
         'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đặt lại mật khẩu',
     };
+  }
+
+  // Chỉ kiểm tra mã OTP đặt lại mật khẩu có hợp lệ không và CỐ Ý KHÔNG xoá key,
+  // vì bước đổi mật khẩu ngay sau đó vẫn phải gửi lại chính mã này lên server.
+  async verifyResetOtp(email: string, otp: string) {
+    const storedOtp = await this.redisClient.get(`reset-otp:${email}`);
+    if (!storedOtp || storedOtp !== otp) {
+      throw new UnauthorizedException('Mã OTP không đúng hoặc đã hết hạn');
+    }
+
+    return { message: 'Mã OTP hợp lệ' };
   }
 
   async resetPassword(email: string, otp: string, newPassword: string) {

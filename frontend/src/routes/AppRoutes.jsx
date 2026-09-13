@@ -14,6 +14,7 @@ import PromoSection from '../components/homepage/PromoSection'
 import AuthHero from '../components/admin/auth/AuthHero'
 import LoginForm from '../components/admin/auth/LoginForm'
 import RegisterForm from '../components/admin/auth/RegisterForm'
+import ForgotPasswordForm from '../components/admin/auth/ForgotPasswordForm'
 import GeneralInfoRoom from '../components/room/GeneralInfoRoom'
 import RoomGallery from '../components/room/RoomGallery'
 import RoomInfo from '../components/room/RoomInfo'
@@ -115,7 +116,7 @@ function AuthPage({ mode }) {
           <ArrowLeft size={16} /> {t('checkout.success.backHome')}
         </button>
         <div className="flex flex-1 items-center justify-center py-8 lg:py-12">
-          {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+          {mode === 'login' ? <LoginForm /> : mode === 'register' ? <RegisterForm /> : <ForgotPasswordForm />}
         </div>
       </div>
     </div>
@@ -768,6 +769,7 @@ export default function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
         <Route path="/searchrooms" element={<SearchResultsPage />} />
         <Route path="/rooms/:id" element={<RoomDetailPage />} />
         <Route

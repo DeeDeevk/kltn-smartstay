@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,18 +8,18 @@ import {
   Plus,
   Settings2,
   X,
-} from 'lucide-react';
-import { toast } from 'react-toastify';
-import ConfirmModal from '../../common/ConfirmModal';
-import ShiftTypeManagerModal from './ShiftTypeManagerModal';
-import AssignShiftModal from './AssignShiftModal';
-import { useGetUsersQuery } from '../../../services/user';
-import { useGetShiftTypesQuery } from '../../../services/shiftType';
+} from "lucide-react";
+import { toast } from "react-toastify";
+import ConfirmModal from "../../common/ConfirmModal";
+import ShiftTypeManagerModal from "./ShiftTypeManagerModal";
+import AssignShiftModal from "./AssignShiftModal";
+import { useGetUsersQuery } from "../../../services/user";
+import { useGetShiftTypesQuery } from "../../../services/shiftType";
 import {
   useGetShiftAssignmentsQuery,
   useCopyShiftWeekMutation,
   useDeleteShiftAssignmentMutation,
-} from '../../../services/shiftAssignment';
+} from "../../../services/shiftAssignment";
 import {
   addDays,
   formatShortDate,
@@ -27,7 +27,7 @@ import {
   isPastDateKey,
   toDateKey,
   WEEKDAY_LABELS,
-} from './dateUtils';
+} from "./dateUtils";
 
 // Số nhân viên hiển thị mỗi trang trên lưới phân ca. Danh sách nhân viên được
 // phân trang thật ở backend (GET /users?page=&limit=), không cắt phía client.
@@ -36,11 +36,11 @@ const PAGE_SIZE = 10;
 // Bảng màu lặp lại theo thứ tự loại ca — chỉ để phân biệt trực quan trên lưới,
 // không gắn cố định với 1 loại ca cụ thể nào.
 const BADGE_COLORS = [
-  'bg-blue-50 text-blue-700 border-blue-200',
-  'bg-amber-50 text-amber-700 border-amber-200',
-  'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'bg-rose-50 text-rose-700 border-rose-200',
+  "bg-blue-50 text-blue-700 border-blue-200",
+  "bg-amber-50 text-amber-700 border-amber-200",
+  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "bg-rose-50 text-rose-700 border-rose-200",
 ];
 
 // Trang "Phân ca nhân viên" — lưới lịch tuần (nhân viên × 7 ngày), Admin bấm vào
@@ -60,10 +60,13 @@ export default function ShiftSchedulePage() {
   );
   const fromKey = toDateKey(weekDates[0]);
   const toKey = toDateKey(weekDates[6]);
-  const prevWeekStart = useMemo(() => toDateKey(addDays(weekStart, -7)), [weekStart]);
+  const prevWeekStart = useMemo(
+    () => toDateKey(addDays(weekStart, -7)),
+    [weekStart],
+  );
 
   const { data: staffData, isFetching: isFetchingStaff } = useGetUsersQuery({
-    role: 'STAFF',
+    role: "STAFF",
     page,
     limit: PAGE_SIZE,
   });
@@ -99,16 +102,17 @@ export default function ShiftSchedulePage() {
   const isLoading = isFetchingStaff || isFetchingAssignments;
 
   // Danh sách nhân viên không đổi theo tuần -> đổi tuần không cần reset trang.
-  const goToWeek = (deltaDays) => setWeekStart((prev) => addDays(prev, deltaDays));
+  const goToWeek = (deltaDays) =>
+    setWeekStart((prev) => addDays(prev, deltaDays));
 
   const handleConfirmRemove = async () => {
     if (!removeTarget) return;
     try {
       await deleteShiftAssignment(removeTarget.shiftAssignmentId).unwrap();
-      toast.success('Đã gỡ lịch phân ca');
+      toast.success("Đã gỡ lịch phân ca");
       setRemoveTarget(null);
     } catch (err) {
-      toast.error(err.message || 'Không thể gỡ lịch phân ca');
+      toast.error(err.message || "Không thể gỡ lịch phân ca");
     }
   };
 
@@ -118,13 +122,10 @@ export default function ShiftSchedulePage() {
         sourceWeekStart: prevWeekStart,
         targetWeekStart: fromKey,
       }).unwrap();
-      toast.success(
-        `Đã sao chép ${res.created} ca` +
-          (res.skipped ? ` (bỏ qua ${res.skipped} ca trùng hoặc quá khứ)` : ''),
-      );
+      toast.success(`Đã sao chép ca làm từ tuần trước`);
       setCopyConfirmOpen(false);
     } catch (err) {
-      toast.error(err.message || 'Không thể sao chép lịch tuần trước');
+      toast.error(err.message || "Không thể sao chép lịch tuần trước");
     }
   };
 
@@ -171,7 +172,11 @@ export default function ShiftSchedulePage() {
             disabled={isCopying}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
           >
-            {isCopying ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+            {isCopying ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Copy size={14} />
+            )}
             Sao chép tuần trước
           </button>
           <button
@@ -186,7 +191,8 @@ export default function ShiftSchedulePage() {
 
       {shiftTypes.length === 0 && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Chưa có loại ca nào — bấm "Quản lý loại ca" để thêm trước khi phân ca cho nhân viên.
+          Chưa có loại ca nào — bấm "Quản lý loại ca" để thêm trước khi phân ca
+          cho nhân viên.
         </p>
       )}
 
@@ -200,11 +206,11 @@ export default function ShiftSchedulePage() {
                 return (
                   <th
                     key={toDateKey(date)}
-                    className={`px-2 py-3 text-center ${past ? 'text-gray-300' : ''}`}
+                    className={`px-2 py-3 text-center ${past ? "text-gray-300" : ""}`}
                   >
                     <div>{WEEKDAY_LABELS[index]}</div>
                     <div
-                      className={`font-normal normal-case ${past ? 'text-gray-300' : 'text-gray-400'}`}
+                      className={`font-normal normal-case ${past ? "text-gray-300" : "text-gray-400"}`}
                     >
                       {formatShortDate(date)}
                     </div>
@@ -216,7 +222,10 @@ export default function ShiftSchedulePage() {
           <tbody className="divide-y divide-gray-100">
             {isLoading && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                <td
+                  colSpan={8}
+                  className="px-4 py-10 text-center text-gray-400"
+                >
                   <Loader2 className="mx-auto animate-spin" size={22} />
                 </td>
               </tr>
@@ -224,8 +233,12 @@ export default function ShiftSchedulePage() {
 
             {!isLoading && staffList.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
-                  Chưa có nhân viên nào — thêm nhân viên ở mục "Quản lý nhân viên" trước.
+                <td
+                  colSpan={8}
+                  className="px-4 py-10 text-center text-gray-400"
+                >
+                  Chưa có nhân viên nào — thêm nhân viên ở mục "Quản lý nhân
+                  viên" trước.
                 </td>
               </tr>
             )}
@@ -244,7 +257,7 @@ export default function ShiftSchedulePage() {
                     return (
                       <td
                         key={dateKey}
-                        className={`px-2 py-2 align-top ${past ? 'bg-gray-50/70' : ''}`}
+                        className={`px-2 py-2 align-top ${past ? "bg-gray-50/70" : ""}`}
                       >
                         <div className="flex min-h-[2.5rem] flex-col gap-1">
                           {cellAssignments.map((assignment) => (
@@ -252,15 +265,21 @@ export default function ShiftSchedulePage() {
                               key={assignment.shiftAssignmentId}
                               title={assignment.note || undefined}
                               className={`flex items-center justify-between gap-1 rounded-lg border px-2 py-1 text-xs font-semibold ${
-                                shiftTypeColor[assignment.shiftType.shiftTypeId] ??
-                                'border-gray-200 bg-gray-50 text-gray-600'
-                              } ${past ? 'opacity-70' : ''}`}
+                                shiftTypeColor[
+                                  assignment.shiftType.shiftTypeId
+                                ] ?? "border-gray-200 bg-gray-50 text-gray-600"
+                              } ${past ? "opacity-70" : ""}`}
                             >
                               <span className="flex min-w-0 items-center gap-1">
                                 {assignment.note && (
-                                  <FileText size={11} className="shrink-0 opacity-70" />
+                                  <FileText
+                                    size={11}
+                                    className="shrink-0 opacity-70"
+                                  />
                                 )}
-                                <span className="truncate">{assignment.shiftType.name}</span>
+                                <span className="truncate">
+                                  {assignment.shiftType.name}
+                                </span>
                               </span>
                               {!past && (
                                 <button
@@ -274,19 +293,23 @@ export default function ShiftSchedulePage() {
                               )}
                             </span>
                           ))}
-                          {past
-                            ? cellAssignments.length === 0 && (
-                                <span className="py-1 text-center text-xs text-gray-300">—</span>
-                              )
-                            : (
-                              <button
-                                type="button"
-                                onClick={() => setAssignTarget({ staff, workDate: dateKey })}
-                                className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 py-1 text-xs text-gray-400 transition-colors hover:border-blue-300 hover:text-blue-600"
-                              >
-                                <Plus size={12} /> Phân ca
-                              </button>
-                            )}
+                          {past ? (
+                            cellAssignments.length === 0 && (
+                              <span className="py-1 text-center text-xs text-gray-300">
+                                —
+                              </span>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAssignTarget({ staff, workDate: dateKey })
+                              }
+                              className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 py-1 text-xs text-gray-400 transition-colors hover:border-blue-300 hover:text-blue-600"
+                            >
+                              <Plus size={12} /> Phân ca
+                            </button>
+                          )}
                         </div>
                       </td>
                     );
@@ -330,7 +353,10 @@ export default function ShiftSchedulePage() {
         onClose={() => setAssignTarget(null)}
       />
 
-      <ShiftTypeManagerModal open={managingTypes} onClose={() => setManagingTypes(false)} />
+      <ShiftTypeManagerModal
+        open={managingTypes}
+        onClose={() => setManagingTypes(false)}
+      />
 
       <ConfirmModal
         open={Boolean(removeTarget)}
@@ -340,8 +366,8 @@ export default function ShiftSchedulePage() {
           removeTarget
             ? `Gỡ ${removeTarget.staff.fullName} khỏi ca "${removeTarget.shiftType.name}" ngày ${new Date(
                 removeTarget.workDate,
-              ).toLocaleDateString('vi-VN')}?`
-            : ''
+              ).toLocaleDateString("vi-VN")}?`
+            : ""
         }
         confirmLabel="Gỡ ca"
         loading={isRemoving}

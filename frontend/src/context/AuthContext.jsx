@@ -86,6 +86,15 @@ export function AuthProvider({ children }) {
     return applySession(data)
   }
 
+  // Google Identity Services tra ve ID token o phia client; backend tu verify
+  // token do voi Google roi cap cap token cua he thong nhu dang nhap thuong.
+  const loginWithGoogle = async (idToken) => {
+    const data = await store
+      .dispatch(authApi.endpoints.googleLogin.initiate(idToken))
+      .unwrap()
+    return applySession(data)
+  }
+
   const register = async ({ fullName, email, phone, password }) => {
     const data = await store
       .dispatch(authApi.endpoints.register.initiate({ fullName, email, phone, password }))
@@ -149,6 +158,7 @@ export function AuthProvider({ children }) {
     user,
     isAuthenticated: Boolean(user),
     login,
+    loginWithGoogle,
     register,
     verifyOtp,
     resendOtp,
