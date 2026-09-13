@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
 
 // Giới hạn riêng cho các endpoint nhạy cảm (brute-force mật khẩu/OTP), chặt hơn mức mặc định toàn cục
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60000 } };
@@ -61,11 +62,19 @@ export class AuthController {
     return this.authService.resendOtp(dto.email);
   }
 
+  @Throttle(AUTH_THROTTLE)
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
 
+  @Throttle(AUTH_THROTTLE)
+  @Post('verify-reset-otp')
+  verifyResetOtp(@Body() dto: VerifyResetOtpDto) {
+    return this.authService.verifyResetOtp(dto.email, dto.otp);
+  }
+
+  @Throttle(AUTH_THROTTLE)
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.email, dto.otp, dto.newPassword);

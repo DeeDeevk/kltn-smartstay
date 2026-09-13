@@ -14,6 +14,9 @@ import { QueryShiftAssignmentDto } from './dto/query-shift-assignment.dto';
 import { ShiftAssignmentStatus } from '../common/enums/shift-assignment-status.enum';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserService } from '../users/user.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import { CheckInShiftDto } from './dto/check-in-shift.dto';
+import { CheckOutShiftDto } from './dto/check-out-shift.dto';
 
 // Thao tác ngày trên chuỗi 'YYYY-MM-DD' (khớp kiểu cột 'date' của workDate) —
 // so sánh chuỗi 'YYYY-MM-DD' theo thứ tự từ điển cũng là theo thứ tự thời gian.
@@ -74,6 +77,32 @@ function formatDayMonth(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Vô ca trễ không quá số phút này vẫn tính là đúng giờ.
+const LATE_GRACE_MINUTES = 15;
+
+export type ShiftAssignmentWithLate = ShiftAssignment & {
+  isLate: boolean;
+  lateMinutes: number;
+};
+
+// Tính trễ lúc trả dữ liệu (không lưu DB): so checkInAt với giờ bắt đầu ca. Hệ quả:
+// nếu sau này sửa giờ bắt đầu của loại ca, các ca cũ cũng được tính lại theo giờ mới.
+function withLateInfo(assignment: ShiftAssignment): ShiftAssignmentWithLate {
+  if (!assignment.checkInAt) {
+    return { ...assignment, isLate: false, lateMinutes: 0 };
+  }
+  const { start } = buildShiftWindow(
+    assignment.workDate,
+    assignment.shiftType.startTime,
+    assignment.shiftType.endTime,
+  );
+  const delay = Math.floor(
+    (new Date(assignment.checkInAt).getTime() - start.getTime()) / 60_000,
+  );
+  const isLate = delay > LATE_GRACE_MINUTES;
+  return { ...assignment, isLate, lateMinutes: isLate ? delay : 0 };
+}
+
 @Injectable()
 export class ShiftAssignmentService {
   constructor(
@@ -82,12 +111,15 @@ export class ShiftAssignmentService {
     @InjectRepository(ShiftType)
     private readonly shiftTypeRepo: Repository<ShiftType>,
     private readonly userService: UserService,
+    private readonly paymentTransactionService: PaymentTransactionService,
   ) {}
 
   // Admin xem lịch phân ca — lọc theo khoảng ngày (thường là 1 tuần) và tuỳ
   // chọn theo 1 nhân viên cụ thể.
-  findForAdmin(query: QueryShiftAssignmentDto): Promise<ShiftAssignment[]> {
-    return this.shiftAssignmentRepo.find({
+  async findForAdmin(
+    query: QueryShiftAssignmentDto,
+  ): Promise<ShiftAssignmentWithLate[]> {
+    const assignments = await this.shiftAssignmentRepo.find({
       where: {
         workDate: Between(query.from, query.to),
         ...(query.staffId ? { staff: { userId: query.staffId } } : {}),
@@ -95,15 +127,16 @@ export class ShiftAssignmentService {
       relations: { staff: true, shiftType: true },
       order: { workDate: 'ASC' },
     });
+    return assignments.map(withLateInfo);
   }
 
   // Staff xem lịch của chính mình — luôn khoá theo userId đang đăng nhập, không
   // nhận staffId từ query để tránh xem được lịch của người khác.
-  findForStaff(
+  async findForStaff(
     staffId: string,
     query: Pick<QueryShiftAssignmentDto, 'from' | 'to'>,
-  ): Promise<ShiftAssignment[]> {
-    return this.shiftAssignmentRepo.find({
+  ): Promise<ShiftAssignmentWithLate[]> {
+    const assignments = await this.shiftAssignmentRepo.find({
       where: {
         staff: { userId: staffId },
         workDate: Between(query.from, query.to),
@@ -111,6 +144,7 @@ export class ShiftAssignmentService {
       relations: { shiftType: true },
       order: { workDate: 'ASC' },
     });
+    return assignments.map(withLateInfo);
   }
 
   private readonly DUPLICATE_MESSAGE =
@@ -254,7 +288,8 @@ export class ShiftAssignmentService {
   async checkIn(
     shiftAssignmentId: string,
     requesterId: string,
-  ): Promise<ShiftAssignment> {
+    dto: CheckInShiftDto,
+  ): Promise<ShiftAssignmentWithLate> {
     const assignment = await this.findOwnedAssignmentOrThrow(
       shiftAssignmentId,
       requesterId,
@@ -289,15 +324,18 @@ export class ShiftAssignmentService {
 
     assignment.status = ShiftAssignmentStatus.CHECKEDIN;
     assignment.checkInAt = now;
-    return this.shiftAssignmentRepo.save(assignment);
+    assignment.openingCash = dto.openingCash;
+    return withLateInfo(await this.shiftAssignmentRepo.save(assignment));
   }
 
   // Nhân viên "kết ca": chỉ cho phép trên đúng ca của chính mình và phải đang
-  // ở trạng thái CHECKEDIN (đã vô ca trước đó).
+  // ở trạng thái CHECKEDIN (đã vô ca trước đó). Lưu tiền đếm được trong két để
+  // báo cáo ca so với tiền dự kiến.
   async checkOut(
     shiftAssignmentId: string,
     requesterId: string,
-  ): Promise<ShiftAssignment> {
+    dto: CheckOutShiftDto,
+  ) {
     const assignment = await this.findOwnedAssignmentOrThrow(
       shiftAssignmentId,
       requesterId,
@@ -309,7 +347,89 @@ export class ShiftAssignmentService {
 
     assignment.status = ShiftAssignmentStatus.CHECKEDOUT;
     assignment.checkOutAt = new Date();
-    return this.shiftAssignmentRepo.save(assignment);
+    assignment.closingCash = dto.closingCash;
+    const saved = await this.shiftAssignmentRepo.save(assignment);
+    return {
+      assignment: withLateInfo(saved),
+      report: await this.buildReport(saved),
+    };
+  }
+
+  // Báo cáo chốt két của 1 ca: chủ ca hoặc Admin xem được. Ca đang diễn ra thì tính
+  // tới thời điểm hiện tại.
+  async getReport(
+    shiftAssignmentId: string,
+    requester: { userId: string; role: string },
+  ) {
+    const assignment = await this.shiftAssignmentRepo.findOne({
+      where: { shiftAssignmentId },
+      relations: { staff: true, shiftType: true },
+    });
+    if (!assignment) {
+      throw new NotFoundException('Không tìm thấy lịch phân ca');
+    }
+    if (
+      requester.role !== UserRole.ADMIN &&
+      assignment.staff.userId !== requester.userId
+    ) {
+      throw new ForbiddenException('Đây không phải ca làm việc của bạn');
+    }
+    return {
+      assignment: withLateInfo(assignment),
+      report: await this.buildReport(assignment),
+    };
+  }
+
+  // Lễ tân chỉ được thao tác thu tiền/nhận trả phòng khi đang trong ca, để mọi khoản
+  // tiền mặt đều rơi vào 1 ca và chốt két được.
+  async assertOnDuty(staffId: string): Promise<void> {
+    const onDuty = await this.shiftAssignmentRepo.exists({
+      where: {
+        staff: { userId: staffId },
+        status: ShiftAssignmentStatus.CHECKEDIN,
+      },
+    });
+    if (!onDuty) {
+      throw new ForbiddenException(
+        'Bạn cần vô ca trước khi check-in/check-out cho khách',
+      );
+    }
+  }
+
+  private async buildReport(assignment: ShiftAssignment) {
+    if (!assignment.checkInAt) {
+      return null;
+    }
+    const to = assignment.checkOutAt ?? new Date();
+    const { transactions, totals } =
+      await this.paymentTransactionService.findCollectedByStaff(
+        assignment.staff.userId,
+        assignment.checkInAt,
+        to,
+      );
+    const openingCash = assignment.openingCash ?? 0;
+    // PayOS/chuyển khoản không vào két nên không cộng vào tiền dự kiến.
+    const expectedCash = openingCash + totals.cash;
+    return {
+      openingCash,
+      cashCollected: totals.cash,
+      transferCollected: totals.transfer,
+      expectedCash,
+      closingCash: assignment.closingCash,
+      difference:
+        assignment.closingCash === null
+          ? null
+          : assignment.closingCash - expectedCash,
+      transactions: transactions.map((t) => ({
+        paymentTransactionId: t.paymentTransactionId,
+        bookingId: t.booking.bookingId,
+        guestName: t.booking.guestInfo?.fullName ?? null,
+        roomNumber: t.booking.room?.roomNumber ?? null,
+        amount: t.amount,
+        method: t.method,
+        collectedAt: t.collectedAt,
+      })),
+    };
   }
 
   // Dùng chung cho checkIn/checkOut: nạp ca kèm quan hệ staff, và chặn ngay nếu

@@ -37,20 +37,30 @@ export const shiftAssignmentApi = createApi({
       }),
       invalidatesTags: ['ShiftAssignment'],
     }),
-    // Nhân viên vô ca / kết ca cho đúng ca của chính mình.
+    // Nhân viên vô ca / kết ca cho đúng ca của chính mình, kèm tiền két đầu ca / cuối ca.
     checkInShiftAssignment: builder.mutation({
-      query: (shiftAssignmentId) => ({
+      query: ({ shiftAssignmentId, openingCash }) => ({
         url: `/shift-assignments/${shiftAssignmentId}/check-in`,
         method: 'post',
+        data: { openingCash },
       }),
       invalidatesTags: ['ShiftAssignment'],
     }),
     checkOutShiftAssignment: builder.mutation({
-      query: (shiftAssignmentId) => ({
+      query: ({ shiftAssignmentId, closingCash }) => ({
         url: `/shift-assignments/${shiftAssignmentId}/check-out`,
         method: 'post',
+        data: { closingCash },
       }),
       invalidatesTags: ['ShiftAssignment'],
+    }),
+    // Báo cáo chốt két của 1 ca: tiền đầu ca, tiền thu trong ca, tiền dự kiến, chênh lệch.
+    getShiftReport: builder.query({
+      query: (shiftAssignmentId) => ({
+        url: `/shift-assignments/${shiftAssignmentId}/report`,
+        method: 'get',
+      }),
+      providesTags: ['ShiftAssignment'],
     }),
   }),
 });
@@ -63,4 +73,5 @@ export const {
   useDeleteShiftAssignmentMutation,
   useCheckInShiftAssignmentMutation,
   useCheckOutShiftAssignmentMutation,
+  useGetShiftReportQuery,
 } = shiftAssignmentApi;

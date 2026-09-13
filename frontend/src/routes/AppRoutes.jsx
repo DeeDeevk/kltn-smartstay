@@ -14,6 +14,8 @@ import PromoSection from '../components/homepage/PromoSection'
 import AuthHero from '../components/admin/auth/AuthHero'
 import LoginForm from '../components/admin/auth/LoginForm'
 import RegisterForm from '../components/admin/auth/RegisterForm'
+import ForgotPasswordForm from '../components/admin/auth/ForgotPasswordForm'
+import { ADMIN_AREA_ROLES, ADMIN_LANDING_PATH } from '../components/admin/auth/useRedirectAfterLogin'
 import GeneralInfoRoom from '../components/room/GeneralInfoRoom'
 import RoomGallery from '../components/room/RoomGallery'
 import RoomInfo from '../components/room/RoomInfo'
@@ -86,6 +88,14 @@ function ScrollToTop() {
 }
 
 function HomePage() {
+  const { user } = useAuth()
+
+  // Admin/lễ tân mở lại trang web khi phiên đăng nhập còn hạn thì vào thẳng khu quản
+  // trị, giống điều hướng sau khi đăng nhập (useRedirectAfterLogin).
+  if (ADMIN_AREA_ROLES.includes(user?.role)) {
+    return <Navigate to={ADMIN_LANDING_PATH} replace />
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Header />
@@ -115,7 +125,7 @@ function AuthPage({ mode }) {
           <ArrowLeft size={16} /> {t('checkout.success.backHome')}
         </button>
         <div className="flex flex-1 items-center justify-center py-8 lg:py-12">
-          {mode === 'login' ? <LoginForm /> : <RegisterForm />}
+          {mode === 'login' ? <LoginForm /> : mode === 'register' ? <RegisterForm /> : <ForgotPasswordForm />}
         </div>
       </div>
     </div>
@@ -768,6 +778,7 @@ export default function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
         <Route path="/searchrooms" element={<SearchResultsPage />} />
         <Route path="/rooms/:id" element={<RoomDetailPage />} />
         <Route
@@ -866,7 +877,14 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          <Route path="schedule/me" element={<MySchedulePage />} />
+          <Route
+            path="schedule/me"
+            element={
+              <ProtectedRoute roles={['STAFF']}>
+                <MySchedulePage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="revenue"
             element={

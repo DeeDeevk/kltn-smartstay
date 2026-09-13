@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BedDouble, Loader2, Percent, TrendingUp, Wallet } from 'lucide-react';
+import { Banknote, BedDouble, CreditCard, Loader2, Percent, TrendingUp, Wallet } from 'lucide-react';
 import formatCurrency from '../../../utils/formatCurrency';
 import { useGetRevenueSummaryQuery } from '../../../services/revenue';
 import PeriodFilterBar from './PeriodFilterBar';
@@ -98,11 +98,40 @@ export default function RevenueSummaryPage() {
             <StatCard
               icon={TrendingUp}
               label="ADR / RevPAR"
-              value={`${formatCurrencyShort(metrics.adr)} / ${formatCurrencyShort(metrics.revpar)}`}
-              hint="Giá bán TB mỗi phòng / doanh thu trên mỗi phòng hiện có"
+              value={
+                <span className="flex flex-wrap items-baseline gap-x-1.5 text-lg">
+                  <span>{formatCurrency(metrics.adr)}</span>
+                  <span className="text-sm font-medium text-gray-300">/</span>
+                  <span>{formatCurrency(metrics.revpar)}</span>
+                </span>
+              }
+              hint="ADR: giá bán TB mỗi đêm phòng · RevPAR: doanh thu trên mỗi phòng hiện có"
               tone="text-indigo-600"
             />
           </div>
+
+          {data.collections && (
+            <div className="mb-5 grid gap-4 sm:grid-cols-3">
+              <StatCard
+                icon={Banknote}
+                label="Tiền thực thu trong kỳ"
+                value={formatCurrency(data.collections.total)}
+                hint="Tính theo lúc thu tiền, khác doanh thu (chia theo đêm lưu trú)"
+              />
+              <StatCard
+                icon={Banknote}
+                label="Thu tiền mặt tại quầy"
+                value={formatCurrency(data.collections.cash)}
+                tone="text-emerald-600"
+              />
+              <StatCard
+                icon={CreditCard}
+                label="Thu qua PayOS (chuyển khoản)"
+                value={formatCurrency(data.collections.transfer)}
+                tone="text-blue-600"
+              />
+            </div>
+          )}
 
           <div className="grid gap-5 lg:grid-cols-3">
             {/* Biểu đồ cột: doanh thu theo thời gian */}

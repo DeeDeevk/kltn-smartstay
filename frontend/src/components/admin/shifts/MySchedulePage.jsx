@@ -7,15 +7,10 @@ import {
   LogOut,
   Loader2,
 } from 'lucide-react';
-import { toast } from 'react-toastify';
-import ConfirmModal from '../../common/ConfirmModal';
-import {
-  useGetMyShiftAssignmentsQuery,
-  useCheckInShiftAssignmentMutation,
-  useCheckOutShiftAssignmentMutation,
-} from '../../../services/shiftAssignment';
+import { useGetMyShiftAssignmentsQuery } from '../../../services/shiftAssignment';
 import { addDays, formatShortDate, getMonday, todayKey, toDateKey, WEEKDAY_LABELS } from './dateUtils';
 import useCheckInAvailability from './useCheckInAvailability';
+import { ShiftCashSummary, ShiftCheckInModal, ShiftCheckOutModal } from './ShiftCashModals';
 
 const STATUS_LABELS = {
   SCHEDULED: 'Chưa vô ca',
@@ -31,6 +26,15 @@ const STATUS_BADGE_CLASS = {
   ABSENT: 'bg-red-50 text-red-600',
 };
 
+function LateBadge({ assignment, className = '' }) {
+  if (!assignment.isLate) return null;
+  return (
+    <span className={`rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-600 ${className}`}>
+      Trễ {assignment.lateMinutes} phút
+    </span>
+  );
+}
+
 function formatTime(dateTimeString) {
   if (!dateTimeString) return null;
   return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
@@ -41,7 +45,7 @@ function formatTime(dateTimeString) {
 
 // Thẻ 1 ca của hôm nay — cho vô ca (SCHEDULED) / kết ca (CHECKEDIN) / chỉ hiện
 // trạng thái nếu đã kết ca hoặc bị đánh dấu vắng mặt.
-function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting }) {
+function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut }) {
   // Chưa tới giờ ca thì không cho bấm "Vô ca" (backend vẫn chặn lại lần nữa).
   const checkInAvailability = useCheckInAvailability(assignment);
 
@@ -59,9 +63,11 @@ function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting
           <span className={`rounded-full px-2 py-0.5 font-semibold ${STATUS_BADGE_CLASS[assignment.status]}`}>
             {STATUS_LABELS[assignment.status] ?? assignment.status}
           </span>
+          <LateBadge assignment={assignment} />
           {assignment.checkInAt && <span>Vô ca lúc {formatTime(assignment.checkInAt)}</span>}
           {assignment.checkOutAt && <span>· Kết ca lúc {formatTime(assignment.checkOutAt)}</span>}
         </div>
+        <ShiftCashSummary assignment={assignment} className="mt-1" />
       </div>
 
       {assignment.status === 'SCHEDULED' && (
@@ -69,10 +75,10 @@ function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting
           <button
             type="button"
             onClick={() => onCheckIn(assignment)}
-            disabled={isSubmitting || !checkInAvailability.allowed}
+            disabled={!checkInAvailability.allowed}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
+            <LogIn size={16} />
             Vô ca
           </button>
           {!checkInAvailability.allowed && checkInAvailability.reason && (
@@ -86,10 +92,9 @@ function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting
         <button
           type="button"
           onClick={() => onRequestCheckOut(assignment)}
-          disabled={isSubmitting}
-          className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-70"
+          className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-amber-600"
         >
-          {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+          <LogOut size={16} />
           Kết ca
         </button>
       )}
@@ -102,6 +107,7 @@ function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting
 // 2. Lưới cả tuần — chỉ xem, không sửa được (Admin mới có quyền phân/gỡ ca ở ShiftSchedulePage).
 export default function MySchedulePage() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
+  const [checkInTarget, setCheckInTarget] = useState(null);
   const [checkOutTarget, setCheckOutTarget] = useState(null);
 
   const weekDates = useMemo(
@@ -118,10 +124,6 @@ export default function MySchedulePage() {
   const { data: todayAssignments = [], isFetching: isFetchingToday } =
     useGetMyShiftAssignmentsQuery({ from: todayKey(), to: todayKey() });
 
-  const [checkIn, { isLoading: isCheckingIn }] = useCheckInShiftAssignmentMutation();
-  const [checkOut, { isLoading: isCheckingOut }] = useCheckOutShiftAssignmentMutation();
-  const isSubmitting = isCheckingIn || isCheckingOut;
-
   const assignmentsByDate = useMemo(() => {
     const map = {};
     for (const assignment of assignments) {
@@ -130,26 +132,6 @@ export default function MySchedulePage() {
     }
     return map;
   }, [assignments]);
-
-  const handleCheckIn = async (assignment) => {
-    try {
-      await checkIn(assignment.shiftAssignmentId).unwrap();
-      toast.success(`Đã vô ca "${assignment.shiftType.name}"`);
-    } catch (err) {
-      toast.error(err.message || 'Không thể vô ca');
-    }
-  };
-
-  const handleConfirmCheckOut = async () => {
-    if (!checkOutTarget) return;
-    try {
-      await checkOut(checkOutTarget.shiftAssignmentId).unwrap();
-      toast.success(`Đã kết ca "${checkOutTarget.shiftType.name}"`);
-      setCheckOutTarget(null);
-    } catch (err) {
-      toast.error(err.message || 'Không thể kết ca');
-    }
-  };
 
   return (
     <>
@@ -173,9 +155,8 @@ export default function MySchedulePage() {
               <TodayShiftCard
                 key={assignment.shiftAssignmentId}
                 assignment={assignment}
-                onCheckIn={handleCheckIn}
+                onCheckIn={setCheckInTarget}
                 onRequestCheckOut={setCheckOutTarget}
-                isSubmitting={isSubmitting}
               />
             ))}
           </div>
@@ -247,8 +228,9 @@ export default function MySchedulePage() {
                             {assignment.shiftType.endTime?.slice(0, 5)})
                           </span>
                         </div>
-                        <p className="mt-1 pl-6 text-blue-600/80">
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-blue-600/80">
                           {STATUS_LABELS[assignment.status] ?? assignment.status}
+                          <LateBadge assignment={assignment} className="text-[11px]" />
                         </p>
                         {assignment.note && (
                           <p className="mt-0.5 pl-6 text-blue-600/80">Ghi chú: {assignment.note}</p>
@@ -263,17 +245,14 @@ export default function MySchedulePage() {
         </div>
       )}
 
-      <ConfirmModal
+      <ShiftCheckInModal
+        assignment={checkInTarget}
+        open={Boolean(checkInTarget)}
+        onClose={() => setCheckInTarget(null)}
+      />
+      <ShiftCheckOutModal
+        assignment={checkOutTarget}
         open={Boolean(checkOutTarget)}
-        title="Kết ca"
-        message={
-          checkOutTarget
-            ? `Kết thúc ca "${checkOutTarget.shiftType.name}" hôm nay? Sau khi kết ca sẽ không vô ca lại được cho ca này.`
-            : ''
-        }
-        confirmLabel="Kết ca"
-        loading={isCheckingOut}
-        onConfirm={handleConfirmCheckOut}
         onClose={() => setCheckOutTarget(null)}
       />
     </>
