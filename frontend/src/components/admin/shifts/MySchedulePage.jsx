@@ -31,6 +31,15 @@ const STATUS_BADGE_CLASS = {
   ABSENT: 'bg-red-50 text-red-600',
 };
 
+function LateBadge({ assignment, className = '' }) {
+  if (!assignment.isLate) return null;
+  return (
+    <span className={`rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-600 ${className}`}>
+      Trễ {assignment.lateMinutes} phút
+    </span>
+  );
+}
+
 function formatTime(dateTimeString) {
   if (!dateTimeString) return null;
   return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
@@ -59,6 +68,7 @@ function TodayShiftCard({ assignment, onCheckIn, onRequestCheckOut, isSubmitting
           <span className={`rounded-full px-2 py-0.5 font-semibold ${STATUS_BADGE_CLASS[assignment.status]}`}>
             {STATUS_LABELS[assignment.status] ?? assignment.status}
           </span>
+          <LateBadge assignment={assignment} />
           {assignment.checkInAt && <span>Vô ca lúc {formatTime(assignment.checkInAt)}</span>}
           {assignment.checkOutAt && <span>· Kết ca lúc {formatTime(assignment.checkOutAt)}</span>}
         </div>
@@ -247,8 +257,9 @@ export default function MySchedulePage() {
                             {assignment.shiftType.endTime?.slice(0, 5)})
                           </span>
                         </div>
-                        <p className="mt-1 pl-6 text-blue-600/80">
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-blue-600/80">
                           {STATUS_LABELS[assignment.status] ?? assignment.status}
+                          <LateBadge assignment={assignment} className="text-[11px]" />
                         </p>
                         {assignment.note && (
                           <p className="mt-0.5 pl-6 text-blue-600/80">Ghi chú: {assignment.note}</p>

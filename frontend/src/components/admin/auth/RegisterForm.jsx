@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
+import GoogleLoginButton from './GoogleLoginButton';
+import useRedirectAfterLogin from './useRedirectAfterLogin';
 
 const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
 const labelClass = "mb-1.5 block text-sm font-semibold text-slate-700";
@@ -147,11 +149,15 @@ function OtpStep({ email, onVerified }) {
 export default function RegisterForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const { t } = useTranslation();
+  const redirectAfterLogin = useRedirectAfterLogin();
   const [step, setStep] = useState('form'); // 'form' | 'otp'
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -159,6 +165,14 @@ export default function RegisterForm() {
     name: '',
     phone_number: '',
   });
+
+  // Ca dang ky bang form lan bang Google deu phai dong y dieu khoan truoc.
+  const ensureAgreedTerms = () => {
+    if (agreedTerms) return true;
+    setTermsError(true);
+    toast.error(t('auth.errors.termsRequired'));
+    return false;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -168,6 +182,7 @@ export default function RegisterForm() {
       toast.error(validationError);
       return;
     }
+    if (!ensureAgreedTerms()) return;
 
     setLoading(true);
     try {
@@ -184,6 +199,23 @@ export default function RegisterForm() {
       toast.error(getRegisterErrorMessage(err, t));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Backend /auth/google tu tao tai khoan neu email chua ton tai (khong can OTP vi
+  // Google da xac thuc email), nen dang ky bang Google = dang nhap luon.
+  const handleGoogleCredential = async (idToken) => {
+    if (!ensureAgreedTerms()) return;
+    setGoogleLoading(true);
+    try {
+      const user = await loginWithGoogle(idToken);
+      toast.success(t('auth.toasts.registerSuccess'));
+      redirectAfterLogin(user);
+    } catch (err) {
+      console.error('Google register error:', err);
+      toast.error(err.message || t('auth.errors.googleLoginError'));
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -307,10 +339,27 @@ export default function RegisterForm() {
             </div>
           </div>
 
+          {/* Terms agreement */}
+          <label className="flex cursor-pointer items-start gap-3 select-none">
+            <input
+              type="checkbox"
+              checked={agreedTerms}
+              onChange={(e) => {
+                setAgreedTerms(e.target.checked);
+                if (e.target.checked) setTermsError(false);
+              }}
+              className={`mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-blue-600 ${termsError ? 'outline outline-2 outline-offset-2 outline-red-400' : ''}`}
+            />
+            <span className={`text-sm leading-6 ${termsError ? 'text-red-500' : 'text-slate-600'}`}>
+              {t('auth.agreeTermsPrefix')}{' '}
+              <span className="font-semibold text-blue-600">{t('auth.termsAndPrivacy')}</span>
+            </span>
+          </label>
+
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || googleLoading}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 font-bold text-white shadow-[0_18px_45px_rgba(37,99,235,0.28)] transition-all hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? (
@@ -322,6 +371,26 @@ export default function RegisterForm() {
               t('auth.register')
             )}
           </button>
+
+          <div className="flex items-center gap-3 pt-1">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">{t('auth.orDivider')}</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          {/* Nut Google nam trong iframe cua Google nen khong bat duoc click tu ben ngoai;
+              khi chua tick dieu khoan thi phu 1 lop trong suot len tren de hien thong bao. */}
+          <div className="relative">
+            <GoogleLoginButton onCredential={handleGoogleCredential} disabled={loading || googleLoading} />
+            {!agreedTerms && (
+              <button
+                type="button"
+                onClick={ensureAgreedTerms}
+                className="absolute inset-0 z-10 cursor-pointer bg-transparent"
+                aria-label={t('auth.errors.termsRequired')}
+              />
+            )}
+          </div>
 
           {/* Sign In Link */}
           <div className="text-center pt-2">

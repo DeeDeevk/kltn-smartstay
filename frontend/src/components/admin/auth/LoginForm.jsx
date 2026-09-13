@@ -4,13 +4,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-toastify';
+import GoogleLoginButton from './GoogleLoginButton';
+import useRedirectAfterLogin from './useRedirectAfterLogin';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
-// STAFF (lễ tân) và ADMIN đều vào chung khu quản trị /admin — Sidebar tự lọc menu theo
-// role, còn các trang riêng của Admin (quản lý tài khoản, loại phòng...) tự chặn ở route.
-const ADMIN_AREA_ROLES = ['ADMIN', 'STAFF'];
-const ADMIN_LANDING_PATH = '/admin';
 
 function validateLoginForm({ email, password }, t) {
   if (!EMAIL_REGEX.test(email)) {
@@ -35,15 +33,18 @@ function getLoginErrorMessage(err, t) {
 export default function LoginForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     rememberMe: false,
   });
+
+  const redirectAfterLogin = useRedirectAfterLogin();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,24 +62,27 @@ export default function LoginForm() {
         password: formData.password,
       });
       toast.success(t('auth.toasts.loginSuccess'));
-
-      if (ADMIN_AREA_ROLES.includes(user?.role)) {
-        navigate(ADMIN_LANDING_PATH, { replace: true });
-      } else {
-        // "from" có thể là trang trước đó của MỘT NGƯỜI KHÁC (vd. admin bị đăng xuất
-        // khỏi /admin rồi để lại state.from='/admin' trên /login) — không được tin
-        // mù quáng, kẻo tài khoản khách vừa đăng nhập bị đưa thẳng vào trang admin
-        // và dính 403.
-        const rawFrom = location.state?.from || '/';
-        const from = rawFrom.startsWith('/admin') ? '/' : rawFrom;
-        const checkoutState = location.state?.checkoutState;
-        navigate(from, { state: checkoutState });
-      }
+      redirectAfterLogin(user);
     } catch (err) {
       console.error('Login error:', err);
       toast.error(getLoginErrorMessage(err, t));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Google tra ve ID token qua callback cua GSI, doi lay phien dang nhap cua he thong.
+  const handleGoogleCredential = async (idToken) => {
+    setGoogleLoading(true);
+    try {
+      const user = await loginWithGoogle(idToken);
+      toast.success(t('auth.toasts.loginSuccess'));
+      redirectAfterLogin(user);
+    } catch (err) {
+      console.error('Google login error:', err);
+      toast.error(err.message || t('auth.errors.googleLoginError'));
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -134,15 +138,24 @@ export default function LoginForm() {
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 group pt-1">
-            <input
-              type="checkbox"
-              checked={formData.rememberMe}
-              onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
-              className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-sky-500 focus:ring-sky-500"
-            />
-            <span className="text-sm leading-none text-slate-500 transition-colors group-hover:text-slate-700">{t('auth.rememberMe')}</span>
-          </label>
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <label className="flex cursor-pointer items-center gap-2 group">
+              <input
+                type="checkbox"
+                checked={formData.rememberMe}
+                onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
+                className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-sky-500 focus:ring-sky-500"
+              />
+              <span className="text-sm leading-none text-slate-500 transition-colors group-hover:text-slate-700">{t('auth.rememberMe')}</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => navigate('/forgot-password')}
+              className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-500 hover:underline"
+            >
+              {t('auth.forgotPassword')}
+            </button>
+          </div>
 
           <button
             type="submit"
@@ -158,6 +171,14 @@ export default function LoginForm() {
               t('auth.login')
             )}
           </button>
+
+          <div className="flex items-center gap-3 pt-1">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">{t('auth.orDivider')}</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <GoogleLoginButton onCredential={handleGoogleCredential} disabled={loading || googleLoading} />
 
           <div className="text-center pt-2">
             <p className="text-sm text-slate-500">

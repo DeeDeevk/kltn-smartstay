@@ -3,7 +3,7 @@ import { Menu, X, User, History, LogOut } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NAV_LINKS } from '../../data/mockData';
 import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import logoIcon from '../../assets/icon/icon.png';
 import UserMenu from './UserMenu';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -16,17 +16,43 @@ const NAV_LABEL_KEYS = {
   'Liên hệ': 'nav.contact',
 };
 
+// Trang con vẫn được tính là thuộc mục menu tương ứng: đang xem chi tiết một phòng
+// (/rooms/:id) thì mục "Phòng nghỉ" vẫn sáng.
+const NAV_EXTRA_MATCH = {
+  '/searchrooms': ['/rooms'],
+};
+
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
 
-  // Highlight active link if needed, or just handle navigation
   const handleNavClick = (path) => {
     navigate(path);
     setIsMobileMenuOpen(false);
+  };
+
+  // "Ưu đãi" và "Liên hệ" là hai khu vực trên chính trang chủ (/#uu-dai, /#lien-he)
+  // nên phải so khớp cả hash, nếu không "Trang chủ" sẽ sáng cùng lúc với chúng.
+  const isNavActive = (to) => {
+    const [rawPath, hash] = to.split('#');
+    const path = rawPath || '/';
+
+    if (hash) {
+      return location.pathname === path && location.hash === `#${hash}`;
+    }
+    if (path === '/') {
+      return location.pathname === '/' && !location.hash;
+    }
+    if (location.pathname === path || location.pathname.startsWith(`${path}/`)) {
+      return true;
+    }
+    return (NAV_EXTRA_MATCH[path] || []).some(
+      (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
+    );
   };
 
   return (
@@ -46,15 +72,24 @@ export default function Header() {
 
           {/* CENTER: NAVIGATION */}
           <nav className="hidden md:flex space-x-8 items-center justify-center flex-1">
-            {NAV_LINKS.map((item) => (
-              <button
-                key={item.label}
-                onClick={() => navigate(item.to)}
-                className="text-gray-600 hover:text-blue-600 font-medium text-sm transition-colors uppercase tracking-wide"
-              >
-                {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
-              </button>
-            ))}
+            {NAV_LINKS.map((item) => {
+              const active = isNavActive(item.to);
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => navigate(item.to)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative font-medium text-sm transition-colors uppercase tracking-wide ${
+                    active ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
+                  }`}
+                >
+                  {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
+                  {active && (
+                    <span className="absolute -bottom-2 left-0 right-0 h-0.5 rounded-full bg-blue-600" />
+                  )}
+                </button>
+              );
+            })}
           </nav>
 
           {/* RIGHT: AUTH BUTTONS */}
@@ -94,15 +129,23 @@ export default function Header() {
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-gray-100 absolute w-full shadow-lg">
           <div className="px-4 pt-2 pb-6 space-y-2">
-            {NAV_LINKS.map((item) => (
-              <button
-                key={item.label}
-                onClick={() => handleNavClick(item.to)}
-                className="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
-              >
-                {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
-              </button>
-            ))}
+            {NAV_LINKS.map((item) => {
+              const active = isNavActive(item.to);
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => handleNavClick(item.to)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`block w-full text-left px-3 py-3 text-base rounded-md transition-colors ${
+                    active
+                      ? 'bg-blue-50 font-semibold text-blue-600'
+                      : 'font-medium text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
+                </button>
+              );
+            })}
             {isAuthenticated ? (
               <div className="pt-2 mt-2 border-t border-gray-100">
                 <div className="flex items-center gap-3 px-3 py-3">
@@ -155,9 +198,9 @@ export default function Header() {
         title={t('auth.logoutConfirmTitle')}
         message={t('auth.logoutConfirmMessage')}
         confirmLabel={t('auth.logout')}
-        onConfirm={() => {
+        onConfirm={async () => {
           setConfirmLogout(false);
-          logout();
+          await logout();
           navigate('/');
         }}
         onClose={() => setConfirmLogout(false)}

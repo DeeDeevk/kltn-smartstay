@@ -133,7 +133,7 @@ const Chatbot = () => {
                                             >
                                                 {!isMine && (
                                                     <p className="text-[11px] font-bold text-[#1b6b50] mb-0.5">
-                                                        {msg.senderName || 'Lễ tân'}
+                                                        Nhân viên hỗ trợ
                                                     </p>
                                                 )}
                                                 <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
