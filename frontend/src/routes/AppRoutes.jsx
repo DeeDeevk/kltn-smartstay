@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
+import Chatbot from '../components/Chatbot'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
 import TestimonialsSection from '../components/homepage/TestimonialsSection'
@@ -37,6 +38,8 @@ import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManage
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
 import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
 import AdminCheckoutPage from '../components/admin/roomMap/AdminCheckoutPage'
+import BookingManagementPage from '../components/admin/bookings/BookingManagementPage'
+import StaffChatPage from '../components/admin/chat/StaffChatPage'
 import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
 import DashboardLayout from '../components/admin/layout/DashboardLayout'
 import { roomTypeApi } from '../services/roomType'
@@ -761,6 +764,7 @@ export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <Chatbot />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
@@ -810,7 +814,23 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          <Route
+            path="bookings"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <BookingManagementPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="rooms" element={<RoomMapPage />} />
+          <Route
+            path="chat"
+            element={
+              <ProtectedRoute roles={['STAFF']}>
+                <StaffChatPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="rooms/:roomId" element={<AdminRoomDetailPage />} />
           <Route
             path="rooms/:roomId/checkout/:bookingId"

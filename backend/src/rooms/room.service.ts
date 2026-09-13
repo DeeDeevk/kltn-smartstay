@@ -15,6 +15,7 @@ import { QueryRoomMapDto } from './dto/query-room-map.dto';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { RoomTypeService } from 'src/room-types/room-type.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 // Trạng thái booking được coi là "đang giữ" 1 phòng vật lý trong khoảng ngày.
 const ACTIVE_BOOKING_STATUSES = [
@@ -36,6 +37,7 @@ export class RoomService {
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
     private readonly roomTypeService: RoomTypeService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   // Chưa có module Bookings nên tạm coi phòng "trống" = status AVAILABLE,
@@ -201,7 +203,12 @@ export class RoomService {
   async updateStatus(roomId: string, dto: UpdateRoomStatusDto): Promise<Room> {
     const room = await this.findById(roomId);
     room.status = dto.status;
-    return this.roomRepo.save(room);
+    const saved = await this.roomRepo.save(room);
+    this.realtimeGateway.emitRoomStatusChanged({
+      roomId: saved.roomId,
+      status: saved.status,
+    });
+    return saved;
   }
 
   // Tổng số phòng vật lý — dùng cho công suất phòng & RevPAR ở module Revenue.

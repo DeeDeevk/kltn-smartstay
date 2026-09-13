@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { CalendarDays, CreditCard, ImageOff, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
@@ -9,9 +10,11 @@ import BookingDetailModal from '../booking/BookingDetailModal';
 import StatusPill from '../booking/StatusPill';
 import { BOOKING_STATUS_STYLES, PAYMENT_STATUS_STYLES } from '../../utils/bookingStatusStyles';
 import {
+  bookingApi,
   useCancelBookingMutation,
   useGetMyBookingsQuery,
 } from '../../services/booking';
+import { useSocket } from '../../context/SocketContext';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
 import formatCurrency from '../../utils/formatCurrency';
 import formatDate from '../../utils/formatDate';
@@ -60,6 +63,18 @@ export default function BookingHistoryPage() {
   const [detailBooking, setDetailBooking] = useState(null);
 
   const bookings = data?.data ?? [];
+
+  // Lễ tân xác nhận/check-in/check-out/huỷ đơn ở phía họ -> đơn của mình đổi trạng
+  // thái ngay trên máy khác, tự làm mới danh sách thay vì bắt khách F5 lại trang.
+  const dispatch = useDispatch();
+  const socket = useSocket();
+  useEffect(() => {
+    const handleBookingUpdated = () => {
+      dispatch(bookingApi.util.invalidateTags([{ type: 'Booking', id: 'MY_LIST' }]));
+    };
+    socket.on('booking:updated', handleBookingUpdated);
+    return () => socket.off('booking:updated', handleBookingUpdated);
+  }, [socket, dispatch]);
 
   const handlePayNow = async (bookingId) => {
     setPayingId(bookingId);
