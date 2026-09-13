@@ -32,7 +32,7 @@ const MENU_ITEMS = [
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },
   { icon: IdCard, label: 'Quản lý nhân viên', path: '/admin/staff', ready: true, roles: ['ADMIN'] },
   { icon: CalendarClock, label: 'Phân ca nhân viên', path: '/admin/schedule', ready: true, roles: ['ADMIN'] },
-  { icon: CalendarDays, label: 'Lịch làm việc', path: '/admin/schedule/me', ready: true, roles: ['ADMIN', 'STAFF'] },
+  { icon: CalendarDays, label: 'Lịch làm việc', path: '/admin/schedule/me', ready: true, roles: ['STAFF'] },
   { icon: Wallet, label: 'Báo cáo doanh thu', path: '/admin/revenue', ready: true, roles: ['ADMIN'] },
   { icon: UserRoundCheck, label: 'Doanh thu nhân viên', path: '/admin/revenue/staff', ready: true, roles: ['ADMIN'] },
 ];

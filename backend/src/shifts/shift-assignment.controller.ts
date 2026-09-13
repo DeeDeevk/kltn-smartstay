@@ -15,6 +15,8 @@ import { ShiftAssignmentService } from './shift-assignment.service';
 import { CreateShiftAssignmentDto } from './dto/create-shift-assignment.dto';
 import { CopyWeekDto } from './dto/copy-week.dto';
 import { QueryShiftAssignmentDto } from './dto/query-shift-assignment.dto';
+import { CheckInShiftDto } from './dto/check-in-shift.dto';
+import { CheckOutShiftDto } from './dto/check-out-shift.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
@@ -82,8 +84,9 @@ export class ShiftAssignmentController {
   checkIn(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CheckInShiftDto,
   ) {
-    return this.shiftAssignmentService.checkIn(id, req.user.userId);
+    return this.shiftAssignmentService.checkIn(id, req.user.userId, dto);
   }
 
   @Post(':id/check-out')
@@ -91,7 +94,18 @@ export class ShiftAssignmentController {
   checkOut(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CheckOutShiftDto,
   ) {
-    return this.shiftAssignmentService.checkOut(id, req.user.userId);
+    return this.shiftAssignmentService.checkOut(id, req.user.userId, dto);
+  }
+
+  // Báo cáo chốt két của ca (chủ ca hoặc Admin).
+  @Get(':id/report')
+  @UseGuards(JwtAuthGuard)
+  getReport(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shiftAssignmentService.getReport(id, req.user);
   }
 }
