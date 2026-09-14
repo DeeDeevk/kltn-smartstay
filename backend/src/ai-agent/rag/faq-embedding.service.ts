@@ -35,8 +35,13 @@ export class FaqEmbeddingService implements OnModuleInit {
       throw new Error('Missing GEMINI_API_KEY environment variable');
     }
     this.client = new GoogleGenerativeAI(apiKey);
+    // text-embedding-004 is not enabled for embedContent on every API key/project
+    // (confirmed via ListModels for this project — only the gemini-embedding-* family
+    // is available here), so default to the current generally-available embedding
+    // model instead. Still overridable via env for projects where text-embedding-004
+    // (or a newer model) is actually enabled.
     this.embeddingModel =
-      this.config.get<string>('GEMINI_EMBEDDING_MODEL') ?? 'text-embedding-004';
+      this.config.get<string>('GEMINI_EMBEDDING_MODEL') ?? 'gemini-embedding-001';
   }
 
   // Embed the whole (static) FAQ dataset exactly once at startup instead of on every
