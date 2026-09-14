@@ -31,6 +31,8 @@ import { PromotionService } from 'src/promotions/promotion.service';
 import { UserService } from 'src/users/user.service';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { ShiftAssignmentService } from '../shifts/shift-assignment.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -62,7 +64,17 @@ export class BookingService {
     private readonly promotionService: PromotionService,
     private readonly userService: UserService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly shiftAssignmentService: ShiftAssignmentService,
+    private readonly paymentTransactionService: PaymentTransactionService,
   ) {}
+
+  // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
+  // được phân ca nên không áp dụng.
+  private async assertStaffOnDuty(actor: Requester) {
+    if (actor.role === UserRole.STAFF) {
+      await this.shiftAssignmentService.assertOnDuty(actor.userId);
+    }
+  }
 
   async create(userId: string, dto: CreateBookingDto) {
     if (new Date(dto.checkIn) >= new Date(dto.checkOut)) {
@@ -397,7 +409,9 @@ export class BookingService {
   // staffUserId: lễ tân đang thực hiện check-in — thời điểm này khách được phục
   // vụ và đơn CASH được thu tiền, nên quy doanh thu của đơn về người này (ghi đè
   // người tạo đơn nếu khác).
-  async checkIn(bookingId: string, dto: CheckInDto, staffUserId?: string) {
+  async checkIn(bookingId: string, dto: CheckInDto, actor: Requester) {
+    await this.assertStaffOnDuty(actor);
+    const staffUserId = actor.userId;
     const booking = await this.findByIdRaw(bookingId);
     if (booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException(
@@ -431,19 +445,26 @@ export class BookingService {
 
     booking.room = room;
     booking.status = BookingStatus.CHECKED_IN;
-    if (staffUserId) {
-      booking.staff = await this.userService.findById(staffUserId);
-    }
+    booking.staff = await this.userService.findById(staffUserId);
     // Đơn CASH được lễ tân thu tiền mặt trực tiếp ngay lúc check-in (khác đơn PayOS đã
     // có luồng xác nhận thanh toán riêng qua webhook/sync) — đánh dấu đã thanh toán luôn.
+    let cashCollected = 0;
     if (
       booking.paymentMethod === PaymentMethod.CASH &&
       booking.paymentStatus !== PaymentStatus.PAID
     ) {
+      const totalAmount = this.toDetailResponse(booking).totalAmount;
+      cashCollected = totalAmount - booking.paidAmount;
       booking.paymentStatus = PaymentStatus.PAID;
-      booking.paidAmount = this.toDetailResponse(booking).totalAmount;
+      booking.paidAmount = totalAmount;
     }
     await this.bookingRepo.save(booking);
+    await this.paymentTransactionService.record({
+      bookingId: booking.bookingId,
+      amount: cashCollected,
+      method: PaymentMethod.CASH,
+      collectedByUserId: staffUserId,
+    });
     this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
       bookingId: booking.bookingId,
       status: booking.status,
@@ -457,7 +478,8 @@ export class BookingService {
   // đổi trạng thái phòng) được gộp trong 1 transaction — trước đây là các lệnh save()
   // rời rạc, lỗi/crash giữa chừng có thể để lại đơn CHECKED_OUT nhưng phòng vẫn OCCUPIED
   // (hoặc ngược lại), sai lệch vĩnh viễn giữa Sơ đồ phòng và trạng thái đơn thật.
-  async checkOut(bookingId: string, dto: CheckOutDto = {}) {
+  async checkOut(bookingId: string, dto: CheckOutDto, actor: Requester) {
+    await this.assertStaffOnDuty(actor);
     return this.bookingRepo.manager.transaction(async (manager) => {
       const bookingRepo = manager.getRepository(Booking);
       const roomRepo = manager.getRepository(Room);
@@ -504,14 +526,27 @@ export class BookingService {
       booking.lateCheckoutFee = late.fee;
       booking.status = BookingStatus.CHECKED_OUT;
 
+      let collected = 0;
       if (dto.markPaid) {
+        const totalAmount = this.toDetailResponse(booking).totalAmount;
+        collected = totalAmount - booking.paidAmount;
         booking.paymentStatus = PaymentStatus.PAID;
-        booking.paidAmount = this.toDetailResponse(booking).totalAmount;
+        booking.paidAmount = totalAmount;
         if (dto.paymentMethod) {
           booking.paymentMethod = dto.paymentMethod;
         }
       }
       await bookingRepo.save(booking);
+      // Phần còn lại thu lúc trả phòng tính cho lễ tân đang làm check-out.
+      await this.paymentTransactionService.record(
+        {
+          bookingId: booking.bookingId,
+          amount: collected,
+          method: dto.paymentMethod ?? booking.paymentMethod,
+          collectedByUserId: actor.userId,
+        },
+        manager,
+      );
       this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
         bookingId: booking.bookingId,
         status: booking.status,
@@ -607,12 +642,21 @@ export class BookingService {
     if (!booking) return null;
     if (booking.paymentStatus === PaymentStatus.PAID) return booking;
 
+    const totalAmount = this.toDetailResponse(booking).totalAmount;
+    const collected = totalAmount - booking.paidAmount;
     booking.paymentStatus = PaymentStatus.PAID;
-    booking.paidAmount = this.toDetailResponse(booking).totalAmount;
+    booking.paidAmount = totalAmount;
     if (booking.status === BookingStatus.PENDING) {
       booking.status = BookingStatus.CONFIRMED;
     }
     const saved = await this.bookingRepo.save(booking);
+    // Khách tự chuyển khoản qua PayOS — không có nhân viên cầm tiền.
+    await this.paymentTransactionService.record({
+      bookingId: saved.bookingId,
+      amount: collected,
+      method: PaymentMethod.PAYOS,
+      collectedByUserId: null,
+    });
     this.realtimeGateway.emitBookingPaid({
       bookingId: saved.bookingId,
       guestName: saved.guestInfo?.fullName,

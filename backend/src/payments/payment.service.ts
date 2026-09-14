@@ -28,8 +28,11 @@ export class PaymentService {
       apiKey: this.config.get<string>('PAYOS_API_KEY')!,
       checksumKey: this.config.get<string>('PAYOS_CHECKSUM_KEY')!,
     });
-    this.frontendUrl =
-      this.config.get<string>('CORS_ORIGIN') ?? 'http://localhost:5173';
+    // CORS_ORIGIN có thể chứa nhiều domain — domain đầu tiên là frontend chính.
+    this.frontendUrl = this.config
+      .get<string>('CORS_ORIGIN', 'http://localhost:5173')
+      .split(',')[0]
+      .trim();
   }
 
   async createLinkForBooking(bookingId: string, requester: Requester) {

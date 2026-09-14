@@ -6,8 +6,13 @@ import { ConfigService } from '@nestjs/config';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  // CORS_ORIGIN nhận nhiều domain cách nhau bằng dấu phẩy (vd. domain Vercel chính
+  // + localhost khi dev).
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:5173'),
+    origin: configService
+      .get<string>('CORS_ORIGIN', 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim()),
   });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(

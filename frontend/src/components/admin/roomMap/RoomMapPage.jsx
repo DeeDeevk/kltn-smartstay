@@ -13,11 +13,7 @@ import {
 } from 'lucide-react';
 import { adminRoomApi, useGetRoomMapQuery } from '../../../services/adminRoom';
 import { useSocket } from '../../../context/SocketContext';
-import {
-  useGetMyShiftAssignmentsQuery,
-  useCheckInShiftAssignmentMutation,
-  useCheckOutShiftAssignmentMutation,
-} from '../../../services/shiftAssignment';
+import { useGetMyShiftAssignmentsQuery } from '../../../services/shiftAssignment';
 import { useAuth } from '../../../context/AuthContext';
 import {
   ROOM_STATUS_META,
@@ -29,9 +25,13 @@ import RoomMapFilterBar from './RoomMapFilterBar';
 import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 import Modal from '../../common/Modal';
-import ConfirmModal from '../../common/ConfirmModal';
 import { todayKey } from '../shifts/dateUtils';
 import useCheckInAvailability from '../shifts/useCheckInAvailability';
+import {
+  ShiftCashSummary,
+  ShiftCheckInModal,
+  ShiftCheckOutModal,
+} from '../shifts/ShiftCashModals';
 
 const SHIFT_STATUS_LABELS = {
   SCHEDULED: 'Chưa vô ca',
@@ -79,7 +79,8 @@ export default function RoomMapPage() {
   const [applied, setApplied] = useState(EMPTY_DRAFT);
   const [selectedFloor, setSelectedFloor] = useState('all');
   const [shiftInfoOpen, setShiftInfoOpen] = useState(false);
-  const [checkOutConfirmOpen, setCheckOutConfirmOpen] = useState(false);
+  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
+  const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedBookingId, setScannedBookingId] = useState(null);
 
@@ -102,30 +103,6 @@ export default function RoomMapPage() {
 
   // Chưa tới giờ ca thì nút "Vô ca" bị mờ kèm lý do (backend vẫn chặn lại lần nữa).
   const checkInAvailability = useCheckInAvailability(activeAssignment);
-
-  const [checkIn, { isLoading: isCheckingIn }] = useCheckInShiftAssignmentMutation();
-  const [checkOut, { isLoading: isCheckingOut }] = useCheckOutShiftAssignmentMutation();
-
-  const handleCheckIn = async () => {
-    if (!activeAssignment) return;
-    try {
-      await checkIn(activeAssignment.shiftAssignmentId).unwrap();
-      toast.success(`Đã vô ca "${activeAssignment.shiftType.name}"`);
-    } catch (err) {
-      toast.error(err.message || 'Không thể vô ca');
-    }
-  };
-
-  const handleConfirmCheckOut = async () => {
-    if (!activeAssignment) return;
-    try {
-      await checkOut(activeAssignment.shiftAssignmentId).unwrap();
-      toast.success(`Đã kết ca "${activeAssignment.shiftType.name}"`);
-      setCheckOutConfirmOpen(false);
-    } catch (err) {
-      toast.error(err.message || 'Không thể kết ca');
-    }
-  };
 
   const hasRangeFilter = Boolean(applied.checkIn && applied.checkOut);
 
@@ -265,11 +242,11 @@ export default function RoomMapPage() {
             >
               <button
                 type="button"
-                onClick={handleCheckIn}
-                disabled={isCheckingIn || !checkInAvailability.allowed}
+                onClick={() => setCheckInModalOpen(true)}
+                disabled={!checkInAvailability.allowed}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isCheckingIn ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
+                <LogIn size={16} />
                 Vô ca
               </button>
             </span>
@@ -277,11 +254,10 @@ export default function RoomMapPage() {
           {activeAssignment?.status === 'CHECKEDIN' && (
             <button
               type="button"
-              onClick={() => setCheckOutConfirmOpen(true)}
-              disabled={isCheckingOut}
-              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => setCheckOutModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
             >
-              {isCheckingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+              <LogOut size={16} />
               Kết ca
             </button>
           )}
@@ -402,6 +378,7 @@ export default function RoomMapPage() {
                 {formatShiftTime(activeAssignment.checkOutAt) ?? '—'}
               </span>
             </div>
+            <ShiftCashSummary assignment={activeAssignment} className="py-2.5" />
             {activeAssignment.note && (
               <div className="py-2.5">
                 <span className="text-gray-500">Ghi chú: </span>
@@ -412,18 +389,15 @@ export default function RoomMapPage() {
         )}
       </Modal>
 
-      <ConfirmModal
-        open={checkOutConfirmOpen}
-        title="Kết ca"
-        message={
-          activeAssignment
-            ? `Kết thúc ca "${activeAssignment.shiftType.name}" hôm nay? Sau khi kết ca sẽ không vô ca lại được cho ca này.`
-            : ''
-        }
-        confirmLabel="Kết ca"
-        loading={isCheckingOut}
-        onConfirm={handleConfirmCheckOut}
-        onClose={() => setCheckOutConfirmOpen(false)}
+      <ShiftCheckInModal
+        assignment={activeAssignment}
+        open={checkInModalOpen}
+        onClose={() => setCheckInModalOpen(false)}
+      />
+      <ShiftCheckOutModal
+        assignment={activeAssignment}
+        open={checkOutModalOpen}
+        onClose={() => setCheckOutModalOpen(false)}
       />
 
       <QrCheckInModal
