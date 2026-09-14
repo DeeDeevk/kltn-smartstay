@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bot, X, Send, Loader2, LogIn, Sparkles } from 'lucide-react';
+import { BotMessageSquare, X, Send, Loader2, LogIn, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSendAiMessageMutation } from '../services/aiAgent';
@@ -118,10 +118,10 @@ const AiChatbot = () => {
                     style={panelStyle}
                     className="fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
                 >
-                    <div className="bg-indigo-600 p-4 flex items-center justify-between text-white shadow-md z-10">
+                    <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 p-4 flex items-center justify-between text-white shadow-md z-10">
                         <div className="flex items-center gap-3">
                             <div className="bg-white p-1.5 rounded-full">
-                                <Bot className="w-6 h-6 text-indigo-600" />
+                                <BotMessageSquare className="w-6 h-6 text-indigo-600" />
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg">Trợ lý ảo Vika Hotel</h3>
@@ -260,14 +260,23 @@ const AiChatbot = () => {
                 </div>
             )}
 
+            {/* w-16 h-16 (64px) phải khớp đúng BUTTON_SIZE trong useDraggableWidget.js —
+                hook đó tính vị trí kéo-thả và vị trí bảng chat dựa trên hằng số 64px này,
+                đổi kích thước nút ở đây mà không đổi theo sẽ làm lệch bảng chat. */}
             <button
                 onPointerDown={dragHandlers.onPointerDown}
                 onPointerMove={dragHandlers.onPointerMove}
                 onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
                 style={buttonStyle}
-                className={`fixed p-4 bg-indigo-600 text-white rounded-full shadow-2xl hover:bg-indigo-700 transition-shadow duration-200 z-50 cursor-grab active:cursor-grabbing select-none touch-none ${isOpen ? 'ring-4 ring-indigo-300' : ''}`}
+                className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-50 cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-indigo-500 via-violet-500 to-indigo-600 text-white shadow-2xl shadow-indigo-500/40 hover:shadow-indigo-500/60 transition-shadow duration-200 ${isOpen ? 'ring-4 ring-indigo-200' : ''}`}
             >
-                <Bot className="w-8 h-8" />
+                {!isOpen && (
+                    <span className="absolute inset-0 rounded-full bg-indigo-400 opacity-60 animate-ping" />
+                )}
+                <BotMessageSquare className="w-7 h-7 relative" />
+                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-indigo-900 ring-2 ring-white">
+                    <Sparkles className="w-3 h-3" />
+                </span>
             </button>
         </>
     );

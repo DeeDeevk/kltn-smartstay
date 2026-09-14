@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     BedDouble,
@@ -12,10 +12,14 @@ import {
     Download,
     Banknote,
     QrCode,
+    Loader2,
 } from 'lucide-react';
 import downloadQrPng from '../utils/downloadQr';
 import getBookingCode from '../utils/bookingCode';
 import getBookingQrPayload from '../utils/bookingQrPayload';
+import { useSyncPayOSStatusQuery } from '../services/payment';
+
+const PAYOS_POLL_INTERVAL_MS = 5000;
 
 const PAYMENT_METHOD_LABEL = {
     CASH: 'Tiền mặt tại quầy',
@@ -215,20 +219,37 @@ export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel }) => {
 };
 
 // Sau khi đặt phòng thành công có 2 mã QR khác nhau, không được gộp làm một:
-// 1. "Vé đặt phòng" — mã hoá bookingId, dùng để lễ tân quét lúc khách nhận phòng
-//    (QRScannerModal tra GET /bookings/:id) — LUÔN hiển thị cho mọi đơn, bất kể thanh
-//    toán tiền mặt hay chuyển khoản. Tái dùng đúng getBookingCode/getBookingQrPayload
-//    như trang đặt phòng thường (BookingSuccess ở AppRoutes.jsx) để 2 nơi ra cùng 1 QR
-//    cho cùng 1 booking.
-// 2. Mã QR thanh toán PayOS — chỉ có khi đơn chọn chuyển khoản, backend đã tạo sẵn kèm
-//    booking (createLinkForBooking), khác hẳn QR vé ở trên.
+// 1. Mã QR thanh toán PayOS — chỉ có khi đơn chọn chuyển khoản, backend đã tạo sẵn kèm
+//    booking (createLinkForBooking).
+// 2. "Vé đặt phòng" — mã hoá bookingId, dùng để lễ tân quét lúc khách nhận phòng
+//    (QRScannerModal tra GET /bookings/:id). Tái dùng đúng getBookingCode/
+//    getBookingQrPayload như trang đặt phòng thường (BookingSuccess ở AppRoutes.jsx)
+//    để 2 nơi ra cùng 1 QR cho cùng 1 booking.
+//
+// Với đơn chuyển khoản: chỉ đưa vé check-in SAU KHI đã xác nhận thanh toán thành công —
+// đưa vé trước khi khách thực sự chuyển khoản dễ hiểu nhầm là đã xong, nên khi còn
+// UNPAID chỉ hiện QR thanh toán, tự poll trạng thái (giống trang checkout thường) và
+// chỉ lộ vé QR khi PayOS báo đã nhận tiền. Đơn tiền mặt không cần chờ gì, hiện vé ngay.
 export const BookingConfirmedCard = ({ booking }) => {
     const ticketQrRef = useRef(null);
     const paymentQrRef = useRef(null);
+    const isPayos = booking?.paymentMethod === 'PAYOS';
+    const isExpired = isPayos && booking?.expiredAt && Date.now() / 1000 > booking.expiredAt;
+    const [isPaid, setIsPaid] = useState(false);
+
+    const { data: syncResult } = useSyncPayOSStatusQuery(booking?.bookingId, {
+        skip: !isPayos || !booking?.qrCode || isPaid || isExpired,
+        pollingInterval: PAYOS_POLL_INTERVAL_MS,
+    });
+
+    useEffect(() => {
+        if (syncResult?.paymentStatus === 'PAID') setIsPaid(true);
+    }, [syncResult]);
+
     if (!booking) return null;
 
-    const isPayos = booking.paymentMethod === 'PAYOS';
     const bookingCode = getBookingCode(booking.bookingId);
+    const showTicket = !isPayos || isPaid;
 
     const handleSaveTicketQr = () => {
         downloadQrPng(ticketQrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`);
@@ -250,53 +271,73 @@ export const BookingConfirmedCard = ({ booking }) => {
                 </div>
             </div>
 
-            <div className="rounded-lg border border-green-200 bg-white p-3 flex flex-col items-center gap-2">
-                <p className="text-xs font-semibold text-gray-600">Vé đặt phòng — xuất trình khi nhận phòng</p>
-                <div ref={ticketQrRef} className="rounded-lg border border-gray-100 bg-white p-2">
-                    <QRCodeSVG value={getBookingQrPayload(booking)} size={160} level="M" />
-                </div>
-                <button
-                    type="button"
-                    onClick={handleSaveTicketQr}
-                    className="flex items-center justify-center gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-full px-4 py-2 transition-colors"
-                >
-                    <Download className="w-3.5 h-3.5" /> Lưu vé QR
-                </button>
-            </div>
+            {isPayos && !isPaid && (
+                <>
+                    {isExpired ? (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            Mã QR thanh toán đã hết hạn, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để tạo lại link thanh toán.
+                        </p>
+                    ) : booking.qrCode ? (
+                        <div className="rounded-lg border border-green-200 bg-white p-3 flex flex-col items-center gap-2">
+                            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                <QrCode className="w-3.5 h-3.5" /> Quét mã để thanh toán chuyển khoản
+                            </p>
+                            <div ref={paymentQrRef} className="rounded-lg border border-gray-100 bg-white p-2">
+                                <QRCodeSVG value={booking.qrCode} size={160} level="M" />
+                            </div>
+                            <div className="flex gap-2 w-full pt-1">
+                                <button
+                                    type="button"
+                                    onClick={handleSavePaymentQr}
+                                    className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-full py-2 transition-colors"
+                                >
+                                    <Download className="w-3.5 h-3.5" /> Lưu mã QR
+                                </button>
+                                {booking.checkoutUrl && (
+                                    <a
+                                        href={booking.checkoutUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex-1 text-center bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-full py-2 transition-colors"
+                                    >
+                                        Mở trang thanh toán
+                                    </a>
+                                )}
+                            </div>
+                            <p className="text-[11px] text-gray-400 flex items-center gap-1 pt-0.5">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Đang chờ xác nhận thanh toán, vé đặt phòng sẽ hiện ra ngay khi nhận được tiền...
+                            </p>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            Không tạo được mã QR thanh toán lúc này, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để lấy lại mã hoặc liên hệ lễ tân.
+                        </p>
+                    )}
+                </>
+            )}
 
-            {isPayos && booking.qrCode ? (
+            {showTicket && (
                 <div className="rounded-lg border border-green-200 bg-white p-3 flex flex-col items-center gap-2">
-                    <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">
-                        <QrCode className="w-3.5 h-3.5" /> Quét mã để thanh toán chuyển khoản
-                    </p>
-                    <div ref={paymentQrRef} className="rounded-lg border border-gray-100 bg-white p-2">
-                        <QRCodeSVG value={booking.qrCode} size={160} level="M" />
+                    {isPayos && (
+                        <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Đã nhận được thanh toán chuyển khoản
+                        </p>
+                    )}
+                    <p className="text-xs font-semibold text-gray-600">Vé đặt phòng — xuất trình khi nhận phòng</p>
+                    <div ref={ticketQrRef} className="rounded-lg border border-gray-100 bg-white p-2">
+                        <QRCodeSVG value={getBookingQrPayload(booking)} size={160} level="M" />
                     </div>
-                    <div className="flex gap-2 w-full pt-1">
-                        <button
-                            type="button"
-                            onClick={handleSavePaymentQr}
-                            className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-full py-2 transition-colors"
-                        >
-                            <Download className="w-3.5 h-3.5" /> Lưu mã QR
-                        </button>
-                        {booking.checkoutUrl && (
-                            <a
-                                href={booking.checkoutUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex-1 text-center bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-full py-2 transition-colors"
-                            >
-                                Mở trang thanh toán
-                            </a>
-                        )}
-                    </div>
+                    <button
+                        type="button"
+                        onClick={handleSaveTicketQr}
+                        className="flex items-center justify-center gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-full px-4 py-2 transition-colors"
+                    >
+                        <Download className="w-3.5 h-3.5" /> Lưu vé QR
+                    </button>
                 </div>
-            ) : isPayos ? (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    Không tạo được mã QR thanh toán lúc này, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để lấy lại mã hoặc liên hệ lễ tân.
-                </p>
-            ) : (
+            )}
+
+            {!isPayos && (
                 <p className="text-xs text-gray-600 flex items-center gap-1.5">
                     <Banknote className="w-3.5 h-3.5 text-green-600" /> Quý khách vui lòng thanh toán tiền mặt tại quầy lễ tân khi nhận phòng.
                 </p>
