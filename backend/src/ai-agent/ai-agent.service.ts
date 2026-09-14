@@ -1,0 +1,253 @@
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AiConversation } from './entities/ai-conversation.entity';
+import { AiMessage } from './entities/ai-message.entity';
+import { AiMessageRole } from 'src/common/enums/ai-message-role.enum';
+import { SendMessageDto } from './dto/send-message.dto';
+import { LLM_PROVIDER } from './llm/llm-provider.interface';
+import type { LlmMessage, LlmProvider } from './llm/llm-provider.interface';
+import { AI_AGENT_TOOLS } from './tools/ai-agent-tools.definitions';
+import { AiAgentToolsService } from './tools/ai-agent-tools.service';
+import { buildSystemPrompt } from './constants/system-prompt.constant';
+
+// Số vòng gọi tool tối đa cho 1 tin nhắn của khách — chặn vòng lặp vô hạn nếu model
+// cứ liên tục gọi tool mà không bao giờ trả lời bằng văn bản. Đặt 6 vì flow đặt phòng
+// đầy đủ có thể cần tới search_rooms -> check_availability -> propose_booking (3 vòng
+// gọi tool) trước khi model mới trả lời bằng văn bản ở vòng kế tiếp; để 4 dễ bị chặn
+// giữa chừng và rơi vào FALLBACK_REPLY dù model chưa thực sự bế tắc.
+const MAX_TOOL_ROUNDS = 6;
+const FALLBACK_REPLY =
+  'Xin lỗi, hiện tôi chưa thể xử lý yêu cầu này, bạn vui lòng thử lại hoặc liên hệ lễ tân.';
+
+@Injectable()
+export class AiAgentService {
+  constructor(
+    @InjectRepository(AiConversation)
+    private readonly conversationRepo: Repository<AiConversation>,
+    @InjectRepository(AiMessage)
+    private readonly messageRepo: Repository<AiMessage>,
+    @Inject(LLM_PROVIDER) private readonly llmProvider: LlmProvider,
+    private readonly toolsService: AiAgentToolsService,
+  ) {}
+
+  async sendMessage(userId: string, dto: SendMessageDto) {
+    const conversation = dto.conversationId
+      ? await this.getOwnedConversation(dto.conversationId, userId)
+      : await this.createConversation(userId);
+
+    const history = await this.messageRepo.find({
+      where: { conversation: { conversationId: conversation.conversationId } },
+      order: { createdAt: 'ASC' },
+    });
+
+    const userMessage = await this.messageRepo.save(
+      this.messageRepo.create({
+        conversation,
+        role: AiMessageRole.USER,
+        content: dto.message,
+      }),
+    );
+
+    const llmMessages: LlmMessage[] = [
+      {
+        role: 'system',
+        parts: [{ type: 'text', text: buildSystemPrompt() }],
+      },
+      ...this.buildHistoryContext(history),
+      this.toLlmMessage(userMessage),
+    ];
+
+    let finalText: string | null = null;
+    let latestRooms: unknown[] | null = null;
+    let latestPromotions: unknown[] | null = null;
+    let latestBooking: unknown = null;
+    let latestBookingFormRequest: unknown = null;
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      const result = await this.llmProvider.chat(llmMessages, AI_AGENT_TOOLS);
+
+      if (result.toolCalls.length === 0) {
+        finalText = result.text ?? FALLBACK_REPLY;
+        break;
+      }
+
+      llmMessages.push({
+        role: 'model',
+        parts: [
+          ...(result.text
+            ? [{ type: 'text' as const, text: result.text }]
+            : []),
+          ...result.toolCalls.map((call) => ({
+            type: 'tool_call' as const,
+            id: call.id,
+            name: call.name,
+            args: call.args,
+            thoughtSignature: call.thoughtSignature,
+          })),
+        ],
+      });
+
+      const toolResultParts: LlmMessage['parts'] = [];
+      for (const call of result.toolCalls) {
+        const execResult = await this.toolsService.execute(
+          call.name,
+          call.args,
+          {
+            userId,
+            conversation,
+            currentUserMessage: {
+              text: userMessage.content ?? '',
+              createdAt: userMessage.createdAt,
+            },
+          },
+        );
+
+        await this.messageRepo.save(
+          this.messageRepo.create({
+            conversation,
+            role: AiMessageRole.TOOL,
+            toolName: call.name,
+            toolArgs: call.args,
+            toolResult: execResult as Record<string, unknown>,
+          }),
+        );
+
+        if (execResult.success) {
+          if (call.name === 'search_rooms' && Array.isArray(execResult.data)) {
+            latestRooms = execResult.data;
+          } else if (call.name === 'check_availability' && execResult.data) {
+            latestRooms = [execResult.data];
+          } else if (
+            call.name === 'get_promotions' &&
+            Array.isArray(execResult.data)
+          ) {
+            latestPromotions = execResult.data;
+          } else if (call.name === 'create_booking') {
+            latestBooking = execResult.data;
+          } else if (call.name === 'request_booking_form') {
+            latestBookingFormRequest = execResult.data;
+          }
+        }
+
+        toolResultParts.push({
+          type: 'tool_result',
+          id: call.id,
+          name: call.name,
+          result: execResult,
+        });
+      }
+      llmMessages.push({ role: 'tool', parts: toolResultParts });
+    }
+
+    const reply = finalText ?? FALLBACK_REPLY;
+    await this.messageRepo.save(
+      this.messageRepo.create({
+        conversation,
+        role: AiMessageRole.MODEL,
+        content: reply,
+      }),
+    );
+
+    return {
+      conversationId: conversation.conversationId,
+      reply,
+      rooms: latestRooms,
+      promotions: latestPromotions,
+      pendingBooking: conversation.pendingBooking ?? null,
+      booking: latestBooking,
+      bookingFormRequest: latestBookingFormRequest,
+    };
+  }
+
+  async getHistory(conversationId: string, userId: string) {
+    const conversation = await this.getOwnedConversation(
+      conversationId,
+      userId,
+    );
+    const messages = await this.messageRepo.find({
+      where: { conversation: { conversationId: conversation.conversationId } },
+      order: { createdAt: 'ASC' },
+    });
+    return messages.map((m) => ({
+      messageId: m.messageId,
+      role: m.role,
+      content: m.content,
+      toolName: m.toolName,
+      toolArgs: m.toolArgs,
+      toolResult: m.toolResult,
+      createdAt: m.createdAt,
+    }));
+  }
+
+  private async createConversation(userId: string): Promise<AiConversation> {
+    const conversation = this.conversationRepo.create({
+      user: { userId } as AiConversation['user'],
+      pendingBooking: null,
+      pendingBookingProposedAt: null,
+    });
+    return this.conversationRepo.save(conversation);
+  }
+
+  private async getOwnedConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<AiConversation> {
+    const conversation = await this.conversationRepo.findOne({
+      where: { conversationId },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Không tìm thấy cuộc hội thoại');
+    }
+    if (conversation.user.userId !== userId) {
+      throw new ForbiddenException(
+        'Bạn không có quyền truy cập cuộc hội thoại này',
+      );
+    }
+    return conversation;
+  }
+
+  // Trước đây khi tải lại lịch sử ở 1 request HTTP mới, các message role=TOOL (chứa
+  // roomTypeId, giá, danh sách khuyến mãi...) bị lọc bỏ hoàn toàn, chỉ giữ lại câu trả
+  // lời văn bản cuối cùng. Hệ quả: khách hỏi tiếp "đặt phòng đó cho tôi" ở 1 tin nhắn
+  // sau, model không còn biết "phòng đó" là roomTypeId nào vì dữ liệu tool gốc đã mất,
+  // dễ trả lời sai hoặc phải hỏi lại từ đầu. Giữ lại tối đa 3 kết quả tool gần nhất
+  // (dạng tóm tắt text) làm ngữ cảnh, tránh phình quá nhiều token cho hội thoại dài.
+  private buildHistoryContext(history: AiMessage[]): LlmMessage[] {
+    const MAX_TOOL_CONTEXT = 3;
+    const toolIndexes = history
+      .map((m, i) => (m.role === AiMessageRole.TOOL && m.toolResult ? i : -1))
+      .filter((i) => i >= 0);
+    const keepToolIndexes = new Set(toolIndexes.slice(-MAX_TOOL_CONTEXT));
+
+    const messages: LlmMessage[] = [];
+    history.forEach((m, i) => {
+      if (m.role === AiMessageRole.TOOL) {
+        if (!keepToolIndexes.has(i)) return;
+        messages.push({
+          role: 'model',
+          parts: [
+            {
+              type: 'text',
+              text: `[Dữ liệu tool "${m.toolName}" ở lượt trước, dùng để tham chiếu nếu khách nhắc lại]: ${JSON.stringify(m.toolResult)}`,
+            },
+          ],
+        });
+        return;
+      }
+      if (m.content) messages.push(this.toLlmMessage(m));
+    });
+    return messages;
+  }
+
+  private toLlmMessage(message: AiMessage): LlmMessage {
+    return {
+      role: message.role === AiMessageRole.USER ? 'user' : 'model',
+      parts: [{ type: 'text', text: message.content ?? '' }],
+    };
+  }
+}

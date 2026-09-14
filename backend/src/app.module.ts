@@ -18,6 +18,7 @@ import { ShiftModule } from './shifts/shift.module';
 import { RevenueModule } from './revenue/revenue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ChatModule } from './chat/chat.module';
+import { AiAgentModule } from './ai-agent/ai-agent.module';
 
 @Module({
   imports: [
@@ -35,9 +36,10 @@ import { ChatModule } from './chat/chat.module';
         database: config.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
         synchronize: config.get<string>('DB_SYNCHRONIZE') === 'true',
-        ssl: config.get<string>('DB_SSL') === 'true' 
-          ? { rejectUnauthorized: false } 
-          : false,
+        ssl:
+          config.get<string>('DB_SSL') === 'true'
+            ? { rejectUnauthorized: false }
+            : false,
       }),
     }),
     UserModule,
@@ -52,6 +54,7 @@ import { ChatModule } from './chat/chat.module';
     RevenueModule,
     RealtimeModule,
     ChatModule,
+    AiAgentModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

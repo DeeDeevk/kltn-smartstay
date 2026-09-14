@@ -9,6 +9,7 @@ import { adminRoomApi } from '../services/adminRoom';
 import { bookingApi } from '../services/booking';
 import { paymentApi } from '../services/payment';
 import { chatApi } from '../services/chat';
+import { aiAgentApi } from '../services/aiAgent';
 import { reviewApi } from '../services/review';
 import { shiftTypeApi } from '../services/shiftType';
 import { shiftAssignmentApi } from '../services/shiftAssignment';
@@ -26,6 +27,7 @@ export const store = configureStore({
         [bookingApi.reducerPath]: bookingApi.reducer,
         [paymentApi.reducerPath]: paymentApi.reducer,
         [chatApi.reducerPath]: chatApi.reducer,
+        [aiAgentApi.reducerPath]: aiAgentApi.reducer,
         [reviewApi.reducerPath]: reviewApi.reducer,
         [shiftTypeApi.reducerPath]: shiftTypeApi.reducer,
         [shiftAssignmentApi.reducerPath]: shiftAssignmentApi.reducer,
@@ -44,6 +46,7 @@ export const store = configureStore({
             bookingApi.middleware,
             paymentApi.middleware,
             chatApi.middleware,
+            aiAgentApi.middleware,
             reviewApi.middleware,
             shiftTypeApi.middleware,
             shiftAssignmentApi.middleware,

@@ -7,6 +7,7 @@ import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
 import Chatbot from '../components/Chatbot'
+import AiChatbot from '../components/AiChatbot'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
 import TestimonialsSection from '../components/homepage/TestimonialsSection'
@@ -774,6 +775,7 @@ export default function AppRoutes() {
     <BrowserRouter>
       <ScrollToTop />
       <Chatbot />
+      <AiChatbot />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />

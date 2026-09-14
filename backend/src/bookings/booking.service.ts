@@ -25,6 +25,8 @@ import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
 import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { RoomType } from 'src/room-types/entities/room-type.entity';
+import { QueryRoomTypeDto } from 'src/room-types/dto/query-room-type.dto';
 import { RoomTypeService } from 'src/room-types/room-type.service';
 import { ServiceService } from 'src/services/service.service';
 import { PromotionService } from 'src/promotions/promotion.service';
@@ -37,7 +39,9 @@ import { PaymentTransactionService } from '../cash-ledger/payment-transaction.se
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
 // tính trên dịch vụ đi kèm (đồ ăn, giặt ủi... đã có mức thuế/giá riêng).
-const VAT_RATE = 0.08;
+// Export để module ai-agent tái dùng khi tính giá xem trước (propose_booking) thay vì
+// khai báo lại cùng một con số ở hai nơi.
+export const VAT_RATE = 0.08;
 // Giờ trả phòng tiêu chuẩn: quá 12h trưa ngày check-out thì tính thêm đêm lưu trú.
 const CHECKOUT_DEADLINE_HOUR = 12;
 // Việt Nam không có giờ mùa hè, lệch cố định UTC+7 quanh năm — dùng để quy đổi "12h trưa
@@ -279,6 +283,67 @@ export class BookingService {
     } finally {
       await this.releaseLocks(lockKeys);
     }
+  }
+
+  // Danh sách loại phòng còn trống trong khoảng ngày cho trước, kèm số phòng còn trống
+  // thật sự (đã trừ các booking đang giữ chỗ giao ngày) — dùng bởi ai-agent (search_rooms)
+  // và bất kỳ nơi nào khác cần tìm phòng trống theo ngày thay vì chỉ theo status tĩnh.
+  async findAvailableRoomTypes(
+    checkIn: string,
+    checkOut: string,
+    guests?: number,
+  ): Promise<Array<RoomType & { availableCount: number }>> {
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const query: QueryRoomTypeDto = guests ? { capacity: guests } : {};
+    const roomTypes = await this.roomTypeService.findAllActive(query);
+
+    const available: Array<RoomType & { availableCount: number }> = [];
+    for (const roomType of roomTypes) {
+      const totalRooms = await this.roomRepo.count({
+        where: { roomType: { roomTypeId: roomType.roomTypeId } },
+      });
+      const overlapping = await this.countOverlappingBookings(
+        roomType.roomTypeId,
+        checkIn,
+        checkOut,
+      );
+      const availableCount = totalRooms - overlapping;
+      if (availableCount > 0) {
+        available.push({ ...roomType, availableCount });
+      }
+    }
+    return available;
+  }
+
+  // Số phòng còn trống của 1 loại phòng cụ thể trong khoảng ngày — dùng bởi ai-agent
+  // (check_availability, propose_booking) để xác nhận còn chỗ trước khi tư vấn/đặt.
+  async getRoomTypeAvailability(
+    roomTypeId: string,
+    checkIn: string,
+    checkOut: string,
+  ): Promise<{
+    roomType: RoomType;
+    availableCount: number;
+    available: boolean;
+  }> {
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const roomType = await this.roomTypeService.findActiveById(roomTypeId);
+    const totalRooms = await this.roomRepo.count({
+      where: { roomType: { roomTypeId } },
+    });
+    const overlapping = await this.countOverlappingBookings(
+      roomTypeId,
+      checkIn,
+      checkOut,
+    );
+    const availableCount = Math.max(0, totalRooms - overlapping);
+    return { roomType, availableCount, available: availableCount > 0 };
   }
 
   async findAll(query: QueryBookingDto) {

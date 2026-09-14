@@ -21,9 +21,11 @@
     "seed:admin": "ts-node -r tsconfig-paths/register src/database/seed-admin.ts",
     "seed:room-types": "ts-node -r tsconfig-paths/register src/database/seed-room-types.ts",
     "seed:services": "ts-node -r tsconfig-paths/register src/database/seed-services.ts",
+    "seed:more-rooms": "ts-node -r tsconfig-paths/register src/database/seed-more-rooms.ts",
     "rooms:rename": "ts-node -r tsconfig-paths/register src/database/rename-rooms.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
@@ -87,6 +89,9 @@
       "ts"
     ],
     "rootDir": "src",
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
+    },
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
