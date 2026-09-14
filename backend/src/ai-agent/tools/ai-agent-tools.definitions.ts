@@ -1,5 +1,4 @@
 import { LlmTool } from '../llm/llm-provider.interface';
-import { POLICY_TOPICS } from '../constants/policy.constants';
 
 // Định nghĩa 6 tool mà model được phép gọi. So với đặc tả gốc (5 tool), có thêm
 // propose_booking: đây là bước bắt buộc agent phải đi qua trước create_booking —
@@ -57,19 +56,22 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
     parameters: { type: 'object', properties: {} },
   },
   {
+    // Semantic search (lightweight RAG) over the hotel's FAQ/policy knowledge base —
+    // there is no fixed topic list to pick from, "query" is the guest's own question
+    // or intent, matched against indexed FAQ entries by embedding similarity.
     name: 'get_policy',
     description:
-      'Lấy nội dung chính sách của khách sạn theo chủ đề (huỷ phòng, giờ nhận/trả phòng, thanh toán, khuyến mãi).',
+      'Semantic search over the hotel\'s FAQ/policy knowledge base (cancellation, check-in/check-out time, late-checkout fee, payment methods, promotions, ...). Pass the guest\'s question or intent as free text in their own words — do NOT try to map it to a fixed keyword, just describe what they actually want to know (e.g. "trả phòng trễ có bị tính phí không").',
     parameters: {
       type: 'object',
       properties: {
-        topic: {
+        query: {
           type: 'string',
-          description: 'Chủ đề chính sách cần tra cứu',
-          enum: [...POLICY_TOPICS],
+          description:
+            "The guest's question or intent, in their own words, used for semantic search over the FAQ knowledge base.",
         },
       },
-      required: ['topic'],
+      required: ['query'],
     },
   },
   {

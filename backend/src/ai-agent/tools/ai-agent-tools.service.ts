@@ -9,7 +9,7 @@ import { ServiceService } from 'src/services/service.service';
 import { PaymentService } from 'src/payments/payment.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
-import { getPolicyContent } from '../constants/policy.constants';
+import { FaqEmbeddingService } from '../rag/faq-embedding.service';
 import {
   AiConversation,
   PendingBookingSummary,
@@ -58,6 +58,7 @@ export class AiAgentToolsService {
     private readonly promotionService: PromotionService,
     private readonly serviceService: ServiceService,
     private readonly paymentService: PaymentService,
+    private readonly faqEmbeddingService: FaqEmbeddingService,
   ) {}
 
   async execute(
@@ -92,7 +93,7 @@ export class AiAgentToolsService {
       case 'get_promotions':
         return this.getPromotions();
       case 'get_policy':
-        return Promise.resolve(this.getPolicy(args));
+        return this.getPolicy(args);
       case 'request_booking_form':
         // Tool này không thao tác dữ liệu gì — chỉ là tín hiệu để backend trả kèm
         // "bookingFormRequest" trong response cho frontend hiển thị biểu mẫu.
@@ -168,9 +169,27 @@ export class AiAgentToolsService {
     }));
   }
 
-  private getPolicy(args: Record<string, unknown>) {
-    const topic = typeof args.topic === 'string' ? args.topic : '';
-    return { topic, content: getPolicyContent(topic) };
+  // Lightweight RAG: embed the guest's free-text query and return the closest FAQ
+  // entries by cosine similarity, instead of requiring the model to pick from a fixed
+  // topic enum. Each result carries its own similarity score and lowConfidence flag so
+  // the model can hedge ("mời liên hệ lễ tân") rather than present a weak match as fact.
+  private async getPolicy(args: Record<string, unknown>) {
+    const query = typeof args.query === 'string' ? args.query.trim() : '';
+    if (!query) {
+      throw new BadRequestException(
+        'Thiếu nội dung câu hỏi cần tra cứu chính sách.',
+      );
+    }
+
+    const results = await this.faqEmbeddingService.search(query);
+    return {
+      query,
+      results: results.map((r) => ({
+        content: r.entry.content,
+        similarity: r.similarity,
+        lowConfidence: r.lowConfidence,
+      })),
+    };
   }
 
   // Tính giá xem trước (không ghi DB) và lưu lại thành pendingBooking gắn với cuộc hội

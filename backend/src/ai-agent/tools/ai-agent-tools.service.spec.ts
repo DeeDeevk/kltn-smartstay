@@ -15,6 +15,7 @@ describe('AiAgentToolsService', () => {
   let promotionService: { validateCode: jest.Mock };
   let serviceService: { findActiveByIds: jest.Mock };
   let paymentService: { createLinkForBooking: jest.Mock };
+  let faqEmbeddingService: { search: jest.Mock };
   let tools: AiAgentToolsService;
 
   const roomType = { roomTypeId: 'rt-1', name: 'Deluxe', basePrice: 1000000 };
@@ -36,6 +37,7 @@ describe('AiAgentToolsService', () => {
     promotionService = { validateCode: jest.fn() };
     serviceService = { findActiveByIds: jest.fn().mockResolvedValue([]) };
     paymentService = { createLinkForBooking: jest.fn() };
+    faqEmbeddingService = { search: jest.fn() };
 
     tools = new AiAgentToolsService(
       conversationRepo as unknown as never,
@@ -44,6 +46,7 @@ describe('AiAgentToolsService', () => {
       promotionService as unknown as never,
       serviceService as unknown as never,
       paymentService as unknown as never,
+      faqEmbeddingService as unknown as never,
     );
   });
 
@@ -260,5 +263,59 @@ describe('AiAgentToolsService', () => {
     const data = result.data as { qrCode: string; checkoutUrl: string };
     expect(data.qrCode).toBe('00020101...qr-payload');
     expect(data.checkoutUrl).toBe('https://pay.payos.vn/web/abc');
+  });
+
+  it('get_policy forwards the free-text query to FaqEmbeddingService.search and maps its results', async () => {
+    faqEmbeddingService.search.mockResolvedValue([
+      {
+        entry: {
+          id: 'late-checkout-fee',
+          question: 'q',
+          content: 'Phụ thu trả phòng trễ...',
+        },
+        similarity: 0.82,
+        lowConfidence: false,
+      },
+    ]);
+
+    const result = await tools.execute(
+      'get_policy',
+      { query: 'trả phòng trễ có bị tính phí không' },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'trả phòng trễ có bị tính phí không',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(faqEmbeddingService.search).toHaveBeenCalledWith(
+      'trả phòng trễ có bị tính phí không',
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const data = result.data as {
+      results: Array<{ content: string; lowConfidence: boolean }>;
+    };
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].content).toBe('Phụ thu trả phòng trễ...');
+    expect(data.results[0].lowConfidence).toBe(false);
+  });
+
+  it('get_policy rejects an empty query without calling the embedding search', async () => {
+    const result = await tools.execute(
+      'get_policy',
+      { query: '   ' },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: { text: 'hi', createdAt: new Date() },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(faqEmbeddingService.search).not.toHaveBeenCalled();
   });
 });

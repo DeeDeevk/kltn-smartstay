@@ -5,6 +5,7 @@ import { AiMessage } from './entities/ai-message.entity';
 import { AiAgentController } from './ai-agent.controller';
 import { AiAgentService } from './ai-agent.service';
 import { AiAgentToolsService } from './tools/ai-agent-tools.service';
+import { FaqEmbeddingService } from './rag/faq-embedding.service';
 import { LLM_PROVIDER } from './llm/llm-provider.interface';
 import { GeminiProvider } from './llm/gemini.provider';
 import { ReservationsModule } from '../reservations/reservations.module';
@@ -24,6 +25,7 @@ import { PaymentModule } from '../payments/payment.module';
   providers: [
     AiAgentService,
     AiAgentToolsService,
+    FaqEmbeddingService,
     // Đổi provider sau này (VD sang Claude) chỉ cần thay useClass ở đây.
     { provide: LLM_PROVIDER, useClass: GeminiProvider },
   ],

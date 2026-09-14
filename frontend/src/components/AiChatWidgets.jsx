@@ -311,20 +311,34 @@ const inputClass =
 // Biểu mẫu cho khách điền trực tiếp thông tin đặt phòng thay vì phải trả lời từng câu
 // hỏi bằng chữ — hiển thị khi model gọi tool request_booking_form. Nộp form sẽ gộp
 // thành 1 tin nhắn văn bản gửi đi, agent xử lý tiếp bằng propose_booking như bình thường.
-export const BookingInfoForm = ({ request, onSubmit, onCancel }) => {
+//
+// Họ tên/SĐT/email tự điền sẵn từ hồ sơ tài khoản đang đăng nhập (`user`) — đúng nghiệp
+// vụ đa số khách đặt cho chính mình — nhưng vẫn là input thường, khách sửa lại thoải mái
+// nếu đặt hộ người khác.
+export const BookingInfoForm = ({ request, user, onSubmit, onCancel }) => {
     const [checkIn, setCheckIn] = useState(request?.checkIn ?? '');
     const [checkOut, setCheckOut] = useState(request?.checkOut ?? '');
     const [guests, setGuests] = useState(request?.guests ?? 2);
-    const [fullName, setFullName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [email, setEmail] = useState('');
+    const [fullName, setFullName] = useState(user?.fullName ?? '');
+    const [phone, setPhone] = useState(user?.phone ?? '');
+    const [email, setEmail] = useState(user?.email ?? '');
+    const [paymentMethod, setPaymentMethod] = useState(null);
 
-    const canSubmit = checkIn && checkOut && guests > 0 && fullName.trim() && phone.trim();
+    const canSubmit =
+        checkIn && checkOut && guests > 0 && fullName.trim() && phone.trim() && paymentMethod;
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!canSubmit) return;
-        onSubmit({ checkIn, checkOut, guests, fullName: fullName.trim(), phone: phone.trim(), email: email.trim() });
+        onSubmit({
+            checkIn,
+            checkOut,
+            guests,
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            email: email.trim(),
+            paymentMethod,
+        });
     };
 
     return (
@@ -413,6 +427,34 @@ export const BookingInfoForm = ({ request, onSubmit, onCancel }) => {
                     placeholder="Email (không bắt buộc)"
                     className={inputClass}
                 />
+            </div>
+
+            <div className="space-y-1.5">
+                <span className="text-xs text-gray-500">Phương thức thanh toán</span>
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setPaymentMethod('CASH')}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                            paymentMethod === 'CASH'
+                                ? 'border-indigo-500 bg-indigo-600 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                        <Banknote className="w-3.5 h-3.5" /> Tiền mặt tại quầy
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPaymentMethod('PAYOS')}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                            paymentMethod === 'PAYOS'
+                                ? 'border-indigo-500 bg-indigo-600 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                        <QrCode className="w-3.5 h-3.5" /> Chuyển khoản (QR)
+                    </button>
+                </div>
             </div>
 
             <div className="flex gap-2 pt-1">

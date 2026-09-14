@@ -102,6 +102,9 @@ const AiChatbot = () => {
             `số điện thoại ${formData.phone}`,
         ];
         if (formData.email) parts.push(`email ${formData.email}`);
+        parts.push(
+            `thanh toán bằng ${formData.paymentMethod === 'PAYOS' ? 'chuyển khoản' : 'tiền mặt'}`,
+        );
         setDismissedFormAt(msgIdx);
         sendText(parts.join(', ') + '.');
     };
@@ -212,6 +215,7 @@ const AiChatbot = () => {
                                             {!isMine && isLatest && msg.bookingFormRequest && dismissedFormAt !== idx && (
                                                 <BookingInfoForm
                                                     request={msg.bookingFormRequest}
+                                                    user={user}
                                                     onSubmit={(formData) =>
                                                         handleSubmitBookingForm(formData, msg.bookingFormRequest, idx)
                                                     }
