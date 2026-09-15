@@ -113,6 +113,10 @@ export class AiAgentToolsService {
     const guests = args.guests !== undefined ? Number(args.guests) : undefined;
     const roomTypeName =
       typeof args.roomTypeName === 'string' ? args.roomTypeName.trim() : '';
+    const maxPrice =
+      args.maxPrice !== undefined ? Number(args.maxPrice) : undefined;
+    const minPrice =
+      args.minPrice !== undefined ? Number(args.minPrice) : undefined;
 
     let results = await this.bookingService.findAvailableRoomTypes(
       checkIn,
@@ -122,6 +126,15 @@ export class AiAgentToolsService {
     if (roomTypeName) {
       const needle = roomTypeName.toLowerCase();
       results = results.filter((rt) => rt.name.toLowerCase().includes(needle));
+    }
+    // Lọc giá ngay ở server thay vì để model chỉ lọc bằng lời trong câu trả lời — nếu
+    // không, danh sách card phòng hiển thị cho khách (lấy nguyên kết quả tool này) sẽ
+    // vẫn chứa cả những phòng ngoài ngân sách mà model đã "âm thầm" bỏ qua khi trả lời.
+    if (maxPrice !== undefined) {
+      results = results.filter((rt) => rt.basePrice <= maxPrice);
+    }
+    if (minPrice !== undefined) {
+      results = results.filter((rt) => rt.basePrice >= minPrice);
     }
 
     return results.map((rt) => ({

@@ -41,7 +41,8 @@ export class FaqEmbeddingService implements OnModuleInit {
     // model instead. Still overridable via env for projects where text-embedding-004
     // (or a newer model) is actually enabled.
     this.embeddingModel =
-      this.config.get<string>('GEMINI_EMBEDDING_MODEL') ?? 'gemini-embedding-001';
+      this.config.get<string>('GEMINI_EMBEDDING_MODEL') ??
+      'gemini-embedding-001';
   }
 
   // Embed the whole (static) FAQ dataset exactly once at startup instead of on every

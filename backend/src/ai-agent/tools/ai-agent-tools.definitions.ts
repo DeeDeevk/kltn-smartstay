@@ -32,6 +32,16 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
           type: 'string',
           description: 'Tên loại phòng khách muốn lọc (không bắt buộc)',
         },
+        maxPrice: {
+          type: 'integer',
+          description:
+            'Mức giá tối đa (VNĐ/đêm) khách chấp nhận, nếu khách có nêu ngân sách (VD "dưới 2 triệu") — PHẢI truyền vào đây để lọc đúng, không được tự lọc bằng lời rồi vẫn để nguyên toàn bộ kết quả (không bắt buộc).',
+        },
+        minPrice: {
+          type: 'integer',
+          description:
+            'Mức giá tối thiểu (VNĐ/đêm) nếu khách có nêu, ví dụ "trên 1 triệu" (không bắt buộc).',
+        },
       },
       required: ['checkIn', 'checkOut', 'guests'],
     },
