@@ -7,6 +7,7 @@ import {
     useGetOrCreateConversationMutation,
     useGetMessagesQuery,
 } from '../services/chat';
+import useDraggableWidget from '../hooks/useDraggableWidget';
 
 // Chat thật 2 chiều với lễ tân (trước đây là bot giả echo lại tin nhắn). Chỉ
 // khách đã đăng nhập mới chat được — khách vãng lai được mời đăng nhập trước.
@@ -25,6 +26,11 @@ const Chatbot = () => {
         useGetOrCreateConversationMutation();
     const { data: history } = useGetMessagesQuery(conversationId, {
         skip: !conversationId,
+    });
+
+    const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
+        initialBottom: 24,
+        initialRight: 24,
     });
 
     // Lễ tân/admin trả lời khách ở /admin/chat riêng — widget nổi này chỉ dành cho
@@ -72,9 +78,12 @@ const Chatbot = () => {
     if (isStaffAccount) return null;
 
     return (
-        <div className="fixed bottom-6 right-6 z-50">
+        <>
             {isOpen && (
-                <div className="absolute bottom-16 right-0 w-[380px] h-[550px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100 transition-all duration-300 transform origin-bottom-right">
+                <div
+                    style={panelStyle}
+                    className="fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
+                >
                     <div className="bg-[#1b6b50] p-4 flex items-center justify-between text-white shadow-md z-10">
                         <div className="flex items-center gap-3">
                             <div className="bg-white p-1.5 rounded-full">
@@ -111,7 +120,7 @@ const Chatbot = () => {
                         </div>
                     ) : (
                         <>
-                            <div className="flex-1 overflow-y-auto p-4 bg-white/95 flex flex-col gap-4">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-white/95 flex flex-col gap-4">
                                 {isStarting && !conversationId && (
                                     <div className="flex items-center justify-center py-8 text-gray-400">
                                         <Loader2 className="w-6 h-6 animate-spin" />
@@ -172,13 +181,15 @@ const Chatbot = () => {
             )}
 
             <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`p-4 bg-[#1b6b50] text-white rounded-full shadow-2xl hover:bg-[#14523d] hover:scale-110 transition-all duration-300 z-50 absolute bottom-0 right-0 ${isOpen ? 'rotate-90 scale-0 opacity-0' : 'rotate-0 scale-100 opacity-100'}`}
-                style={{ visibility: isOpen ? 'hidden' : 'visible' }}
+                onPointerDown={dragHandlers.onPointerDown}
+                onPointerMove={dragHandlers.onPointerMove}
+                onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
+                style={buttonStyle}
+                className={`fixed p-4 bg-[#1b6b50] text-white rounded-full shadow-2xl hover:bg-[#14523d] transition-shadow duration-200 z-50 cursor-grab active:cursor-grabbing select-none touch-none ${isOpen ? 'ring-4 ring-green-300' : ''}`}
             >
                 <Headset className="w-8 h-8" />
             </button>
-        </div>
+        </>
     );
 };
 

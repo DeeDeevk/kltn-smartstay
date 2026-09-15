@@ -387,7 +387,10 @@
         "vat": "Thuế VAT ({{rate}}%)",
         "total": "Tổng cộng",
         "vatNote": "Đã bao gồm VAT và phí dịch vụ",
-        "cancelReason": "Lý do hủy"
+        "cancelReason": "Lý do hủy",
+        "qrHint": "Đưa mã này cho lễ tân để quét nhận phòng",
+        "copyCode": "Sao chép mã đặt phòng",
+        "codeCopied": "Đã sao chép mã đặt phòng"
       }
     }
   },

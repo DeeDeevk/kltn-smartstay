@@ -85,6 +85,62 @@ const ROOM_TYPES: Array<
       'https://images.unsplash.com/photo-1616594039964-ae9021a400a0?q=80&w=1600&auto=format&fit=crop',
     ],
   },
+  {
+    name: 'Superior Room',
+    description:
+      'Hạng phòng tiết kiệm hơn Deluxe nhưng vẫn đầy đủ tiện nghi cần thiết, không gian sáng sủa và yên tĩnh — lựa chọn hợp lý cho khách đi công tác ngắn ngày.',
+    basePrice: 1500000,
+    capacity: 2,
+    amenities: [
+      'Giường Queen',
+      'Diện tích 24m²',
+      'Wifi miễn phí',
+      'Điều hòa',
+      'TV màn hình phẳng',
+      'Bàn làm việc nhỏ',
+    ],
+    images: [
+      'https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=1600&auto=format&fit=crop',
+    ],
+  },
+  {
+    name: 'Twin Room',
+    description:
+      'Phòng 2 giường đơn tách biệt, phù hợp cho bạn bè hoặc đồng nghiệp đi công tác cùng nhau mà vẫn muốn có không gian riêng.',
+    basePrice: 1600000,
+    capacity: 2,
+    amenities: [
+      '2 giường đơn',
+      'Diện tích 26m²',
+      'Wifi miễn phí',
+      'Điều hòa',
+      'TV màn hình phẳng',
+      'Minibar',
+    ],
+    images: [
+      'https://images.unsplash.com/photo-1595576508898-0ad5c879a061?q=80&w=1600&auto=format&fit=crop',
+    ],
+  },
+  {
+    name: 'Honeymoon Suite',
+    description:
+      'Không gian lãng mạn dành riêng cho các cặp đôi, trang trí tinh tế cùng bồn tắm đôi và tầm nhìn đẹp — lựa chọn lý tưởng cho tuần trăng mật hoặc kỷ niệm đặc biệt.',
+    basePrice: 3900000,
+    capacity: 2,
+    amenities: [
+      'Giường King',
+      'Bồn tắm đôi',
+      'Diện tích 40m²',
+      'Trang trí lãng mạn',
+      'Minibar',
+      'Wifi miễn phí',
+      'Điều hòa',
+      'TV màn hình phẳng',
+    ],
+    images: [
+      'https://images.unsplash.com/photo-1591088398332-8a7791972843?q=80&w=1600&auto=format&fit=crop',
+    ],
+  },
 ];
 
 async function run() {

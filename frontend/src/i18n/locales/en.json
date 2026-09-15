@@ -387,7 +387,10 @@
         "vat": "VAT ({{rate}}%)",
         "total": "Total",
         "vatNote": "VAT and service fees included",
-        "cancelReason": "Cancellation reason"
+        "cancelReason": "Cancellation reason",
+        "qrHint": "Show this code at the front desk to check in",
+        "copyCode": "Copy booking code",
+        "codeCopied": "Booking code copied"
       }
     }
   },

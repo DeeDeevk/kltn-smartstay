@@ -69,26 +69,40 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   emitRoomStatusChanged(payload: { roomId: string; status: string }) {
-    this.server.to(STAFF_ROOM).emit('room:status-changed', payload);
+    this.emit(STAFF_ROOM, 'room:status-changed', payload);
   }
 
   emitBookingCreated(payload: unknown) {
-    this.server.to(STAFF_ROOM).emit('booking:created', payload);
+    this.emit(STAFF_ROOM, 'booking:created', payload);
   }
 
   emitBookingPaid(payload: unknown) {
-    this.server.to(STAFF_ROOM).emit('booking:paid', payload);
+    this.emit(STAFF_ROOM, 'booking:paid', payload);
   }
 
   // Báo cho đúng khách hàng sở hữu đơn biết đơn của họ vừa đổi trạng thái/thanh
   // toán (xác nhận, check-in, check-out, huỷ, thanh toán...).
   emitBookingUpdatedForCustomer(userId: string, payload: unknown) {
-    this.server.to(userRoom(userId)).emit('booking:updated', payload);
+    this.emit(userRoom(userId), 'booking:updated', payload);
   }
 
   // ChatModule gọi hàm này thay vì tự biết tên room "chat-staff" — RealtimeModule
   // giữ độc quyền quyết định socket nào thuộc nhóm lễ tân trực chat.
   emitToChatStaff(event: string, payload: unknown) {
-    this.server.to(CHAT_STAFF_ROOM).emit(event, payload);
+    this.emit(CHAT_STAFF_ROOM, event, payload);
+  }
+
+  // Các nghiệp vụ gọi emitXxx() chỉ để thông báo real-time — đây là tác vụ phụ, không
+  // được phép làm hỏng nghiệp vụ chính (VD tạo booking) nếu socket server chưa sẵn sàng
+  // hoặc phát sinh lỗi bất ngờ khi emit. Từng xảy ra thật: tạo booking thành công trong
+  // DB nhưng client vẫn nhận lỗi vì bước emit ngay sau đó ném exception.
+  private emit(room: string, event: string, payload: unknown) {
+    try {
+      this.server?.to(room).emit(event, payload);
+    } catch (error) {
+      this.logger.warn(
+        `Không gửi được realtime event "${event}" tới room "${room}": ${(error as Error).message}`,
+      );
+    }
   }
 }
