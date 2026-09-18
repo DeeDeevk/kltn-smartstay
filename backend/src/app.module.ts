@@ -19,6 +19,7 @@ import { RevenueModule } from './revenue/revenue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ChatModule } from './chat/chat.module';
 import { AiAgentModule } from './ai-agent/ai-agent.module';
+import { HotelConfigModule } from './hotel-config/hotel-config.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { AiAgentModule } from './ai-agent/ai-agent.module';
     RealtimeModule,
     ChatModule,
     AiAgentModule,
+    HotelConfigModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

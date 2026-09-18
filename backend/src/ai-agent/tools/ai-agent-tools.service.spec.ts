@@ -17,6 +17,8 @@ describe('AiAgentToolsService', () => {
   let serviceService: { findActiveByIds: jest.Mock };
   let paymentService: { createLinkForBooking: jest.Mock };
   let faqEmbeddingService: { search: jest.Mock };
+  let placesService: { getNearbyPlaces: jest.Mock };
+  let localEventService: { findForDate: jest.Mock };
   let tools: AiAgentToolsService;
 
   const roomType = { roomTypeId: 'rt-1', name: 'Deluxe', basePrice: 1000000 };
@@ -59,6 +61,8 @@ describe('AiAgentToolsService', () => {
     serviceService = { findActiveByIds: jest.fn().mockResolvedValue([]) };
     paymentService = { createLinkForBooking: jest.fn() };
     faqEmbeddingService = { search: jest.fn() };
+    placesService = { getNearbyPlaces: jest.fn() };
+    localEventService = { findForDate: jest.fn() };
 
     tools = new AiAgentToolsService(
       conversationRepo as unknown as never,
@@ -68,6 +72,8 @@ describe('AiAgentToolsService', () => {
       serviceService as unknown as never,
       paymentService as unknown as never,
       faqEmbeddingService as unknown as never,
+      placesService as unknown as never,
+      localEventService as unknown as never,
     );
   });
 
@@ -483,5 +489,110 @@ describe('AiAgentToolsService', () => {
       'Superior Room',
     ]);
     expect(rooms.every((r) => r.basePrice <= 2000000)).toBe(true);
+  });
+
+  it('get_nearby_places rejects an invalid category before calling PlacesService', async () => {
+    const result = await tools.execute(
+      'get_nearby_places',
+      { category: 'zoo' },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'gần đây có gì chơi',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(placesService.getNearbyPlaces).not.toHaveBeenCalled();
+  });
+
+  it('get_nearby_places forwards a valid category (and optional radius) to PlacesService', async () => {
+    placesService.getNearbyPlaces.mockResolvedValue([
+      {
+        name: 'Quán ăn ABC',
+        address: '123 Lê Lợi',
+        rating: 4.5,
+        mapsUri: 'https://maps.google.com/x',
+        location: null,
+      },
+    ]);
+
+    const result = await tools.execute(
+      'get_nearby_places',
+      { category: 'restaurant', radius: 1000 },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: { text: 'quán ăn gần đây', createdAt: new Date() },
+      },
+    );
+
+    expect(placesService.getNearbyPlaces).toHaveBeenCalledWith(
+      'restaurant',
+      1000,
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect((result.data as Array<{ name: string }>)[0].name).toBe(
+      'Quán ăn ABC',
+    );
+  });
+
+  it('get_local_events rejects an empty date and requires it before calling LocalEventService', async () => {
+    const result = await tools.execute(
+      'get_local_events',
+      {},
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'cuối tuần này có sự kiện gì',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(localEventService.findForDate).not.toHaveBeenCalled();
+  });
+
+  it('get_local_events forwards the date and maps entries to title/description/recurrence', async () => {
+    localEventService.findForDate.mockResolvedValue([
+      {
+        eventId: 'e-1',
+        title: 'Chợ đêm phố đi bộ',
+        description: 'Diễn ra mỗi tối thứ Bảy',
+        recurrence: 'WEEKLY',
+        dayOfWeek: 6,
+        specificDate: null,
+      },
+    ]);
+
+    const result = await tools.execute(
+      'get_local_events',
+      { date: '2026-03-21' },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'thứ 7 này có sự kiện gì không',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(localEventService.findForDate).toHaveBeenCalledWith('2026-03-21');
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data).toEqual([
+      {
+        title: 'Chợ đêm phố đi bộ',
+        description: 'Diễn ra mỗi tối thứ Bảy',
+        recurrence: 'WEEKLY',
+      },
+    ]);
   });
 });

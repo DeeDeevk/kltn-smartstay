@@ -1,6 +1,6 @@
 import { LlmTool } from '../llm/llm-provider.interface';
 
-// Định nghĩa 6 tool mà model được phép gọi. So với đặc tả gốc (5 tool), có thêm
+// Định nghĩa các tool mà model được phép gọi. So với đặc tả gốc (5 tool), có thêm
 // propose_booking: đây là bước bắt buộc agent phải đi qua trước create_booking —
 // server tính giá cuối cùng (đã áp khuyến mãi) và lưu lại thành "pendingBooking"
 // gắn với cuộc hội thoại. create_booking chỉ thực thi khi có đúng 1 pendingBooking
@@ -166,5 +166,47 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
     description:
       'Tạo booking thật trong hệ thống dựa trên đề xuất đã propose_booking và đã được khách xác nhận đồng ý ở lượt hội thoại kế tiếp. Không cần truyền tham số — server dùng lại đúng thông tin đã tóm tắt cho khách trước đó. Nếu khách chưa xác nhận, tool sẽ báo lỗi và không tạo booking.',
     parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_nearby_places',
+    description:
+      'Tìm các địa điểm ăn uống/vui chơi/tham quan/mua sắm gần khách sạn theo danh mục, lấy từ Google Places (tên, địa chỉ, đánh giá, link Google Maps). Dùng khi khách hỏi có gì ăn/chơi/tham quan/mua sắm gần đây, quán cà phê gần đây, quán bar/club gần đây, v.v.',
+    parameters: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Loại địa điểm khách quan tâm',
+          enum: [
+            'restaurant',
+            'tourist_attraction',
+            'cafe',
+            'shopping_mall',
+            'night_club',
+          ],
+        },
+        radius: {
+          type: 'integer',
+          description:
+            'Bán kính tìm kiếm tính bằng mét, không bắt buộc (mặc định 2000m)',
+        },
+      },
+      required: ['category'],
+    },
+  },
+  {
+    name: 'get_local_events',
+    description:
+      'Tra cứu sự kiện/hoạt động địa phương (do khách sạn quản lý) diễn ra vào một ngày cụ thể — lễ hội, chợ đêm, sự kiện định kỳ trong tuần... Dùng khi khách hỏi "có sự kiện gì" hoặc "cuối tuần này có gì chơi" quanh khu vực khách sạn.',
+    parameters: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description: 'Ngày cần tra cứu sự kiện, định dạng YYYY-MM-DD',
+        },
+      },
+      required: ['date'],
+    },
   },
 ];
