@@ -257,6 +257,10 @@ export function ShiftCashSummary({ assignment, className = '' }) {
   const report = data?.report;
   if (!enabled || !report) return null;
 
+  // Kết ca thủ công luôn có closingCash — CHECKEDOUT mà closingCash null nghĩa là
+  // hệ thống tự đóng ca do quên kết ca (xem closeOverdueShifts ở backend).
+  const autoClosed = assignment.status === 'CHECKEDOUT' && report.closingCash === null;
+
   return (
     <p className={`text-xs text-gray-500 ${className}`}>
       Đầu ca {formatCurrency(report.openingCash)} · Tiền mặt thu {formatCurrency(report.cashCollected)} · PayOS{' '}
@@ -266,6 +270,9 @@ export function ShiftCashSummary({ assignment, className = '' }) {
           {' '}
           · {report.difference === 0 ? 'Két khớp' : `Lệch ${formatCurrency(report.difference)}`}
         </span>
+      )}
+      {autoClosed && (
+        <span className="font-semibold text-red-600"> · Hệ thống tự đóng ca, chưa chốt két</span>
       )}
     </p>
   );
