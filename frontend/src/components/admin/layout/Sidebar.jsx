@@ -11,6 +11,7 @@ import {
   Wallet,
   UserRoundCheck,
   MessageCircle,
+  MapPin,
   LogOut,
   ChevronLeft,
 } from 'lucide-react';
@@ -35,6 +36,7 @@ const MENU_ITEMS = [
   { icon: CalendarDays, label: 'Lịch làm việc', path: '/admin/schedule/me', ready: true, roles: ['STAFF'] },
   { icon: Wallet, label: 'Báo cáo doanh thu', path: '/admin/revenue', ready: true, roles: ['ADMIN'] },
   { icon: UserRoundCheck, label: 'Doanh thu nhân viên', path: '/admin/revenue/staff', ready: true, roles: ['ADMIN'] },
+  { icon: MapPin, label: 'Vị trí khách sạn', path: '/admin/settings/location', ready: true, roles: ['ADMIN'] },
 ];
 
 // Mục nào có path là tiền tố của một mục khác (vd. /admin/schedule là tiền tố của

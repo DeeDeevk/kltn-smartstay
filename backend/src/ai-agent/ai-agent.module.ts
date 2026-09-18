@@ -15,6 +15,7 @@ import { ReservationsModule } from '../reservations/reservations.module';
 import { PromotionModule } from '../promotions/promotion.module';
 import { ServiceModule } from '../services/service.module';
 import { PaymentModule } from '../payments/payment.module';
+import { HotelConfigModule } from '../hotel-config/hotel-config.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PaymentModule } from '../payments/payment.module';
     PromotionModule,
     ServiceModule,
     PaymentModule,
+    HotelConfigModule,
   ],
   controllers: [AiAgentController, FaqController],
   providers: [

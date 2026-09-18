@@ -10,6 +10,9 @@ import { ServiceService } from 'src/services/service.service';
 import { PaymentService } from 'src/payments/payment.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
+import { PlaceCategory } from 'src/common/enums/place-category.enum';
+import { PlacesService } from 'src/hotel-config/places.service';
+import { LocalEventService } from 'src/hotel-config/local-event.service';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
 import {
   AiConversation,
@@ -60,6 +63,8 @@ export class AiAgentToolsService {
     private readonly serviceService: ServiceService,
     private readonly paymentService: PaymentService,
     private readonly faqEmbeddingService: FaqEmbeddingService,
+    private readonly placesService: PlacesService,
+    private readonly localEventService: LocalEventService,
   ) {}
 
   async execute(
@@ -103,6 +108,10 @@ export class AiAgentToolsService {
         return this.proposeBooking(args, ctx);
       case 'create_booking':
         return this.createBooking(ctx);
+      case 'get_nearby_places':
+        return this.getNearbyPlaces(args);
+      case 'get_local_events':
+        return this.getLocalEvents(args);
       default:
         throw new BadRequestException(`Tool không tồn tại: ${name}`);
     }
@@ -400,5 +409,39 @@ export class AiAgentToolsService {
     if (normalized.includes('?')) return false; // câu hỏi, không phải lời chốt
     if (NEGATED_AFFIRMATIVE_RE.test(normalized)) return false;
     return AFFIRMATIVE_RE.test(normalized);
+  }
+
+  private async getNearbyPlaces(args: Record<string, unknown>) {
+    const category = String(args.category);
+    if (!Object.values(PlaceCategory).includes(category as PlaceCategory)) {
+      throw new BadRequestException(
+        `Danh mục địa điểm không hợp lệ: ${category}`,
+      );
+    }
+    // LLM có thể truyền radius sai định dạng (chuỗi rỗng, mô tả chữ...) -> Number() ra
+    // NaN, không phải undefined nên tham số mặc định của PlacesService không tự kích
+    // hoạt được — lọc kỹ để rơi về undefined (dùng mặc định) thay vì gửi NaN xuống.
+    const rawRadius = args.radius !== undefined ? Number(args.radius) : undefined;
+    const radius =
+      rawRadius !== undefined && Number.isFinite(rawRadius) && rawRadius > 0
+        ? rawRadius
+        : undefined;
+    return this.placesService.getNearbyPlaces(
+      category as PlaceCategory,
+      radius,
+    );
+  }
+
+  private async getLocalEvents(args: Record<string, unknown>) {
+    const date = typeof args.date === 'string' ? args.date.trim() : '';
+    if (!date) {
+      throw new BadRequestException('Thiếu ngày cần tra cứu sự kiện.');
+    }
+    const events = await this.localEventService.findForDate(date);
+    return events.map((event) => ({
+      title: event.title,
+      description: event.description,
+      recurrence: event.recurrence,
+    }));
   }
 }
