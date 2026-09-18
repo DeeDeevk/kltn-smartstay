@@ -31,7 +31,12 @@ export default function DashboardLayout({ children }) {
   }, [collapsed]);
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    // Không dùng min-h-screen ở đây: nó ép khung nền xám luôn cao tối thiểu bằng 1 màn
+    // hình dù nội dung trang ngắn hơn nhiều (VD trang Sơ đồ phòng, Đặt phòng lúc còn ít
+    // dữ liệu) — tạo ra khoảng trắng thừa kèm thanh cuộn không cần thiết bên dưới nội
+    // dung thật, xuất hiện đồng loạt trên mọi trang admin vì đây là layout dùng chung.
+    // Sidebar/Header đã "fixed h-screen"/"fixed" riêng nên không phụ thuộc div này.
+    <div className="bg-gray-50 font-sans">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       <Header collapsed={collapsed} />
       <main
