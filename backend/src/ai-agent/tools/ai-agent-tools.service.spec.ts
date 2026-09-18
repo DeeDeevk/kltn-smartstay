@@ -241,6 +241,113 @@ describe('AiAgentToolsService', () => {
     expect(conversation.pendingBookingProposedAt).toBeNull();
   });
 
+  // Đề xuất đã tạo ở lượt trước, dùng chung cho các case kiểm tra lời đồng ý bên dưới.
+  function runCreateBooking(
+    text: string,
+    confirmProposalId?: string,
+  ): ReturnType<AiAgentToolsService['execute']> {
+    const conversation = makeConversation({
+      pendingBooking: {
+        proposalId: 'proposal-current',
+        roomTypeId: 'rt-1',
+        checkIn: '2026-03-20',
+        checkOut: '2026-03-22',
+        guestInfo: { fullName: 'Nguyễn Văn A', phone: '0901234567' },
+        extraServiceIds: [],
+        paymentMethod: 'CASH',
+      } as never,
+      pendingBookingProposedAt: new Date('2026-01-01T10:00:00Z'),
+    });
+    return tools.execute(
+      'create_booking',
+      {},
+      {
+        userId: 'user-1',
+        conversation,
+        currentUserMessage: {
+          text,
+          createdAt: new Date('2026-01-01T10:05:00Z'),
+          confirmProposalId,
+        },
+      },
+    );
+  }
+
+  it.each([
+    ['từ "ok" nằm trong từ khác', 'tôi muốn sửa booking'],
+    ['câu hỏi có chữ "được"', 'có được giảm giá thêm không?'],
+    ['phủ định đứng sau', 'ok không'],
+    ['phủ định viết tắt đứng trước', 'ko đồng ý'],
+  ])(
+    'create_booking bị từ chối khi tin nhắn không phải lời đồng ý (%s)',
+    async (_case, text) => {
+      const result = await runCreateBooking(text);
+
+      expect(result.success).toBe(false);
+      expect(bookingService.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['có dấu', 'Ok, chốt đơn nhé'],
+    ['không dấu', 'dong y'],
+    // Một số bộ gõ gửi chữ tổ hợp dấu (NFD) — phải chuẩn hoá mới khớp được.
+    ['chữ tổ hợp dấu (NFD)', 'Dạ đồng ý ạ'.normalize('NFD')],
+  ])(
+    'create_booking chấp nhận lời đồng ý rõ ràng (%s)',
+    async (_case, text) => {
+      const result = await runCreateBooking(text);
+
+      expect(result.success).toBe(true);
+      expect(bookingService.create).toHaveBeenCalled();
+    },
+  );
+
+  it('create_booking thành công khi khách bấm nút xác nhận đúng bản đề xuất hiện tại', async () => {
+    const result = await runCreateBooking(
+      'Tôi muốn đặt phòng',
+      'proposal-current',
+    );
+
+    expect(result.success).toBe(true);
+    expect(bookingService.create).toHaveBeenCalled();
+  });
+
+  it('create_booking bị từ chối khi nút xác nhận thuộc một bản đề xuất cũ', async () => {
+    const result = await runCreateBooking(
+      'Tôi đồng ý đặt phòng theo thông tin trên.',
+      'proposal-old',
+    );
+
+    expect(result.success).toBe(false);
+    expect(bookingService.create).not.toHaveBeenCalled();
+  });
+
+  it('propose_booking gán proposalId mới cho mỗi lần đề xuất', async () => {
+    const args = {
+      roomTypeId: 'rt-1',
+      checkIn: '2026-03-20',
+      checkOut: '2026-03-22',
+      guestFullName: 'Nguyễn Văn A',
+      guestPhone: '0901234567',
+      paymentMethod: 'CASH',
+    };
+    const ctx = {
+      userId: 'user-1',
+      conversation: makeConversation(),
+      currentUserMessage: { text: 'đặt phòng', createdAt: new Date() },
+    };
+
+    await tools.execute('propose_booking', args, ctx);
+    const firstId = ctx.conversation.pendingBooking?.proposalId;
+    await tools.execute('propose_booking', args, ctx);
+    const secondId = ctx.conversation.pendingBooking?.proposalId;
+
+    expect(firstId).toEqual(expect.any(String));
+    expect(secondId).toEqual(expect.any(String));
+    expect(secondId).not.toBe(firstId);
+  });
+
   it('create_booking với paymentMethod=PAYOS tạo kèm link/QR thanh toán', async () => {
     const proposedAt = new Date('2026-01-01T10:00:00Z');
     const pendingBooking = {
@@ -290,9 +397,10 @@ describe('AiAgentToolsService', () => {
     faqEmbeddingService.search.mockResolvedValue([
       {
         entry: {
-          id: 'late-checkout-fee',
-          question: 'q',
-          content: 'Phụ thu trả phòng trễ...',
+          faqId: 'late-checkout-fee',
+          question: 'Trả phòng trễ có bị tính phí không?',
+          answer: 'Phụ thu trả phòng trễ...',
+          category: 'Nhận / trả phòng',
         },
         similarity: 0.82,
         lowConfidence: false,
@@ -318,10 +426,15 @@ describe('AiAgentToolsService', () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const data = result.data as {
-      results: Array<{ content: string; lowConfidence: boolean }>;
+      results: Array<{
+        content: string;
+        category: string;
+        lowConfidence: boolean;
+      }>;
     };
     expect(data.results).toHaveLength(1);
     expect(data.results[0].content).toBe('Phụ thu trả phòng trễ...');
+    expect(data.results[0].category).toBe('Nhận / trả phòng');
     expect(data.results[0].lowConfidence).toBe(false);
   });
 

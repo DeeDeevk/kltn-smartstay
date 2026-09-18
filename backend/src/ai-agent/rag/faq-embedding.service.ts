@@ -1,35 +1,54 @@
+import { createHash } from 'crypto';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
-import { FAQ_DATA, FaqEntry } from './faq-data';
+import { Faq } from '../entities/faq.entity';
 
 // Below this cosine-similarity score, the best match is not close enough to be
 // presented as a confident answer — the caller (get_policy) should tell the model
 // to hedge or point the guest to reception instead of stating the entry as fact.
-export const LOW_CONFIDENCE_THRESHOLD = 0.5;
+export const LOW_CONFIDENCE_THRESHOLD = 0.71;
 
 export interface FaqSearchResult {
-  entry: FaqEntry;
+  entry: Faq;
   similarity: number;
   lowConfidence: boolean;
 }
 
 interface IndexedFaqEntry {
-  entry: FaqEntry;
+  entry: Faq;
   vector: number[];
 }
 
-// Lightweight RAG over a small, static FAQ set (a few dozen entries at most) — no
-// dedicated vector database needed, an in-memory array plus a linear cosine-similarity
-// scan is fast enough at this scale and keeps the ai-agent module self-contained.
+export interface FaqReindexSummary {
+  indexed: number;
+  embedded: number;
+  failed: number;
+}
+
+// Lightweight RAG over the FAQ table (a few dozen entries at most). Vectors are
+// persisted on each Faq row so a restart only embeds rows that are new or edited;
+// search itself is an in-memory cosine-similarity scan over active entries, which is
+// fast enough at this scale without a dedicated vector database.
 @Injectable()
 export class FaqEmbeddingService implements OnModuleInit {
   private readonly logger = new Logger(FaqEmbeddingService.name);
   private readonly client: GoogleGenerativeAI;
   private readonly embeddingModel: string;
   private index: IndexedFaqEntry[] = [];
+  // false until one refresh has fully succeeded — lets search() retry a refresh that
+  // failed at boot (e.g. embedding API briefly unreachable) instead of staying empty.
+  private indexReady = false;
+  // Shared promise so concurrent callers (boot + an admin edit + a search) don't each
+  // start their own refresh and embed the same rows twice.
+  private refreshing: Promise<FaqReindexSummary> | null = null;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(Faq) private readonly faqRepo: Repository<Faq>,
+  ) {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new Error('Missing GEMINI_API_KEY environment variable');
@@ -45,16 +64,12 @@ export class FaqEmbeddingService implements OnModuleInit {
       'gemini-embedding-001';
   }
 
-  // Embed the whole (static) FAQ dataset exactly once at startup instead of on every
-  // get_policy call — the dataset never changes at runtime, so re-embedding it per
-  // request would just be repeated network calls that always produce the same vectors.
   async onModuleInit(): Promise<void> {
     try {
-      await this.buildIndex();
+      await this.refresh();
     } catch (err) {
-      // A transient embedding-API failure at boot shouldn't crash the whole app —
-      // search() degrades to "no match" (empty index) rather than taking down every
-      // other ai-agent tool with it.
+      // A DB/embedding failure at boot shouldn't crash the whole app — search() will
+      // retry the refresh on the next call instead.
       this.logger.error(
         `Failed to build FAQ embedding index: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -62,6 +77,15 @@ export class FaqEmbeddingService implements OnModuleInit {
   }
 
   async search(queryText: string, topK = 2): Promise<FaqSearchResult[]> {
+    if (!this.indexReady) {
+      try {
+        await this.refresh();
+      } catch (err) {
+        this.logger.warn(
+          `FAQ index still unavailable: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     if (this.index.length === 0) return [];
 
     const queryVector = await this.embed(queryText, TaskType.RETRIEVAL_QUERY);
@@ -78,21 +102,63 @@ export class FaqEmbeddingService implements OnModuleInit {
       .slice(0, topK);
   }
 
-  private async buildIndex(): Promise<void> {
-    this.index = await Promise.all(
-      FAQ_DATA.map(async (entry) => ({
-        entry,
-        // Embed question + content together so retrieval matches on either the
-        // canonical question phrasing or vocabulary that only appears in the answer.
-        vector: await this.embed(
-          `${entry.question}\n${entry.content}`,
-          TaskType.RETRIEVAL_DOCUMENT,
-        ),
-      })),
-    );
+  // Re-reads active FAQs from the DB, embeds only rows whose text or embedding model
+  // changed since last time, and swaps in the new in-memory index. Called at boot and
+  // after every admin create/update/delete so the bot answers from the latest policy.
+  refresh(): Promise<FaqReindexSummary> {
+    if (!this.refreshing) {
+      this.refreshing = this.doRefresh().finally(() => {
+        this.refreshing = null;
+      });
+    }
+    return this.refreshing;
+  }
+
+  private async doRefresh(): Promise<FaqReindexSummary> {
+    const faqs = await this.faqRepo.find({ where: { isActive: true } });
+
+    let embedded = 0;
+    let failed = 0;
+    const nextIndex: IndexedFaqEntry[] = [];
+    for (const faq of faqs) {
+      const text = embeddingText(faq);
+      const hash = sha256(text);
+      let vector = faq.embedding;
+      if (
+        !vector ||
+        faq.embeddingHash !== hash ||
+        faq.embeddingModel !== this.embeddingModel
+      ) {
+        try {
+          vector = await this.embed(text, TaskType.RETRIEVAL_DOCUMENT);
+          faq.embedding = vector;
+          faq.embeddingHash = hash;
+          faq.embeddingModel = this.embeddingModel;
+          await this.faqRepo.update(faq.faqId, {
+            embedding: vector,
+            embeddingHash: hash,
+            embeddingModel: this.embeddingModel,
+          });
+          embedded += 1;
+        } catch (err) {
+          // One bad row shouldn't hide every other FAQ from search — skip it, it will
+          // be retried on the next refresh since its hash still won't match.
+          failed += 1;
+          this.logger.warn(
+            `Failed to embed FAQ ${faq.faqId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          continue;
+        }
+      }
+      nextIndex.push({ entry: faq, vector });
+    }
+
+    this.index = nextIndex;
+    this.indexReady = failed === 0;
     this.logger.log(
-      `Indexed ${this.index.length} FAQ entries for semantic search`,
+      `Indexed ${nextIndex.length} FAQ entries for semantic search (${embedded} newly embedded, ${failed} failed)`,
     );
+    return { indexed: nextIndex.length, embedded, failed };
   }
 
   // taskType tells the embedding model whether this text is a document being indexed
@@ -110,7 +176,17 @@ export class FaqEmbeddingService implements OnModuleInit {
   }
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
+// Embed question + answer together so retrieval matches on either the canonical
+// question phrasing or vocabulary that only appears in the answer.
+function embeddingText(faq: Pick<Faq, 'question' | 'answer'>): string {
+  return `${faq.question}\n${faq.answer}`;
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   let normA = 0;
   let normB = 0;

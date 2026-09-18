@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HttpException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,33 +19,33 @@ import {
 export interface ToolExecutionContext {
   userId: string;
   conversation: AiConversation;
-  currentUserMessage: { text: string; createdAt: Date };
+  currentUserMessage: {
+    text: string;
+    createdAt: Date;
+    // proposalId khách gửi kèm khi bấm nút "Xác nhận" (không có nếu khách tự gõ chữ).
+    confirmProposalId?: string | null;
+  };
 }
 
 export type ToolExecutionResult =
   { success: true; data: unknown } | { success: false; error: string };
 
-const AFFIRMATIVE_PATTERNS = [
-  'đồng ý',
-  'dong y',
-  'xác nhận',
-  'xac nhan',
-  'chốt',
-  'chot',
-  'oke',
-  'okie',
-  'ok',
-  'được',
-  'duoc',
-  'yes',
-  'confirm',
-];
+const AFFIRMATIVE_WORDS =
+  'đồng ý|dong y|xác nhận|xac nhan|chốt|chot|oke|okie|okay|ok|được|duoc|yes|confirm';
+const NEGATION_WORDS = 'không|khong|chưa|chua|đừng|dung|ko|k';
 
-// Bắt các câu phủ định đứng trước 1 từ đồng ý (VD "không đồng ý", "chưa xác nhận") —
-// nếu chỉ so khớp includes() đơn thuần thì "không đồng ý" vẫn chứa chuỗi con "đồng ý"
-// và sẽ bị hiểu nhầm thành lời xác nhận, dẫn tới tạo booking mà khách không hề muốn.
-const NEGATION_BEFORE_AFFIRMATIVE =
-  /(không|khong|chưa|chua|đừng|dung)\s*(đồng ý|dong y|xác nhận|xac nhan|\bok\b|oke|okie|được|duoc|chốt|chot|yes|confirm)/;
+// So khớp nguyên từ, an toàn với tiếng Việt: \b của JS không coi chữ có dấu (ý, ố...)
+// là chữ cái, nên dùng lookaround \p{L}\p{N} (flag "u"). Trước đây dùng includes() nên
+// "booking" chứa "ok" -> "tôi muốn sửa booking" bị hiểu là lời đồng ý.
+const wholeWord = (alternatives: string) =>
+  `(?<![\\p{L}\\p{N}])(?:${alternatives})(?![\\p{L}\\p{N}])`;
+const AFFIRMATIVE_RE = new RegExp(wholeWord(AFFIRMATIVE_WORDS), 'iu');
+// Phủ định đứng trước ("không đồng ý") HOẶC sau ("ok không", "được chưa") từ đồng ý.
+const NEGATED_AFFIRMATIVE_RE = new RegExp(
+  `${wholeWord(NEGATION_WORDS)}\\s*${wholeWord(AFFIRMATIVE_WORDS)}|` +
+    `${wholeWord(AFFIRMATIVE_WORDS)}\\s*${wholeWord(NEGATION_WORDS)}`,
+  'iu',
+);
 
 @Injectable()
 export class AiAgentToolsService {
@@ -198,7 +199,10 @@ export class AiAgentToolsService {
     return {
       query,
       results: results.map((r) => ({
-        content: r.entry.content,
+        // question + category giúp model dẫn nguồn ("Theo mục Huỷ phòng...").
+        question: r.entry.question,
+        category: r.entry.category,
+        content: r.entry.answer,
         similarity: r.similarity,
         lowConfidence: r.lowConfidence,
       })),
@@ -279,6 +283,7 @@ export class AiAgentToolsService {
     const totalAmount = netRoomAmount + serviceAmount + vatAmount;
 
     const summary: PendingBookingSummary = {
+      proposalId: randomUUID(),
       roomTypeId,
       roomTypeName: roomType.name,
       checkIn,
@@ -321,7 +326,16 @@ export class AiAgentToolsService {
         'Chưa thể tạo booking ngay: phải trình bày tóm tắt cho khách và chờ khách xác nhận ở lượt hội thoại kế tiếp.',
       );
     }
-    if (!this.isAffirmative(ctx.currentUserMessage.text)) {
+    const { confirmProposalId, text } = ctx.currentUserMessage;
+    if (confirmProposalId) {
+      // Khách bấm nút "Xác nhận" -> ý định đã rõ, chỉ cần chắc chắn đó là đúng bản đề
+      // xuất hiện tại (không phải một thẻ cũ bị thay thế bởi đề xuất mới).
+      if (confirmProposalId !== pendingBooking.proposalId) {
+        throw new BadRequestException(
+          'Đề xuất đặt phòng đã thay đổi so với bản khách vừa xác nhận. Hãy trình bày lại bản tóm tắt mới nhất và hỏi khách xác nhận lại.',
+        );
+      }
+    } else if (!this.isAffirmative(text)) {
       throw new BadRequestException(
         'Tin nhắn gần nhất của khách không phải là một lời đồng ý rõ ràng. Hãy hỏi lại khách có đồng ý đặt phòng theo thông tin đã tóm tắt hay không.',
       );
@@ -376,9 +390,15 @@ export class AiAgentToolsService {
     return result;
   }
 
+  // Dự phòng khi khách tự gõ chữ thay vì bấm nút xác nhận — vẫn là heuristic nên cố ý
+  // chặt tay: nghi ngờ thì coi là CHƯA đồng ý (model sẽ hỏi lại), vì tạo nhầm booking
+  // tệ hơn nhiều so với hỏi lại khách một lần.
   private isAffirmative(text: string): boolean {
-    const normalized = text.toLowerCase().trim();
-    if (NEGATION_BEFORE_AFFIRMATIVE.test(normalized)) return false;
-    return AFFIRMATIVE_PATTERNS.some((p) => normalized.includes(p));
+    // NFC: một số bộ gõ gửi chữ tổ hợp dấu (NFD) — "đồng ý" trông giống hệt nhưng khác
+    // chuỗi, không khớp được với pattern nếu không chuẩn hoá.
+    const normalized = text.normalize('NFC').toLowerCase().trim();
+    if (normalized.includes('?')) return false; // câu hỏi, không phải lời chốt
+    if (NEGATED_AFFIRMATIVE_RE.test(normalized)) return false;
+    return AFFIRMATIVE_RE.test(normalized);
   }
 }

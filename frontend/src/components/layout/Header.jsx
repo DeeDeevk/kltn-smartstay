@@ -201,7 +201,8 @@ export default function Header() {
         onConfirm={async () => {
           setConfirmLogout(false);
           await logout();
-          navigate('/');
+          // replace: bấm Back sau khi đăng xuất không quay lại trang cần đăng nhập vừa rời.
+          navigate('/login', { replace: true });
         }}
         onClose={() => setConfirmLogout(false)}
       />

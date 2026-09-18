@@ -164,7 +164,8 @@ export const PromotionList = ({ promotions }) => {
     );
 };
 
-export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel }) => {
+// disabled: khoá 2 nút trong lúc đang gửi — tránh khách bấm "Xác nhận" 2 lần liên tiếp.
+export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel, disabled = false }) => {
     if (!pendingBooking) return null;
     return (
         <div className="w-full rounded-xl border-2 border-indigo-200 bg-indigo-50/70 p-4 space-y-2">
@@ -204,13 +205,15 @@ export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel }) => {
             <div className="flex gap-2 pt-1">
                 <button
                     onClick={onConfirm}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full py-2 transition-colors"
+                    disabled={disabled}
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Xác nhận đặt phòng
                 </button>
                 <button
                     onClick={onCancel}
-                    className="flex-1 bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-semibold rounded-full py-2 transition-colors"
+                    disabled={disabled}
+                    className="flex-1 bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-semibold rounded-full py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Huỷ
                 </button>

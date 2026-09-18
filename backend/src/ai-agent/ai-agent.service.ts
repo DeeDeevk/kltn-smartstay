@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,7 +12,11 @@ import { AiMessage } from './entities/ai-message.entity';
 import { AiMessageRole } from 'src/common/enums/ai-message-role.enum';
 import { SendMessageDto } from './dto/send-message.dto';
 import { LLM_PROVIDER } from './llm/llm-provider.interface';
-import type { LlmMessage, LlmProvider } from './llm/llm-provider.interface';
+import type {
+  LlmChatResult,
+  LlmMessage,
+  LlmProvider,
+} from './llm/llm-provider.interface';
 import { AI_AGENT_TOOLS } from './tools/ai-agent-tools.definitions';
 import { AiAgentToolsService } from './tools/ai-agent-tools.service';
 import { buildSystemPrompt } from './constants/system-prompt.constant';
@@ -24,9 +29,17 @@ import { buildSystemPrompt } from './constants/system-prompt.constant';
 const MAX_TOOL_ROUNDS = 6;
 const FALLBACK_REPLY =
   'Xin lỗi, hiện tôi chưa thể xử lý yêu cầu này, bạn vui lòng thử lại hoặc liên hệ lễ tân.';
+// Chỉ gửi cho LLM N lượt hỏi-đáp gần nhất — hội thoại dài mà gửi toàn bộ thì mỗi tin
+// nhắn mới đều tốn token cho cả lịch sử cũ, chậm và đắt dần theo thời gian.
+const MAX_HISTORY_TURNS = 10;
+// Lỗi tạm thời từ nhà cung cấp LLM (quá tải/giới hạn tần suất) — đáng để thử lại.
+const RETRYABLE_LLM_STATUS = new Set([429, 500, 502, 503, 504]);
+const LLM_RETRY_DELAYS_MS = [1000, 3000];
 
 @Injectable()
 export class AiAgentService {
+  private readonly logger = new Logger(AiAgentService.name);
+
   constructor(
     @InjectRepository(AiConversation)
     private readonly conversationRepo: Repository<AiConversation>,
@@ -69,7 +82,9 @@ export class AiAgentService {
     let latestBooking: unknown = null;
     let latestBookingFormRequest: unknown = null;
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const result = await this.llmProvider.chat(llmMessages, AI_AGENT_TOOLS);
+      const result = await this.chatWithRetry(llmMessages);
+      // LLM vẫn lỗi sau khi đã thử lại -> dừng, trả FALLBACK_REPLY thay vì lỗi 500.
+      if (!result) break;
 
       if (result.toolCalls.length === 0) {
         finalText = result.text ?? FALLBACK_REPLY;
@@ -103,6 +118,7 @@ export class AiAgentService {
             currentUserMessage: {
               text: userMessage.content ?? '',
               createdAt: userMessage.createdAt,
+              confirmProposalId: dto.confirmProposalId ?? null,
             },
           },
         );
@@ -217,7 +233,46 @@ export class AiAgentService {
   // sau, model không còn biết "phòng đó" là roomTypeId nào vì dữ liệu tool gốc đã mất,
   // dễ trả lời sai hoặc phải hỏi lại từ đầu. Giữ lại tối đa 3 kết quả tool gần nhất
   // (dạng tóm tắt text) làm ngữ cảnh, tránh phình quá nhiều token cho hội thoại dài.
-  private buildHistoryContext(history: AiMessage[]): LlmMessage[] {
+  // Gọi LLM, thử lại với lỗi tạm thời (429 quá tần suất, 5xx quá tải). Trả null nếu vẫn
+  // lỗi — người gọi sẽ trả FALLBACK_REPLY cho khách thay vì để lỗi 500 lọt ra ngoài.
+  private async chatWithRetry(
+    messages: LlmMessage[],
+  ): Promise<LlmChatResult | null> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.llmProvider.chat(messages, AI_AGENT_TOOLS);
+      } catch (err) {
+        const status = (err as { status?: number })?.status;
+        const retryable =
+          status === undefined || RETRYABLE_LLM_STATUS.has(status);
+        if (!retryable || attempt >= LLM_RETRY_DELAYS_MS.length) {
+          this.logger.error(
+            `LLM call failed${status ? ` (status ${status})` : ''}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
+        }
+        this.logger.warn(
+          `LLM call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${LLM_RETRY_DELAYS_MS.length})`,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, LLM_RETRY_DELAYS_MS[attempt]),
+        );
+      }
+    }
+  }
+
+  private buildHistoryContext(fullHistory: AiMessage[]): LlmMessage[] {
+    // Chỉ giữ MAX_HISTORY_TURNS lượt gần nhất, cắt đúng tại 1 tin nhắn USER để ngữ cảnh
+    // luôn bắt đầu bằng câu của khách (không mở đầu giữa chừng bằng câu trả lời/tool).
+    const userIndexes = fullHistory
+      .map((m, i) => (m.role === AiMessageRole.USER ? i : -1))
+      .filter((i) => i >= 0);
+    const startIndex =
+      userIndexes.length > MAX_HISTORY_TURNS
+        ? userIndexes[userIndexes.length - MAX_HISTORY_TURNS]
+        : 0;
+    const history = fullHistory.slice(startIndex);
+
     const MAX_TOOL_CONTEXT = 3;
     const toolIndexes = history
       .map((m, i) => (m.role === AiMessageRole.TOOL && m.toolResult ? i : -1))
