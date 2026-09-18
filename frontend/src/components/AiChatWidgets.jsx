@@ -13,6 +13,7 @@ import {
     Banknote,
     QrCode,
     Loader2,
+    Clock,
 } from 'lucide-react';
 import downloadQrPng from '../utils/downloadQr';
 import getBookingCode from '../utils/bookingCode';
@@ -253,6 +254,11 @@ export const BookingConfirmedCard = ({ booking }) => {
 
     const bookingCode = getBookingCode(booking.bookingId);
     const showTicket = !isPayos || isPaid;
+    // Đơn chuyển khoản chưa thanh toán thì KHÔNG được gọi là "thành công" — booking phía
+    // server vẫn ở trạng thái PENDING/UNPAID, nói "thành công" ngay dễ khiến khách tưởng
+    // xong việc rồi bỏ qua bước chuyển khoản. Chỉ đổi sang trạng thái thành công thật sự
+    // (icon xanh) khi đã thanh toán hoặc là đơn tiền mặt (vốn không cần chờ gì thêm).
+    const awaitingPayment = isPayos && !isPaid;
 
     const handleSaveTicketQr = () => {
         downloadQrPng(ticketQrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`);
@@ -262,13 +268,23 @@ export const BookingConfirmedCard = ({ booking }) => {
     };
 
     return (
-        <div className="w-full rounded-xl border-2 border-green-200 bg-green-50 p-4 space-y-3">
+        <div
+            className={`w-full rounded-xl border-2 p-4 space-y-3 ${
+                awaitingPayment ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'
+            }`}
+        >
             <div className="flex items-start gap-3">
-                <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
+                {awaitingPayment ? (
+                    <Clock className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+                ) : (
+                    <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
+                )}
                 <div className="text-sm text-gray-700">
-                    <p className="font-bold text-green-700">Đặt phòng thành công!</p>
+                    <p className={`font-bold ${awaitingPayment ? 'text-amber-700' : 'text-green-700'}`}>
+                        {awaitingPayment ? 'Đã ghi nhận đặt phòng — chờ thanh toán' : 'Đặt phòng thành công!'}
+                    </p>
                     <p className="text-gray-500 text-xs mt-0.5">Mã đặt phòng: {bookingCode}</p>
-                    <p className="font-bold text-green-700 mt-1">
+                    <p className={`font-bold mt-1 ${awaitingPayment ? 'text-amber-700' : 'text-green-700'}`}>
                         Tổng tiền: {formatVnd(booking.totalAmount)}
                     </p>
                 </div>
@@ -281,8 +297,8 @@ export const BookingConfirmedCard = ({ booking }) => {
                             Mã QR thanh toán đã hết hạn, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để tạo lại link thanh toán.
                         </p>
                     ) : booking.qrCode ? (
-                        <div className="rounded-lg border border-green-200 bg-white p-3 flex flex-col items-center gap-2">
-                            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                        <div className="rounded-lg border border-amber-200 bg-white p-3 flex flex-col items-center gap-2">
+                            <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
                                 <QrCode className="w-3.5 h-3.5" /> Quét mã để thanh toán chuyển khoản
                             </p>
                             <div ref={paymentQrRef} className="rounded-lg border border-gray-100 bg-white p-2">

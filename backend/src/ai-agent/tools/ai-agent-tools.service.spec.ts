@@ -10,6 +10,7 @@ describe('AiAgentToolsService', () => {
   let conversationRepo: { save: jest.Mock };
   let bookingService: {
     getRoomTypeAvailability: jest.Mock;
+    findAvailableRoomTypes: jest.Mock;
     create: jest.Mock;
   };
   let promotionService: { validateCode: jest.Mock };
@@ -28,6 +29,26 @@ describe('AiAgentToolsService', () => {
         availableCount: 2,
         available: true,
       }),
+      findAvailableRoomTypes: jest.fn().mockResolvedValue([
+        {
+          roomTypeId: 'rt-1',
+          name: 'Standard Room',
+          basePrice: 1200000,
+          availableCount: 3,
+        },
+        {
+          roomTypeId: 'rt-2',
+          name: 'Superior Room',
+          basePrice: 1500000,
+          availableCount: 1,
+        },
+        {
+          roomTypeId: 'rt-3',
+          name: 'Honeymoon Suite',
+          basePrice: 3900000,
+          availableCount: 1,
+        },
+      ]),
       create: jest.fn().mockResolvedValue({
         bookingId: 'b-1',
         status: 'PENDING',
@@ -430,5 +451,37 @@ describe('AiAgentToolsService', () => {
 
     expect(result.success).toBe(false);
     expect(faqEmbeddingService.search).not.toHaveBeenCalled();
+  });
+
+  it('search_rooms filters out room types above maxPrice, matching what a budget-limited text answer describes', async () => {
+    const result = await tools.execute(
+      'search_rooms',
+      {
+        checkIn: '2026-03-20',
+        checkOut: '2026-03-22',
+        guests: 1,
+        maxPrice: 2000000,
+      },
+      {
+        userId: 'user-1',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'phòng 1 người dưới 2 triệu',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const rooms = result.data as Array<{ name: string; basePrice: number }>;
+    // Honeymoon Suite (3.900.000) phải bị loại — nếu tool trả nguyên danh sách chưa lọc,
+    // card phòng hiển thị cho khách sẽ có phòng vượt ngân sách dù câu trả lời chữ nói
+    // "dưới 2 triệu".
+    expect(rooms.map((r) => r.name)).toEqual([
+      'Standard Room',
+      'Superior Room',
+    ]);
+    expect(rooms.every((r) => r.basePrice <= 2000000)).toBe(true);
   });
 });
