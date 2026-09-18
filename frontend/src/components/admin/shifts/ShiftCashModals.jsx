@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Modal from '../../common/Modal';
@@ -6,8 +6,10 @@ import formatCurrency from '../../../utils/formatCurrency';
 import {
   useCheckInShiftAssignmentMutation,
   useCheckOutShiftAssignmentMutation,
+  useGetMyShiftAssignmentsQuery,
   useGetShiftReportQuery,
 } from '../../../services/shiftAssignment';
+import { addDays, todayKey, toDateKey } from './dateUtils';
 
 const METHOD_LABELS = { CASH: 'Tiền mặt', PAYOS: 'PayOS' };
 
@@ -44,6 +46,26 @@ function Row({ label, value, strong, hint }) {
 export function ShiftCheckInModal({ assignment, open, onClose }) {
   const [openingCash, setOpeningCash] = useState('');
   const [checkIn, { isLoading }] = useCheckInShiftAssignmentMutation();
+
+  // Tiền kết ca của ca gần nhất — chỉ để hiện tham khảo khi nhân viên đếm tiền
+  // thật trong két, KHÔNG tự điền vào ô nhập (phải tự đếm và tự gõ số, xem lý
+  // do ở phần trao đổi trước đó: tránh sai số bị "chuyển tiếp" âm thầm qua ca).
+  const lookbackFrom = toDateKey(addDays(new Date(), -14));
+  const { data: recentAssignments = [] } = useGetMyShiftAssignmentsQuery(
+    { from: lookbackFrom, to: todayKey() },
+    { skip: !open },
+  );
+  const previousClosingCash = useMemo(() => {
+    const closed = recentAssignments
+      .filter(
+        (a) =>
+          a.shiftAssignmentId !== assignment?.shiftAssignmentId &&
+          a.closingCash !== null &&
+          a.checkOutAt,
+      )
+      .sort((a, b) => new Date(b.checkOutAt) - new Date(a.checkOutAt));
+    return closed[0]?.closingCash ?? null;
+  }, [recentAssignments, assignment]);
 
   const handleClose = () => {
     setOpeningCash('');
@@ -89,10 +111,18 @@ export function ShiftCheckInModal({ assignment, open, onClose }) {
         </>
       }
     >
-      <label className="mb-1.5 block text-sm font-semibold text-gray-700">Tiền mặt có trong két lúc vô ca</label>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label className="block text-sm font-semibold text-gray-700">Tiền mặt có trong két lúc vô ca</label>
+        {previousClosingCash !== null && (
+          <span className="shrink-0 text-xs text-gray-400">
+            Ca trước kết ca: <span className="font-semibold text-gray-500">{formatCurrency(previousClosingCash)}</span>
+          </span>
+        )}
+      </div>
       <MoneyInput value={openingCash} onChange={setOpeningCash} autoFocus />
       <p className="mt-2 text-xs text-gray-500">
         Đếm tiền trong két trước khi nhận ca. Số này là mốc để chốt két lúc kết ca.
+        {previousClosingCash !== null && ' Đối chiếu với số ca trước ở trên, nếu lệch nhiều hãy báo lại trước khi xác nhận.'}
       </p>
     </Modal>
   );

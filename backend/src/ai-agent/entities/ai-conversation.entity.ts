@@ -18,6 +18,10 @@ import { AiMessage } from './ai-message.entity';
 // không lấy lại tham số do model tự sinh ra lúc gọi create_booking, tránh model "nhớ nhầm"
 // khác với con số đã tóm tắt cho khách.
 export interface PendingBookingSummary {
+  // Mã riêng của từng lần đề xuất — nút "Xác nhận" ở frontend gửi kèm mã này để chắc
+  // chắn khách đang đồng ý đúng bản tóm tắt họ vừa xem, không phải một bản đề xuất
+  // khác đã thay thế nó (VD model vừa đề xuất lại với giá mới).
+  proposalId: string;
   roomTypeId: string;
   roomTypeName: string;
   checkIn: string;

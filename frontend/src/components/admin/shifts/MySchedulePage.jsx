@@ -8,7 +8,15 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useGetMyShiftAssignmentsQuery } from '../../../services/shiftAssignment';
-import { addDays, formatShortDate, getMonday, todayKey, toDateKey, WEEKDAY_LABELS } from './dateUtils';
+import {
+  addDays,
+  filterTodayRelevantAssignments,
+  formatShortDate,
+  getMonday,
+  todayKey,
+  toDateKey,
+  WEEKDAY_LABELS,
+} from './dateUtils';
 import useCheckInAvailability from './useCheckInAvailability';
 import { ShiftCashSummary, ShiftCheckInModal, ShiftCheckOutModal } from './ShiftCashModals';
 
@@ -121,8 +129,15 @@ export default function MySchedulePage() {
     from: fromKey,
     to: toKey,
   });
-  const { data: todayAssignments = [], isFetching: isFetchingToday } =
-    useGetMyShiftAssignmentsQuery({ from: todayKey(), to: todayKey() });
+  // Query kèm hôm qua để không bỏ sót ca đêm (qua nửa đêm) còn đang CHECKEDIN —
+  // xem thêm filterTodayRelevantAssignments ở dateUtils.js.
+  const yesterdayKey = toDateKey(addDays(new Date(), -1));
+  const { data: todayRangeAssignments = [], isFetching: isFetchingToday } =
+    useGetMyShiftAssignmentsQuery({ from: yesterdayKey, to: todayKey() });
+  const todayAssignments = useMemo(
+    () => filterTodayRelevantAssignments(todayRangeAssignments, todayKey()),
+    [todayRangeAssignments],
+  );
 
   const assignmentsByDate = useMemo(() => {
     const map = {};

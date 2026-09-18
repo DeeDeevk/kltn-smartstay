@@ -15,4 +15,11 @@ export class SendMessageDto {
   @IsNotEmpty()
   @MaxLength(2000)
   message!: string;
+
+  // Chỉ gửi khi khách bấm nút "Xác nhận" trên thẻ đề xuất đặt phòng — là proposalId
+  // của đúng bản đề xuất đó. Có trường này thì create_booking không phải đoán ý khách
+  // qua câu chữ nữa.
+  @IsOptional()
+  @IsUUID()
+  confirmProposalId?: string;
 }

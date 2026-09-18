@@ -210,4 +210,71 @@ describe('AiAgentService', () => {
       ),
     ).toBe(false);
   });
+
+  it('Gemini lỗi tạm thời (503) thì thử lại và vẫn trả lời được', async () => {
+    jest.useFakeTimers();
+    try {
+      llmProvider.chat
+        .mockRejectedValueOnce(
+          Object.assign(new Error('model overloaded'), { status: 503 }),
+        )
+        .mockResolvedValueOnce({
+          text: 'Dạ em chào anh/chị ạ.',
+          toolCalls: [],
+        } satisfies LlmChatResult);
+
+      const pending = service.sendMessage(userId, { message: 'Xin chào' });
+      await jest.advanceTimersByTimeAsync(1000);
+      const result = await pending;
+
+      expect(llmProvider.chat).toHaveBeenCalledTimes(2);
+      expect(result.reply).toBe('Dạ em chào anh/chị ạ.');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('Gemini lỗi không thể thử lại (400) thì trả câu trả lời dự phòng thay vì lỗi 500', async () => {
+    llmProvider.chat.mockRejectedValue(
+      Object.assign(new Error('invalid request'), { status: 400 }),
+    );
+
+    const result = await service.sendMessage(userId, { message: 'Xin chào' });
+
+    expect(llmProvider.chat).toHaveBeenCalledTimes(1);
+    expect(result.reply).toContain('Xin lỗi');
+    // Câu trả lời dự phòng vẫn được lưu để lịch sử hội thoại không bị hụt 1 lượt.
+    const saved = await messageRepo.find();
+    expect(saved.at(-1)?.role).toBe(AiMessageRole.MODEL);
+  });
+
+  it('chỉ gửi cho LLM 10 lượt hỏi-đáp gần nhất, bắt đầu bằng tin nhắn của khách', async () => {
+    llmProvider.chat.mockResolvedValue({
+      text: 'Dạ vâng ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    let conversationId: string | undefined;
+    for (let i = 1; i <= 12; i += 1) {
+      const result = await service.sendMessage(userId, {
+        conversationId,
+        message: `câu hỏi số ${i}`,
+      });
+      conversationId = result.conversationId;
+    }
+
+    const lastCall = llmProvider.chat.mock.calls.at(-1) as [
+      Array<{ role: string; parts: Array<{ text?: string }> }>,
+    ];
+    const sent = lastCall[0].filter((m) => m.role !== 'system');
+    const userTexts = sent
+      .filter((m) => m.role === 'user')
+      .map((m) => m.parts[0].text);
+
+    // 10 lượt cũ gần nhất (câu 2..11) + câu hiện tại (12); câu 1 bị cắt bỏ.
+    expect(userTexts).toHaveLength(11);
+    expect(userTexts[0]).toBe('câu hỏi số 2');
+    expect(userTexts.at(-1)).toBe('câu hỏi số 12');
+    expect(sent[0].role).toBe('user');
+  });
 });

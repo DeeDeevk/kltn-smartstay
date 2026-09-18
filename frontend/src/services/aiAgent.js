@@ -9,10 +9,12 @@ export const aiAgentApi = createApi({
   tagTypes: ['AiConversation'],
   endpoints: (builder) => ({
     sendAiMessage: builder.mutation({
-      query: ({ conversationId, message }) => ({
+      // confirmProposalId: chỉ gửi khi khách bấm nút "Xác nhận đặt phòng" — là
+      // proposalId của đúng bản đề xuất đang hiển thị trên thẻ.
+      query: ({ conversationId, message, confirmProposalId }) => ({
         url: '/ai-agent/chat',
         method: 'post',
-        data: { conversationId, message },
+        data: { conversationId, message, confirmProposalId },
       }),
     }),
     getAiHistory: builder.query({
@@ -27,4 +29,8 @@ export const aiAgentApi = createApi({
   }),
 });
 
-export const { useSendAiMessageMutation, useGetAiHistoryQuery } = aiAgentApi;
+export const {
+  useSendAiMessageMutation,
+  useGetAiHistoryQuery,
+  useLazyGetAiHistoryQuery,
+} = aiAgentApi;

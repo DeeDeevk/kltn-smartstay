@@ -1,9 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BotMessageSquare, X, Send, Loader2, LogIn, Sparkles } from 'lucide-react';
+import { BotMessageSquare, X, Send, LogIn, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useSendAiMessageMutation } from '../services/aiAgent';
+import { useLazyGetAiHistoryQuery, useSendAiMessageMutation } from '../services/aiAgent';
 import useDraggableWidget from '../hooks/useDraggableWidget';
+import {
+    buildMessagesFromHistory,
+    clearStoredConversationId,
+    readStoredConversationId,
+    storeConversationId,
+} from './aiChatHistory';
 import {
     FormattedMessage,
     RoomCardList,
@@ -27,6 +33,18 @@ const AiChatbot = () => {
     const messagesEndRef = useRef(null);
 
     const [sendAiMessage, { isLoading: isSending }] = useSendAiMessageMutation();
+    const [loadHistory, { isFetching: isLoadingHistory }] = useLazyGetAiHistoryQuery();
+
+    // Chỉ theo dõi userId (không phải cả object user) — object user đổi mỗi lần cập
+    // nhật hồ sơ, nhưng như vậy vẫn là cùng một người, không được xoá khung chat.
+    const userId = user?.userId ?? null;
+    // Luôn trỏ tới user hiện tại, để các request trả về muộn (sau khi đã đổi tài
+    // khoản) biết mình đã lỗi thời và bỏ qua, không ghi đè khung chat của user mới.
+    const currentUserIdRef = useRef(userId);
+    currentUserIdRef.current = userId;
+    // User đã được nạp lịch sử (dùng ref thay vì state để việc đánh dấu không kích
+    // hoạt lại effect nạp lịch sử).
+    const historyLoadedForRef = useRef(null);
 
     const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
         initialBottom: 112,
@@ -36,18 +54,54 @@ const AiChatbot = () => {
 
     const isStaffAccount = user?.role === 'STAFF' || user?.role === 'ADMIN';
 
+    // Widget được gắn 1 lần ở gốc app nên không tự unmount khi đăng xuất/đổi tài khoản
+    // — phải chủ động xoá sạch khung chat, nếu không user mới sẽ thấy tin nhắn (tên,
+    // SĐT, thông tin đặt phòng) của user trước và gửi kèm conversationId không phải
+    // của mình (backend trả 403).
+    useEffect(() => {
+        setMessages([]);
+        setConversationId(null);
+        setDismissedFormAt(-1);
+        setInputStr('');
+        historyLoadedForRef.current = null;
+    }, [userId]);
+
+    // Nạp lại cuộc hội thoại gần nhất của user khi mở widget lần đầu (VD sau F5).
+    useEffect(() => {
+        if (!isOpen || !userId || historyLoadedForRef.current === userId) return;
+        historyLoadedForRef.current = userId;
+
+        const storedId = readStoredConversationId(userId);
+        if (!storedId) return;
+
+        loadHistory(storedId)
+            .unwrap()
+            .then((history) => {
+                if (currentUserIdRef.current !== userId) return;
+                setConversationId(storedId);
+                setMessages(buildMessagesFromHistory(history));
+            })
+            .catch(() => {
+                // Hội thoại không còn tồn tại/không thuộc user này -> bắt đầu hội thoại mới.
+                clearStoredConversationId(userId);
+            });
+    }, [isOpen, userId, loadHistory]);
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isSending]);
 
-    const sendText = async (content) => {
-        if (!content || isSending) return;
+    const sendText = async (content, extra = {}) => {
+        if (!content || isSending || isLoadingHistory) return;
+        const sentForUserId = userId;
 
         setMessages((prev) => [...prev, { role: 'USER', content }]);
 
         try {
-            const result = await sendAiMessage({ conversationId, message: content }).unwrap();
+            const result = await sendAiMessage({ conversationId, message: content, ...extra }).unwrap();
+            if (currentUserIdRef.current !== sentForUserId) return;
             setConversationId(result.conversationId);
+            if (sentForUserId) storeConversationId(sentForUserId, result.conversationId);
             setMessages((prev) => [
                 ...prev,
                 {
@@ -60,7 +114,14 @@ const AiChatbot = () => {
                     bookingFormRequest: result.bookingFormRequest,
                 },
             ]);
-        } catch {
+        } catch (error) {
+            if (currentUserIdRef.current !== sentForUserId) return;
+            // conversationId đang giữ không còn hợp lệ (bị xoá / không thuộc user này) ->
+            // bỏ đi để lần gửi tiếp theo backend tạo hội thoại mới.
+            if (error?.status === 403 || error?.status === 404) {
+                setConversationId(null);
+                if (sentForUserId) clearStoredConversationId(sentForUserId);
+            }
             setMessages((prev) => [
                 ...prev,
                 {
@@ -83,8 +144,13 @@ const AiChatbot = () => {
         sendText(`Tôi muốn đặt phòng ${room.name}`);
     };
 
-    const handleConfirmBooking = () => {
-        sendText('Tôi đồng ý đặt phòng theo thông tin trên.');
+    // Gửi kèm proposalId của đúng thẻ khách bấm — backend dùng mã này để tạo booking
+    // thay vì phải đoán ý khách qua câu chữ, và từ chối nếu đề xuất đã bị thay thế.
+    const handleConfirmBooking = (pendingBooking) => {
+        sendText(
+            'Tôi đồng ý đặt phòng theo thông tin trên.',
+            pendingBooking?.proposalId ? { confirmProposalId: pendingBooking.proposalId } : {},
+        );
     };
 
     const handleCancelBooking = () => {
@@ -155,7 +221,12 @@ const AiChatbot = () => {
                     ) : (
                         <>
                             <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-white/95 flex flex-col gap-4">
-                                {messages.length === 0 && (
+                                {isLoadingHistory && messages.length === 0 && (
+                                    <p role="status" className="text-center text-sm text-gray-400">
+                                        Đang tải lịch sử trò chuyện...
+                                    </p>
+                                )}
+                                {!isLoadingHistory && messages.length === 0 && (
                                     <div className="flex justify-start">
                                         <div className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm bg-gray-100 text-gray-800 border border-gray-200">
                                             <p className="text-[15px] leading-relaxed">
@@ -205,8 +276,9 @@ const AiChatbot = () => {
                                             {!isMine && isLatest && msg.pendingBooking && (
                                                 <PendingBookingCard
                                                     pendingBooking={msg.pendingBooking}
-                                                    onConfirm={handleConfirmBooking}
+                                                    onConfirm={() => handleConfirmBooking(msg.pendingBooking)}
                                                     onCancel={handleCancelBooking}
+                                                    disabled={isSending}
                                                 />
                                             )}
                                             {!isMine && msg.booking && (
@@ -227,8 +299,23 @@ const AiChatbot = () => {
                                 })}
                                 {isSending && (
                                     <div className="flex justify-start">
-                                        <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 bg-gray-100 border border-gray-200">
-                                            <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                                        <div
+                                            role="status"
+                                            aria-label="Trợ lý ảo đang soạn tin nhắn"
+                                            className="rounded-2xl rounded-tl-sm px-4 py-3 bg-gray-100 border border-gray-200"
+                                        >
+                                            <div className="flex items-center gap-1" aria-hidden="true">
+                                                {[-0.3, -0.15, 0].map((delay) => (
+                                                    <span
+                                                        key={delay}
+                                                        className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce"
+                                                        style={{
+                                                            animationDelay: `${delay}s`,
+                                                            animationDuration: '0.9s',
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -245,11 +332,11 @@ const AiChatbot = () => {
                                     onChange={(e) => setInputStr(e.target.value)}
                                     placeholder="Nhập tin nhắn..."
                                     className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                                    disabled={isSending}
+                                    disabled={isSending || isLoadingHistory}
                                 />
                                 <button
                                     type="submit"
-                                    disabled={!inputStr.trim() || isSending}
+                                    disabled={!inputStr.trim() || isSending || isLoadingHistory}
                                     className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
                                 >
                                     <Send className="w-5 h-5 ml-0.5" />

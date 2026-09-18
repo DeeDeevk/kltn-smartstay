@@ -16,6 +16,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
+import { TurnstileService } from './turnstile.service';
 
 // Giới hạn riêng cho các endpoint nhạy cảm (brute-force mật khẩu/OTP), chặt hơn mức mặc định toàn cục
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60000 } };
@@ -26,7 +27,10 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly turnstileService: TurnstileService,
+  ) {}
 
   @Throttle(AUTH_THROTTLE)
   @Post('register')
@@ -36,7 +40,8 @@ export class AuthController {
 
   @Throttle(AUTH_THROTTLE)
   @Post('login')
-  login(@Body() dto: LoginDto) {
+  async login(@Body() dto: LoginDto) {
+    await this.turnstileService.verify(dto.turnstileToken, 'login');
     return this.authService.login(dto);
   }
 
