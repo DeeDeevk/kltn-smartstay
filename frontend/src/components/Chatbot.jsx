@@ -8,6 +8,7 @@ import {
     useGetMessagesQuery,
 } from '../services/chat';
 import useDraggableWidget from '../hooks/useDraggableWidget';
+import useExclusiveChatPanel from '../hooks/useExclusiveChatPanel';
 
 // Chat thật 2 chiều với lễ tân (trước đây là bot giả echo lại tin nhắn). Chỉ
 // khách đã đăng nhập mới chat được — khách vãng lai được mời đăng nhập trước.
@@ -16,7 +17,7 @@ const Chatbot = () => {
     const navigate = useNavigate();
     const socket = useSocket();
 
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useExclusiveChatPanel('reception');
     const [conversationId, setConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputStr, setInputStr] = useState('');
@@ -185,6 +186,8 @@ const Chatbot = () => {
                 onPointerMove={dragHandlers.onPointerMove}
                 onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
                 style={buttonStyle}
+                title="Chat với lễ tân"
+                aria-label="Chat với lễ tân"
                 className={`fixed p-4 bg-[#1b6b50] text-white rounded-full shadow-2xl hover:bg-[#14523d] transition-shadow duration-200 z-50 cursor-grab active:cursor-grabbing select-none touch-none ${isOpen ? 'ring-4 ring-green-300' : ''}`}
             >
                 <Headset className="w-8 h-8" />

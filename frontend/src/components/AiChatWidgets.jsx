@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     BedDouble,
@@ -275,16 +275,20 @@ export const BookingConfirmedCard = ({ booking }) => {
     const paymentQrRef = useRef(null);
     const isPayos = booking?.paymentMethod === 'PAYOS';
     const isExpired = isPayos && booking?.expiredAt && Date.now() / 1000 > booking.expiredAt;
-    const [isPaid, setIsPaid] = useState(false);
 
-    const { data: syncResult } = useSyncPayOSStatusQuery(booking?.bookingId, {
+    // Dữ liệu booking trong tin nhắn là ảnh chụp lúc vừa tạo đơn (luôn UNPAID) — phải hỏi
+    // trạng thái thật từ server mỗi lần thẻ hiển thị, KỂ CẢ khi QR đã hết hạn: khách có
+    // thể đã chuyển khoản xong rồi mới quay lại xem lịch sử chat. Chỉ poll liên tục khi QR
+    // còn hạn và chưa thanh toán; hết hạn thì hỏi 1 lần là đủ.
+    const { data: syncResult, isLoading: isCheckingPayment } = useSyncPayOSStatusQuery(
+        booking?.bookingId,
+        { skip: !isPayos || !booking?.bookingId, refetchOnMountOrArgChange: true },
+    );
+    const isPaid = syncResult?.paymentStatus === 'PAID';
+    useSyncPayOSStatusQuery(booking?.bookingId, {
         skip: !isPayos || !booking?.qrCode || isPaid || isExpired,
         pollingInterval: PAYOS_POLL_INTERVAL_MS,
     });
-
-    useEffect(() => {
-        if (syncResult?.paymentStatus === 'PAID') setIsPaid(true);
-    }, [syncResult]);
 
     if (!booking) return null;
 
@@ -328,7 +332,11 @@ export const BookingConfirmedCard = ({ booking }) => {
 
             {isPayos && !isPaid && (
                 <>
-                    {isExpired ? (
+                    {isExpired && isCheckingPayment ? (
+                        <p className="text-xs text-gray-500 flex items-center gap-1.5 px-1">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang kiểm tra trạng thái thanh toán...
+                        </p>
+                    ) : isExpired ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                             Mã QR thanh toán đã hết hạn, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để tạo lại link thanh toán.
                         </p>
