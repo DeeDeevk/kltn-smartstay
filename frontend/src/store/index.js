@@ -15,6 +15,7 @@ import { shiftTypeApi } from '../services/shiftType';
 import { shiftAssignmentApi } from '../services/shiftAssignment';
 import { revenueApi } from '../services/revenue';
 import { hotelConfigApi } from '../services/hotelConfig';
+import { faqApi } from '../services/faq';
 
 export const store = configureStore({
     reducer: {
@@ -34,6 +35,7 @@ export const store = configureStore({
         [shiftAssignmentApi.reducerPath]: shiftAssignmentApi.reducer,
         [revenueApi.reducerPath]: revenueApi.reducer,
         [hotelConfigApi.reducerPath]: hotelConfigApi.reducer,
+        [faqApi.reducerPath]: faqApi.reducer,
     },
     // Adding the api middleware enables caching, invalidation, polling,
     // and other useful features of `rtk-query`.
@@ -53,10 +55,37 @@ export const store = configureStore({
             shiftTypeApi.middleware,
             shiftAssignmentApi.middleware,
             revenueApi.middleware,
-            hotelConfigApi.middleware
+            hotelConfigApi.middleware,
+            faqApi.middleware
         ),
 });
 
 // optional, but required for refetchOnFocus/refetchOnReconnect behaviors
 // see `setupListeners` docs - takes an optional callback as the 2nd arg for customization
 setupListeners(store.dispatch);
+
+const API_SLICES = [
+    authApi,
+    userApi,
+    availabilityApi,
+    extraServiceApi,
+    roomTypeApi,
+    adminRoomApi,
+    bookingApi,
+    paymentApi,
+    chatApi,
+    aiAgentApi,
+    reviewApi,
+    shiftTypeApi,
+    shiftAssignmentApi,
+    revenueApi,
+    hotelConfigApi,
+    faqApi,
+];
+
+// Cache key của RTK Query chỉ gồm tham số query (vd. {from, to} của "ca của tôi"),
+// không gắn với người đang đăng nhập — đổi tài khoản mà không xoá cache thì người sau
+// thấy dữ liệu của người trước. Gọi mỗi khi phiên đăng nhập thay đổi.
+export function resetApiCaches() {
+    API_SLICES.forEach((api) => store.dispatch(api.util.resetApiState()));
+}

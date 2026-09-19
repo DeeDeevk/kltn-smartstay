@@ -32,19 +32,54 @@ export const formatVnd = (value) => {
     return new Intl.NumberFormat('vi-VN').format(value) + ' đ';
 };
 
-const renderInlineBold = (text) => {
+const renderInlineBold = (text, keyPrefix = '') => {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) =>
         part.startsWith('**') && part.endsWith('**') ? (
-            <strong key={i}>{part.slice(2, -2)}</strong>
+            <strong key={`${keyPrefix}${i}`}>{part.slice(2, -2)}</strong>
         ) : (
-            <React.Fragment key={i}>{part}</React.Fragment>
+            <React.Fragment key={`${keyPrefix}${i}`}>{part}</React.Fragment>
         ),
     );
 };
 
-// Trả lời của AI dùng markdown tối giản (**in đậm**, gạch đầu dòng, danh sách số) —
-// dựng riêng thay vì thêm thư viện markdown vì chỉ cần đúng 2-3 cú pháp này.
+// Link markdown [text](https://...) hoặc URL trần https://... — chỉ nhận http(s) để
+// không render được link javascript:. URL dài (vd. link PayOS) không có khoảng trắng
+// nên phải cho ngắt giữa chừng (break-all), nếu không sẽ tràn khỏi bong bóng chat.
+const LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)/g;
+
+const renderInline = (text) => {
+    const nodes = [];
+    let lastIndex = 0;
+    let match;
+    LINK_PATTERN.lastIndex = 0;
+    while ((match = LINK_PATTERN.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            nodes.push(...renderInlineBold(text.slice(lastIndex, match.index), `t${match.index}-`));
+        }
+        const [, label, labeledUrl, bareUrl] = match;
+        const url = labeledUrl ?? bareUrl;
+        nodes.push(
+            <a
+                key={`a${match.index}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`font-semibold text-indigo-600 underline hover:text-indigo-800 ${label ? '' : 'break-all'}`}
+            >
+                {label ?? url}
+            </a>,
+        );
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+        nodes.push(...renderInlineBold(text.slice(lastIndex), 'end-'));
+    }
+    return nodes;
+};
+
+// Trả lời của AI dùng markdown tối giản (**in đậm**, gạch đầu dòng, danh sách số,
+// link) — dựng riêng thay vì thêm thư viện markdown vì chỉ cần đúng vài cú pháp này.
 export const FormattedMessage = ({ text }) => {
     const lines = (text ?? '').split('\n');
     const blocks = [];
@@ -55,7 +90,7 @@ export const FormattedMessage = ({ text }) => {
         blocks.push(
             <ul key={`ul-${blocks.length}`} className="list-disc pl-5 space-y-0.5">
                 {currentList.map((item, i) => (
-                    <li key={i}>{renderInlineBold(item)}</li>
+                    <li key={i}>{renderInline(item)}</li>
                 ))}
             </ul>,
         );
@@ -78,14 +113,15 @@ export const FormattedMessage = ({ text }) => {
         if (trimmed !== '') {
             blocks.push(
                 <p key={idx} className="leading-relaxed">
-                    {renderInlineBold(line)}
+                    {renderInline(line)}
                 </p>,
             );
         }
     });
     flushList();
 
-    return <div className="space-y-1.5">{blocks}</div>;
+    // wrap-anywhere: chốt chặn cuối cho mọi chuỗi dài không có khoảng trắng khác.
+    return <div className="space-y-1.5 wrap-anywhere">{blocks}</div>;
 };
 
 export const RoomCard = ({ room, onSelect }) => {

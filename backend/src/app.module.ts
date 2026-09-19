@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { UserModule } from './users/user.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
@@ -25,6 +26,7 @@ import { HotelConfigModule } from './hotel-config/hotel-config.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 30 }]),
+    ScheduleModule.forRoot(),
     RedisModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -41,6 +43,7 @@ import { HotelConfigModule } from './hotel-config/hotel-config.module';
           config.get<string>('DB_SSL') === 'true'
             ? { rejectUnauthorized: false }
             : false,
+        extra:{options:`-c timezone=${process.env.TZ}`},
       }),
     }),
     UserModule,

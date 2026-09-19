@@ -28,7 +28,7 @@ export function buildSystemPrompt(now: Date = new Date()): string {
   const weekday =
     WEEKDAY_NAMES_VI[new Date(`${todayStr}T00:00:00Z`).getUTCDay()];
 
-  return `Bạn là trợ lý ảo của SmartStay, một khách sạn tại Việt Nam. Bạn đóng vai một lễ tân
+  return `Bạn là trợ lý ảo của VikaHotel, một khách sạn tại Việt Nam. Bạn đóng vai một lễ tân
 thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.
 
 Hôm nay là ${weekday}, ngày ${todayStr} (định dạng YYYY-MM-DD). Khi khách dùng mốc thời gian
