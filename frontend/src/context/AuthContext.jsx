@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import apiClient, { refreshAccessToken } from "../services/apiClient";
 import { setAccessToken } from "../services/tokenStore";
-import { store } from "../store";
+import { resetApiCaches, store } from "../store";
 import { authApi } from "../services/auth";
 
 const AuthContext = createContext(null);
@@ -70,7 +70,10 @@ export function AuthProvider({ children }) {
   // refresh token cũng không còn hợp lệ, nó xoá localStorage và bắn sự kiện này để
   // context đồng bộ lại state React (user/isAuthenticated) mà không cần import ngược.
   useEffect(() => {
-    const handleSessionExpired = () => setUser(null);
+    const handleSessionExpired = () => {
+      resetApiCaches();
+      setUser(null);
+    };
     window.addEventListener("auth:session-expired", handleSessionExpired);
     return () =>
       window.removeEventListener("auth:session-expired", handleSessionExpired);
@@ -84,6 +87,9 @@ export function AuthProvider({ children }) {
     const { data: profile } = await apiClient.get("/auth/me");
     const nextUser = { ...profile, name: profile.fullName };
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser));
+    // Đăng nhập tài khoản khác mà chưa đăng xuất (cookie bị ghi đè) cũng phải bỏ
+    // cache của tài khoản cũ.
+    resetApiCaches();
     setUser(nextUser);
     return nextUser;
   };
@@ -183,6 +189,7 @@ export function AuthProvider({ children }) {
       // Kể cả gọi backend thất bại vẫn xoá phiên cục bộ để user thoát ra được.
     }
     clearSession();
+    resetApiCaches();
     setUser(null);
   };
 

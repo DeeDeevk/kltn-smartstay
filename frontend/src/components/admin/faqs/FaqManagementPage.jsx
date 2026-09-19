@@ -67,26 +67,30 @@ function FaqRow({ faq, onEdit, onDelete }) {
   return (
     <li className={`px-4 py-3.5 ${faq.isActive ? '' : 'bg-gray-50/70'}`}>
       <div className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="min-w-0 flex-1 text-left"
-        >
-          <p className={`flex items-start gap-1.5 font-semibold ${faq.isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+        {/* Dạng accordion: thu gọn chỉ hiện câu hỏi, bấm vào mới hiện câu trả lời —
+            nếu thu gọn vẫn hiện vài dòng đầu thì câu trả lời ngắn bấm vào không thấy
+            thay đổi gì, trông như nút bị hỏng. */}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className={`flex w-full items-start gap-1.5 text-left font-semibold ${
+              faq.isActive ? 'text-gray-900' : 'text-gray-400'
+            }`}
+          >
             <ChevronDown
               size={16}
               className={`mt-0.5 shrink-0 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
             />
             <span className="wrap-anywhere">{faq.question}</span>
-          </p>
-          <p
-            className={`mt-1 pl-5.5 text-sm whitespace-pre-line wrap-anywhere text-gray-500 ${
-              expanded ? '' : 'line-clamp-2'
-            }`}
-          >
-            {faq.answer}
-          </p>
-        </button>
+          </button>
+          {expanded && (
+            <p className="mt-2 ml-5.5 rounded-lg bg-gray-50 px-3 py-2 text-sm whitespace-pre-line wrap-anywhere text-gray-600">
+              {faq.answer}
+            </p>
+          )}
+        </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
           <ActiveToggle faq={faq} />

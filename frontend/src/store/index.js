@@ -63,3 +63,29 @@ export const store = configureStore({
 // optional, but required for refetchOnFocus/refetchOnReconnect behaviors
 // see `setupListeners` docs - takes an optional callback as the 2nd arg for customization
 setupListeners(store.dispatch);
+
+const API_SLICES = [
+    authApi,
+    userApi,
+    availabilityApi,
+    extraServiceApi,
+    roomTypeApi,
+    adminRoomApi,
+    bookingApi,
+    paymentApi,
+    chatApi,
+    aiAgentApi,
+    reviewApi,
+    shiftTypeApi,
+    shiftAssignmentApi,
+    revenueApi,
+    hotelConfigApi,
+    faqApi,
+];
+
+// Cache key của RTK Query chỉ gồm tham số query (vd. {from, to} của "ca của tôi"),
+// không gắn với người đang đăng nhập — đổi tài khoản mà không xoá cache thì người sau
+// thấy dữ liệu của người trước. Gọi mỗi khi phiên đăng nhập thay đổi.
+export function resetApiCaches() {
+    API_SLICES.forEach((api) => store.dispatch(api.util.resetApiState()));
+}
