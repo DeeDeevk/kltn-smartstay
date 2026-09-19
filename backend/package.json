@@ -24,7 +24,11 @@
     "seed:faqs": "ts-node -r tsconfig-paths/register src/database/seed-faqs.ts",
     "seed:more-rooms": "ts-node -r tsconfig-paths/register src/database/seed-more-rooms.ts",
     "rooms:rename": "ts-node -r tsconfig-paths/register src/database/rename-rooms.ts",
-    "eval:rag": "ts-node -r tsconfig-paths/register src/ai-agent/rag/eval/evaluate-rag.ts"
+    "eval:rag": "ts-node -r tsconfig-paths/register src/ai-agent/rag/eval/evaluate-rag.ts",
+    "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/data-source.ts",
+    "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/data-source.ts",
+    "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/data-source.ts",
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/data-source.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1136.0",
