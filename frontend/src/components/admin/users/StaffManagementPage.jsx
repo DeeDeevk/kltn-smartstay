@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { Loader2, Lock, Unlock, Search, ChevronLeft, ChevronRight, Eye, UserPlus } from 'lucide-react';
+import { Lock, Unlock, ChevronLeft, ChevronRight, Eye, UserPlus } from 'lucide-react';
+import SearchInput from '../../common/SearchInput';
+import Button from '../../common/Button';
+import EmptyState from '../../common/EmptyState';
+import { TableSkeletonRows } from '../../common/Skeleton';
+import { selectClass } from '../../common/formStyles';
+import { stagger } from '../../../utils/motion';
 import { toast } from 'react-toastify';
 import StatusBadge from '../../common/StatusBadge';
 import ConfirmModal from '../../common/ConfirmModal';
@@ -96,28 +102,21 @@ export default function StaffManagementPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Tìm theo tên, email, SĐT..."
-                className="w-72 rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <button
-              type="submit"
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200"
-            >
+            <SearchInput
+              className="w-72"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Tìm theo tên, email, SĐT..."
+            />
+            <Button type="submit" variant="secondary">
               Tìm
-            </button>
+            </Button>
           </form>
 
           <select
             value={status}
             onChange={handleStatusFilterChange}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={selectClass}
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -127,16 +126,16 @@ export default function StaffManagementPage() {
           </select>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-700"
-        >
-          <UserPlus size={16} /> Thêm nhân viên
-        </button>
+        <Button icon={UserPlus} onClick={() => setCreateOpen(true)}>
+          Thêm nhân viên
+        </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div
+        className={`overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm transition-opacity duration-200 ${
+          isFetching && staffList.length > 0 ? 'opacity-60' : ''
+        }`}
+      >
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="bg-gray-50 text-xs font-bold uppercase tracking-wide text-gray-500">
             <tr>
@@ -149,13 +148,7 @@ export default function StaffManagementPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {isFetching && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                  <Loader2 className="mx-auto animate-spin" size={22} />
-                </td>
-              </tr>
-            )}
+            {isFetching && staffList.length === 0 && <TableSkeletonRows rows={8} cols={6} />}
 
             {!isFetching && error && (
               <tr>
@@ -167,18 +160,24 @@ export default function StaffManagementPage() {
 
             {!isFetching && !error && staffList.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                  Không có nhân viên nào phù hợp
+                <td colSpan={6}>
+                  <EmptyState
+                    title="Không có nhân viên nào phù hợp"
+                    description="Thử đổi từ khoá hoặc bộ lọc."
+                  />
                 </td>
               </tr>
             )}
 
-            {!isFetching &&
-              !error &&
-              staffList.map((rowUser) => {
+            {!error &&
+              staffList.map((rowUser, index) => {
                 const isSelf = rowUser.userId === currentUser?.userId;
                 return (
-                  <tr key={rowUser.userId} className="hover:bg-gray-50">
+                  <tr
+                    key={rowUser.userId}
+                    style={stagger(index, 30, 8)}
+                    className="anim-fade-in transition-colors hover:bg-gray-50"
+                  >
                     <td className="px-4 py-3 font-semibold text-gray-900">{rowUser.fullName}</td>
                     <td className="px-4 py-3 text-gray-600">{rowUser.email}</td>
                     <td className="px-4 py-3 text-gray-600">{rowUser.phone || '—'}</td>

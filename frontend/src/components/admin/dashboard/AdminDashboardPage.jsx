@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useAdminOverviewStats from './useAdminOverviewStats';
+import AnimatedNumber from '../../common/AnimatedNumber';
+import { stagger } from '../../../utils/motion';
 
 const BOOKING_STATUS_META = {
   PENDING: { label: 'Chờ xác nhận', dot: 'bg-amber-400' },
@@ -79,9 +81,12 @@ const QUICK_LINKS = [
   },
 ];
 
-function StatCard({ icon: Icon, label, value, iconBg, iconColor, loading }) {
+function StatCard({ index = 0, icon: Icon, label, value, iconBg, iconColor, loading }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div
+      style={stagger(index, 70)}
+      className="anim-fade-up lift rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+    >
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-gray-500">{label}</span>
         <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
@@ -89,30 +94,33 @@ function StatCard({ icon: Icon, label, value, iconBg, iconColor, loading }) {
         </span>
       </div>
       <p className="mt-4 text-3xl font-bold text-gray-900">
-        {loading ? <span className="inline-block h-8 w-16 animate-pulse rounded bg-gray-100" /> : value}
+        {loading ? <span className="skeleton inline-block h-8 w-16 rounded" /> : <AnimatedNumber value={value} />}
       </p>
     </div>
   );
 }
 
-function DistributionCard({ title, total, segments, loading }) {
+function DistributionCard({ index = 0, title, total, segments, loading }) {
   const visible = segments.filter((s) => s.value > 0);
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div
+      style={stagger(index, 70)}
+      className="anim-fade-up lift rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+    >
       <h3 className="mb-4 text-sm font-bold text-gray-900">{title}</h3>
 
       {loading ? (
         <div className="space-y-3">
-          <div className="h-2.5 w-full animate-pulse rounded-full bg-gray-100" />
-          <div className="h-4 w-3/4 animate-pulse rounded bg-gray-100" />
-          <div className="h-4 w-2/3 animate-pulse rounded bg-gray-100" />
+          <div className="skeleton h-2.5 w-full rounded-full" />
+          <div className="skeleton h-4 w-3/4 rounded" />
+          <div className="skeleton h-4 w-2/3 rounded" />
         </div>
       ) : total === 0 ? (
         <p className="text-sm text-gray-400">Chưa có dữ liệu</p>
       ) : (
         <>
-          <div className="mb-4 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-gray-100">
+          <div className="anim-grow-x mb-4 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-gray-100">
             {visible.map((seg) => (
               <div
                 key={seg.label}
@@ -204,6 +212,7 @@ function AdminOverview() {
 
       <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
+          index={0}
           icon={Users}
           label="Tổng người dùng"
           value={stats?.users.total ?? 0}
@@ -212,6 +221,7 @@ function AdminOverview() {
           loading={loading}
         />
         <StatCard
+          index={1}
           icon={CalendarRange}
           label="Tổng đặt phòng"
           value={stats?.bookings.total ?? 0}
@@ -220,6 +230,7 @@ function AdminOverview() {
           loading={loading}
         />
         <StatCard
+          index={2}
           icon={BedDouble}
           label="Phòng đang trống"
           value={stats?.rooms.byStatus.AVAILABLE ?? 0}
@@ -228,6 +239,7 @@ function AdminOverview() {
           loading={loading}
         />
         <StatCard
+          index={3}
           icon={LayoutGrid}
           label="Loại phòng"
           value={stats?.roomTypes.total ?? 0}
@@ -239,18 +251,21 @@ function AdminOverview() {
 
       <div className="mb-8 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <DistributionCard
+          index={4}
           title="Trạng thái đặt phòng"
           total={stats?.bookings.total ?? 0}
           segments={bookingSegments}
           loading={loading}
         />
         <DistributionCard
+          index={5}
           title="Trạng thái phòng"
           total={stats?.rooms.total ?? 0}
           segments={roomSegments}
           loading={loading}
         />
         <DistributionCard
+          index={6}
           title="Người dùng theo vai trò"
           total={stats?.users.total ?? 0}
           segments={roleSegments}

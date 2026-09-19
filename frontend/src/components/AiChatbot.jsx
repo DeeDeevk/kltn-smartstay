@@ -19,6 +19,19 @@ import {
     BookingInfoForm,
 } from './AiChatWidgets';
 
+// Backend trả 429 ở 2 trường hợp: hết hạn mức trong ngày (kèm code + câu thông báo sẵn
+// tiếng Việt) hoặc gửi quá nhanh (do @Throttle, không có thông báo dùng được cho khách).
+const AI_DAILY_QUOTA_EXCEEDED = 'AI_DAILY_QUOTA_EXCEEDED';
+
+function getSendErrorMessage(error) {
+    if (error?.status === 429) {
+        return error.data?.code === AI_DAILY_QUOTA_EXCEEDED
+            ? error.data.message
+            : 'Quý khách gửi tin nhắn quá nhanh, vui lòng chờ vài giây rồi thử lại.';
+    }
+    return 'Xin lỗi, trợ lý ảo đang gặp sự cố, quý khách vui lòng thử lại sau.';
+}
+
 // Trợ lý ảo AI (khác widget Chatbot.jsx là chat thật với lễ tân) — REST thuần,
 // mỗi lượt gửi tin nhắn nhận ngay câu trả lời trong response, không qua socket.
 const AiChatbot = () => {
@@ -124,10 +137,7 @@ const AiChatbot = () => {
             }
             setMessages((prev) => [
                 ...prev,
-                {
-                    role: 'MODEL',
-                    content: 'Xin lỗi, trợ lý ảo đang gặp sự cố, quý khách vui lòng thử lại sau.',
-                },
+                { role: 'MODEL', content: getSendErrorMessage(error) },
             ]);
         }
     };
@@ -182,16 +192,16 @@ const AiChatbot = () => {
             {isOpen && (
                 <div
                     style={panelStyle}
-                    className="fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
+                    className="anim-pop-in origin-bottom-right fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
                 >
-                    <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 p-4 flex items-center justify-between text-white shadow-md z-10">
+                    <div className="bg-gradient-to-r from-blue-600 via-violet-600 to-blue-600 p-4 flex items-center justify-between text-white shadow-md z-10">
                         <div className="flex items-center gap-3">
                             <div className="bg-white p-1.5 rounded-full">
-                                <BotMessageSquare className="w-6 h-6 text-indigo-600" />
+                                <BotMessageSquare className="w-6 h-6 text-blue-600" />
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg">Trợ lý ảo Vika Hotel</h3>
-                                <p className="text-xs text-indigo-100 flex items-center gap-1">
+                                <p className="text-xs text-blue-100 flex items-center gap-1">
                                     <Sparkles className="w-3 h-3" />
                                     Hỏi về phòng, đặt phòng, chính sách...
                                 </p>
@@ -213,7 +223,7 @@ const AiChatbot = () => {
                                     setIsOpen(false);
                                     navigate('/login');
                                 }}
-                                className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition-colors"
+                                className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition-colors"
                             >
                                 <LogIn className="w-4 h-4" /> Đăng nhập
                             </button>
@@ -242,17 +252,17 @@ const AiChatbot = () => {
                                     return (
                                         <div
                                             key={idx}
-                                            className={`flex flex-col gap-2 ${isMine ? 'items-end' : 'items-start'}`}
+                                            className={`anim-fade-up flex flex-col gap-2 ${isMine ? 'items-end' : 'items-start'}`}
                                         >
                                             <div
                                                 className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm
                                                 ${isMine
-                                                        ? 'bg-indigo-600 text-white rounded-tr-sm'
+                                                        ? 'bg-blue-600 text-white rounded-tr-sm'
                                                         : 'bg-gray-100 text-gray-800 rounded-tl-sm border border-gray-200'
                                                     }`}
                                             >
                                                 {!isMine && (
-                                                    <p className="text-[11px] font-bold text-indigo-600 mb-0.5">
+                                                    <p className="text-[11px] font-bold text-blue-600 mb-0.5">
                                                         Trợ lý ảo
                                                     </p>
                                                 )}
@@ -308,7 +318,7 @@ const AiChatbot = () => {
                                                 {[-0.3, -0.15, 0].map((delay) => (
                                                     <span
                                                         key={delay}
-                                                        className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce"
+                                                        className="w-2 h-2 rounded-full bg-blue-500 animate-bounce"
                                                         style={{
                                                             animationDelay: `${delay}s`,
                                                             animationDuration: '0.9s',
@@ -331,13 +341,13 @@ const AiChatbot = () => {
                                     value={inputStr}
                                     onChange={(e) => setInputStr(e.target.value)}
                                     placeholder="Nhập tin nhắn..."
-                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                     disabled={isSending || isLoadingHistory}
                                 />
                                 <button
                                     type="submit"
                                     disabled={!inputStr.trim() || isSending || isLoadingHistory}
-                                    className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+                                    className="press p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
                                 >
                                     <Send className="w-5 h-5 ml-0.5" />
                                 </button>
@@ -355,13 +365,13 @@ const AiChatbot = () => {
                 onPointerMove={dragHandlers.onPointerMove}
                 onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
                 style={buttonStyle}
-                className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-50 cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-indigo-500 via-violet-500 to-indigo-600 text-white shadow-2xl shadow-indigo-500/40 hover:shadow-indigo-500/60 transition-shadow duration-200 ${isOpen ? 'ring-4 ring-indigo-200' : ''}`}
+                className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-50 cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-blue-500 via-violet-500 to-blue-600 text-white shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? 'ring-4 ring-blue-200' : ''}`}
             >
                 {!isOpen && (
-                    <span className="absolute inset-0 rounded-full bg-indigo-400 opacity-60 animate-ping" />
+                    <span className="absolute inset-0 rounded-full bg-blue-400 opacity-60 animate-ping" />
                 )}
                 <BotMessageSquare className="w-7 h-7 relative" />
-                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-indigo-900 ring-2 ring-white">
+                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-blue-900 ring-2 ring-white">
                     <Sparkles className="w-3 h-3" />
                 </span>
             </button>

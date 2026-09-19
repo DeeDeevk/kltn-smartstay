@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   Logger,
@@ -38,6 +40,13 @@ const MAX_HISTORY_TURNS = 10;
 // 10 lượt khi trung bình mỗi lượt gọi không quá 2 tool. getHistory() thì không dùng
 // giới hạn này (xem ghi chú tại đó).
 const HISTORY_FETCH_LIMIT = 40;
+// Mỗi tin nhắn của khách tốn ít nhất 1 lần gọi Gemini (quota/tiền) — giới hạn theo tài
+// khoản trong 24 giờ gần nhất để 1 người (hoặc bot) không dùng hết hạn mức của cả hệ
+// thống. Bổ sung cho @Throttle theo IP ở controller, vốn không chặn được việc đổi IP.
+const MAX_USER_MESSAGES_PER_DAY = 100;
+const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Frontend dựa vào mã này để hiện đúng thông báo hết lượt (khác với 429 do @Throttle).
+export const AI_DAILY_QUOTA_EXCEEDED = 'AI_DAILY_QUOTA_EXCEEDED';
 // Lỗi tạm thời từ nhà cung cấp LLM (quá tải/giới hạn tần suất) — đáng để thử lại.
 const RETRYABLE_LLM_STATUS = new Set([429, 500, 502, 503, 504]);
 const LLM_RETRY_DELAYS_MS = [1000, 3000];
@@ -56,6 +65,8 @@ export class AiAgentService {
   ) {}
 
   async sendMessage(userId: string, dto: SendMessageDto) {
+    await this.assertWithinDailyQuota(userId);
+
     const conversation = dto.conversationId
       ? await this.getOwnedConversation(dto.conversationId, userId)
       : await this.createConversation(userId);
@@ -205,6 +216,34 @@ export class AiAgentService {
       toolResult: m.toolResult,
       createdAt: m.createdAt,
     }));
+  }
+
+  private async assertWithinDailyQuota(userId: string): Promise<void> {
+    const since = new Date(Date.now() - QUOTA_WINDOW_MS);
+    const used = await this.countRecentUserMessages(userId, since);
+    if (used >= MAX_USER_MESSAGES_PER_DAY) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          code: AI_DAILY_QUOTA_EXCEEDED,
+          message: `Bạn đã dùng hết ${MAX_USER_MESSAGES_PER_DAY} lượt hỏi trợ lý ảo trong 24 giờ qua. Vui lòng thử lại sau hoặc liên hệ lễ tân để được hỗ trợ.`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private countRecentUserMessages(
+    userId: string,
+    since: Date,
+  ): Promise<number> {
+    return this.messageRepo
+      .createQueryBuilder('message')
+      .innerJoin('message.conversation', 'conversation')
+      .where('conversation.user = :userId', { userId })
+      .andWhere('message.role = :role', { role: AiMessageRole.USER })
+      .andWhere('message.createdAt >= :since', { since })
+      .getCount();
   }
 
   // Lấy HISTORY_FETCH_LIMIT dòng gần nhất ở tầng DB (DESC + take) rồi đảo lại thành thứ

@@ -88,15 +88,18 @@ export const FormattedMessage = ({ text }) => {
     return <div className="space-y-1.5">{blocks}</div>;
 };
 
-export const RoomCard = ({ room, onSelect }) => {
+export const RoomCard = ({ room, onSelect, index = 0 }) => {
     const image = Array.isArray(room.images) && room.images.length > 0 ? room.images[0] : null;
     return (
-        <div className="w-full rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-            <div className="h-28 bg-gradient-to-br from-indigo-100 to-indigo-50 flex items-center justify-center overflow-hidden">
+        <div
+            style={{ animationDelay: `${Math.min(index, 6) * 60}ms` }}
+            className="anim-fade-up lift w-full rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm"
+        >
+            <div className="h-28 bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center overflow-hidden">
                 {image ? (
-                    <img src={image} alt={room.name} className="w-full h-full object-cover" />
+                    <img loading="lazy" src={image} alt={room.name} className="w-full h-full object-cover" />
                 ) : (
-                    <BedDouble className="w-9 h-9 text-indigo-300" />
+                    <BedDouble className="w-9 h-9 text-blue-300" />
                 )}
             </div>
             <div className="p-3 space-y-1.5">
@@ -114,13 +117,13 @@ export const RoomCard = ({ room, onSelect }) => {
                     )}
                 </div>
                 <div className="flex items-center justify-between pt-1">
-                    <span className="text-indigo-600 font-bold text-sm">
+                    <span className="text-blue-600 font-bold text-sm">
                         {formatVnd(room.basePrice)}
                         <span className="text-gray-400 font-normal">/đêm</span>
                     </span>
                     <button
                         onClick={() => onSelect(room)}
-                        className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full px-3 py-1.5 transition-colors"
+                        className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-full px-3 py-1.5 transition-colors"
                     >
                         Chọn phòng này
                     </button>
@@ -134,8 +137,8 @@ export const RoomCardList = ({ rooms, onSelect }) => {
     if (!Array.isArray(rooms) || rooms.length === 0) return null;
     return (
         <div className="grid grid-cols-2 gap-2 w-full">
-            {rooms.map((room) => (
-                <RoomCard key={room.roomTypeId} room={room} onSelect={onSelect} />
+            {rooms.map((room, index) => (
+                <RoomCard key={room.roomTypeId} room={room} onSelect={onSelect} index={index} />
             ))}
         </div>
     );
@@ -168,8 +171,8 @@ export const PromotionList = ({ promotions }) => {
 export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel, disabled = false }) => {
     if (!pendingBooking) return null;
     return (
-        <div className="w-full rounded-xl border-2 border-indigo-200 bg-indigo-50/70 p-4 space-y-2">
-            <p className="font-bold text-indigo-700 text-sm">Xác nhận đặt phòng</p>
+        <div className="w-full rounded-xl border-2 border-blue-200 bg-blue-50/70 p-4 space-y-2">
+            <p className="font-bold text-blue-700 text-sm">Xác nhận đặt phòng</p>
             <div className="text-sm text-gray-700 space-y-1">
                 <p>
                     <span className="text-gray-500">Loại phòng:</span>{' '}
@@ -198,7 +201,7 @@ export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel, disabl
                         {PAYMENT_METHOD_LABEL[pendingBooking.paymentMethod] ?? pendingBooking.paymentMethod}
                     </p>
                 )}
-                <p className="text-base font-bold text-indigo-700 pt-1">
+                <p className="text-base font-bold text-blue-700 pt-1">
                     Tổng tiền: {formatVnd(pendingBooking.totalAmount)}
                 </p>
             </div>
@@ -206,7 +209,7 @@ export const PendingBookingCard = ({ pendingBooking, onConfirm, onCancel, disabl
                 <button
                     onClick={onConfirm}
                     disabled={disabled}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-full py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Xác nhận đặt phòng
                 </button>
@@ -317,7 +320,7 @@ export const BookingConfirmedCard = ({ booking }) => {
                                         href={booking.checkoutUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="flex-1 text-center bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-full py-2 transition-colors"
+                                        className="flex-1 text-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-full py-2 transition-colors"
                                     >
                                         Mở trang thanh toán
                                     </a>
@@ -366,7 +369,7 @@ export const BookingConfirmedCard = ({ booking }) => {
 };
 
 const inputClass =
-    'w-full bg-white border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all';
+    'w-full bg-white border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all';
 
 // Biểu mẫu cho khách điền trực tiếp thông tin đặt phòng thay vì phải trả lời từng câu
 // hỏi bằng chữ — hiển thị khi model gọi tool request_booking_form. Nộp form sẽ gộp
@@ -404,9 +407,9 @@ export const BookingInfoForm = ({ request, user, onSubmit, onCancel }) => {
     return (
         <form
             onSubmit={handleSubmit}
-            className="w-full rounded-xl border-2 border-indigo-200 bg-indigo-50/70 p-4 space-y-3"
+            className="w-full rounded-xl border-2 border-blue-200 bg-blue-50/70 p-4 space-y-3"
         >
-            <p className="font-bold text-indigo-700 text-sm">
+            <p className="font-bold text-blue-700 text-sm">
                 Thông tin đặt phòng
                 {request?.roomTypeName ? ` — ${request.roomTypeName}` : ''}
             </p>
@@ -497,7 +500,7 @@ export const BookingInfoForm = ({ request, user, onSubmit, onCancel }) => {
                         onClick={() => setPaymentMethod('CASH')}
                         className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-colors ${
                             paymentMethod === 'CASH'
-                                ? 'border-indigo-500 bg-indigo-600 text-white'
+                                ? 'border-blue-500 bg-blue-600 text-white'
                                 : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
                         }`}
                     >
@@ -508,7 +511,7 @@ export const BookingInfoForm = ({ request, user, onSubmit, onCancel }) => {
                         onClick={() => setPaymentMethod('PAYOS')}
                         className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-colors ${
                             paymentMethod === 'PAYOS'
-                                ? 'border-indigo-500 bg-indigo-600 text-white'
+                                ? 'border-blue-500 bg-blue-600 text-white'
                                 : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
                         }`}
                     >
@@ -521,7 +524,7 @@ export const BookingInfoForm = ({ request, user, onSubmit, onCancel }) => {
                 <button
                     type="submit"
                     disabled={!canSubmit}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full py-2 transition-colors"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full py-2 transition-colors"
                 >
                     Xác nhận thông tin
                 </button>

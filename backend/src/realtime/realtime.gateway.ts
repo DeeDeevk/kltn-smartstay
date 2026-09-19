@@ -29,7 +29,7 @@ const userRoom = (userId: string) => `user:${userId}`;
 // Namespace mặc định ('/'): ChatGateway cũng gắn vào cùng namespace này nên dùng
 // chung 1 kết nối socket phía FE và chung client.data.user do handleConnection ở
 // đây gán — không cần xác thực lại trong ChatGateway.
-@WebSocketGateway({ cors: true })
+@WebSocketGateway()
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 

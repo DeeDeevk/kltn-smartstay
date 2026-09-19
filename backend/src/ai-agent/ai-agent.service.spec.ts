@@ -1,6 +1,10 @@
 import { randomUUID } from 'crypto';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { AiAgentService } from './ai-agent.service';
+import {
+  ForbiddenException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
+import { AI_DAILY_QUOTA_EXCEEDED, AiAgentService } from './ai-agent.service';
 import { AiConversation } from './entities/ai-conversation.entity';
 import { AiMessage } from './entities/ai-message.entity';
 import { AiMessageRole } from 'src/common/enums/ai-message-role.enum';
@@ -64,6 +68,10 @@ describe('AiAgentService', () => {
     execute: jest.MockedFunction<AiAgentToolsService['execute']>;
   };
   let service: AiAgentService;
+  let countRecentUserMessages: jest.SpyInstance<
+    Promise<number>,
+    [string, Date]
+  >;
 
   const userId = 'user-1';
 
@@ -81,6 +89,17 @@ describe('AiAgentService', () => {
       llmProvider,
       toolsService as unknown as never,
     );
+
+    // Đếm hạn mức ngày dùng QueryBuilder (fake repo không có) — mặc định 0 lượt đã dùng,
+    // test riêng về hạn mức sẽ đặt giá trị khác.
+    countRecentUserMessages = jest
+      .spyOn(
+        service as unknown as {
+          countRecentUserMessages: (u: string, s: Date) => Promise<number>;
+        },
+        'countRecentUserMessages',
+      )
+      .mockResolvedValue(0);
 
     // getOwnedConversation so sánh conversation.userId (cột FK mà repo thật tự điền khi
     // findOne) — set sẵn để findOne trả về đúng owner cho các lượt tiếp theo trong test.
@@ -169,6 +188,38 @@ describe('AiAgentService', () => {
     );
     /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     expect(turn2.reply).toContain('thành công');
+  });
+
+  it('hết hạn mức 100 tin/24 giờ thì báo 429 kèm mã riêng và không gọi LLM', async () => {
+    countRecentUserMessages.mockResolvedValue(100);
+
+    const error = await service
+      .sendMessage(userId, { message: 'Xin chào' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(429);
+    expect((error as HttpException).getResponse()).toMatchObject({
+      code: AI_DAILY_QUOTA_EXCEEDED,
+    });
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+  });
+
+  it('còn dưới hạn mức (99 tin) thì vẫn trả lời; đếm theo đúng user trong 24 giờ gần nhất', async () => {
+    countRecentUserMessages.mockResolvedValue(99);
+    llmProvider.chat.mockResolvedValueOnce({
+      text: 'Dạ em chào anh/chị ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    const result = await service.sendMessage(userId, { message: 'Xin chào' });
+
+    expect(result.reply).toBe('Dạ em chào anh/chị ạ.');
+    const [countedUser, since] = countRecentUserMessages.mock.calls[0];
+    expect(countedUser).toBe(userId);
+    const windowMs = Date.now() - since.getTime();
+    expect(windowMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 1000);
+    expect(windowMs).toBeLessThan(24 * 60 * 60 * 1000 + 5000);
   });
 
   it('hội thoại không tồn tại thì báo 404 và không gọi LLM', async () => {

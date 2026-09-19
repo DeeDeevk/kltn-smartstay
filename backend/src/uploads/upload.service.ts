@@ -4,18 +4,22 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import sharp from 'sharp';
 import { UploadedImage } from './upload.types';
 
 const KEY_PREFIX = 'vikahotel/room-types';
 const MAX_NAME_LENGTH = 60;
-const MIME_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-};
+// Ảnh gốc từ điện thoại/máy ảnh có thể tới 5 MB (giới hạn của controller) — khách chỉ
+// xem trong khung tối đa vài trăm px nên thu về chiều rộng 1600px và nén WebP. R2 không
+// tự resize như Cloudinary trước đây, nên phải làm ở bước upload.
+const MAX_IMAGE_WIDTH = 1600;
+const WEBP_QUALITY = 82;
+const IMAGE_EXTENSION = '.webp';
+const IMAGE_CONTENT_TYPE = 'image/webp';
 
 @Injectable()
 export class UploadService {
@@ -55,14 +59,15 @@ export class UploadService {
   }
 
   async uploadImage(file: Express.Multer.File): Promise<UploadedImage> {
+    const body = await this.optimizeImage(file.buffer);
     const key = this.buildKey(file);
     try {
       await this.s3.send(
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: key,
-          Body: file.buffer,
-          ContentType: file.mimetype,
+          Body: body,
+          ContentType: IMAGE_CONTENT_TYPE,
         }),
       );
     } catch (error) {
@@ -77,11 +82,27 @@ export class UploadService {
     return { url: `${this.publicBaseUrl}/${key}`, publicId: key };
   }
 
+  // Không phóng to ảnh nhỏ; rotate() áp dụng hướng xoay EXIF của ảnh chụp bằng điện thoại
+  // (nếu không ảnh sẽ bị nằm ngang) và việc ghi lại ảnh sẽ bỏ luôn metadata EXIF như vị
+  // trí GPS. File không giải mã được là ảnh (đuôi/mimetype giả) bị từ chối.
+  private async optimizeImage(buffer: Buffer): Promise<Buffer> {
+    try {
+      return await sharp(buffer)
+        .rotate()
+        .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer();
+    } catch {
+      throw new UnprocessableEntityException(
+        'File tải lên không phải ảnh hợp lệ',
+      );
+    }
+  }
+
   // uuid đảm bảo không trùng key; phần tên gốc chỉ để dễ nhận biết file khi xem trong
   // bucket nên được ép về ASCII an toàn cho URL (multer còn giải mã sai tên tiếng Việt).
   private buildKey(file: Express.Multer.File): string {
-    const { name, ext } = parse(file.originalname);
-    const extension = MIME_EXTENSIONS[file.mimetype] ?? ext.toLowerCase();
+    const { name } = parse(file.originalname);
     const slug = name
       .normalize('NFD')
       .replace(/[̀-ͯ]/g, '')
@@ -90,7 +111,7 @@ export class UploadService {
       .replace(/^-+|-+$/g, '')
       .toLowerCase()
       .slice(0, MAX_NAME_LENGTH);
-    return `${KEY_PREFIX}/${randomUUID()}${slug ? `-${slug}` : ''}${extension}`;
+    return `${KEY_PREFIX}/${randomUUID()}${slug ? `-${slug}` : ''}${IMAGE_EXTENSION}`;
   }
 
   private requireEnv(name: string): string {
