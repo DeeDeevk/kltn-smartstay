@@ -28,6 +28,15 @@ export interface FaqReindexSummary {
   failed: number;
 }
 
+interface StaleFaq {
+  faq: Faq;
+  text: string;
+  hash: string;
+}
+
+// Gemini batchEmbedContents accepts at most 100 requests per call.
+const EMBED_BATCH_SIZE = 100;
+
 // Lightweight RAG over the FAQ table (a few dozen entries at most). Vectors are
 // persisted on each Faq row so a restart only embeds rows that are new or edited;
 // search itself is an in-memory cosine-similarity scan over active entries, which is
@@ -117,40 +126,54 @@ export class FaqEmbeddingService implements OnModuleInit {
   private async doRefresh(): Promise<FaqReindexSummary> {
     const faqs = await this.faqRepo.find({ where: { isActive: true } });
 
-    let embedded = 0;
-    let failed = 0;
-    const nextIndex: IndexedFaqEntry[] = [];
+    const stale: StaleFaq[] = [];
     for (const faq of faqs) {
       const text = embeddingText(faq);
       const hash = sha256(text);
-      let vector = faq.embedding;
       if (
-        !vector ||
+        !faq.embedding ||
         faq.embeddingHash !== hash ||
         faq.embeddingModel !== this.embeddingModel
       ) {
+        stale.push({ faq, text, hash });
+      }
+    }
+
+    let embedded = 0;
+    const failedIds = new Set<string>();
+    for (const batch of chunk(stale, EMBED_BATCH_SIZE)) {
+      const results = await this.embedDocuments(batch.map((s) => s.text));
+      for (let i = 0; i < batch.length; i += 1) {
+        const { faq, hash } = batch[i];
         try {
-          vector = await this.embed(text, TaskType.RETRIEVAL_DOCUMENT);
-          faq.embedding = vector;
-          faq.embeddingHash = hash;
-          faq.embeddingModel = this.embeddingModel;
+          const vector = results[i];
+          if (vector instanceof Error) throw vector;
           await this.faqRepo.update(faq.faqId, {
             embedding: vector,
             embeddingHash: hash,
             embeddingModel: this.embeddingModel,
           });
+          faq.embedding = vector;
+          faq.embeddingHash = hash;
+          faq.embeddingModel = this.embeddingModel;
           embedded += 1;
         } catch (err) {
           // One bad row shouldn't hide every other FAQ from search — skip it, it will
           // be retried on the next refresh since its hash still won't match.
-          failed += 1;
+          failedIds.add(faq.faqId);
           this.logger.warn(
             `Failed to embed FAQ ${faq.faqId}: ${err instanceof Error ? err.message : String(err)}`,
           );
-          continue;
         }
       }
-      nextIndex.push({ entry: faq, vector });
+    }
+
+    const failed = failedIds.size;
+    const nextIndex: IndexedFaqEntry[] = [];
+    for (const faq of faqs) {
+      if (!failedIds.has(faq.faqId) && faq.embedding) {
+        nextIndex.push({ entry: faq, vector: faq.embedding });
+      }
     }
 
     this.index = nextIndex;
@@ -159,6 +182,55 @@ export class FaqEmbeddingService implements OnModuleInit {
       `Indexed ${nextIndex.length} FAQ entries for semantic search (${embedded} newly embedded, ${failed} failed)`,
     );
     return { indexed: nextIndex.length, embedded, failed };
+  }
+
+  // Embeds document texts with one batchEmbedContents call instead of one request per
+  // FAQ. A batch is all-or-nothing on the API side: a single unembeddable FAQ (or a
+  // transient error) rejects the whole batch. To keep the "one bad row doesn't hide
+  // the others" guarantee, a failed batch is retried row by row and each row reports
+  // its own vector or error, in the same order as `texts`.
+  private async embedDocuments(
+    texts: string[],
+  ): Promise<Array<number[] | Error>> {
+    try {
+      return await this.embedBatch(texts, TaskType.RETRIEVAL_DOCUMENT);
+    } catch (err) {
+      this.logger.warn(
+        `Batch embedding of ${texts.length} FAQ(s) failed (${err instanceof Error ? err.message : String(err)}); retrying one by one`,
+      );
+      const results: Array<number[] | Error> = [];
+      for (const text of texts) {
+        try {
+          results.push(await this.embed(text, TaskType.RETRIEVAL_DOCUMENT));
+        } catch (rowErr) {
+          results.push(
+            rowErr instanceof Error ? rowErr : new Error(String(rowErr)),
+          );
+        }
+      }
+      return results;
+    }
+  }
+
+  private async embedBatch(
+    texts: string[],
+    taskType: TaskType,
+  ): Promise<number[][]> {
+    const model = this.client.getGenerativeModel({
+      model: this.embeddingModel,
+    });
+    const result = await model.batchEmbedContents({
+      requests: texts.map((text) => ({
+        content: { role: 'user', parts: [{ text }] },
+        taskType,
+      })),
+    });
+    if (result.embeddings.length !== texts.length) {
+      throw new Error(
+        `Batch embedding returned ${result.embeddings.length} vectors for ${texts.length} texts`,
+      );
+    }
+    return result.embeddings.map((e) => e.values);
   }
 
   // taskType tells the embedding model whether this text is a document being indexed
@@ -180,6 +252,14 @@ export class FaqEmbeddingService implements OnModuleInit {
 // question phrasing or vocabulary that only appears in the answer.
 function embeddingText(faq: Pick<Faq, 'question' | 'answer'>): string {
   return `${faq.question}\n${faq.answer}`;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 function sha256(text: string): string {

@@ -24,11 +24,28 @@ function fakeEmbed(text: string): number[] {
   return vector;
 }
 
-// Counts real embed calls so tests can assert that unchanged FAQs are not re-embedded.
+// Single-text embedding: used for search queries and as the per-row fallback when a
+// batch fails.
 const embedContent = jest.fn(
   (request: { content: { parts: Array<{ text: string }> } }) =>
     Promise.resolve({
       embedding: { values: fakeEmbed(request.content.parts[0].text) },
+    }),
+);
+
+// Batch embedding used when indexing FAQs; counting its calls lets tests assert that
+// stale FAQs go out together and unchanged ones are not re-embedded.
+const batchEmbedContents = jest.fn(
+  (request: {
+    requests: Array<{
+      content: { parts: Array<{ text: string }> };
+      taskType: string;
+    }>;
+  }) =>
+    Promise.resolve({
+      embeddings: request.requests.map((r) => ({
+        values: fakeEmbed(r.content.parts[0].text),
+      })),
     }),
 );
 
@@ -42,7 +59,7 @@ jest.mock('@google/generative-ai', () => {
   return {
     ...actual,
     GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-      getGenerativeModel: () => ({ embedContent }),
+      getGenerativeModel: () => ({ embedContent, batchEmbedContents }),
     })),
   };
 });
@@ -107,7 +124,10 @@ function seedRows(): Faq[] {
 }
 
 describe('FaqEmbeddingService', () => {
-  beforeEach(() => embedContent.mockClear());
+  beforeEach(() => {
+    embedContent.mockClear();
+    batchEmbedContents.mockClear();
+  });
 
   it('matches a question about an existing FAQ topic to the cancellation entry with high similarity', async () => {
     const service = makeService(makeRepo(seedRows()));
@@ -165,9 +185,70 @@ describe('FaqEmbeddingService', () => {
     await service.refresh();
 
     rows[1].answer = 'Trả phòng sau 14:00 chiều tính phụ thu nửa đêm.';
+    batchEmbedContents.mockClear();
     const summary = await service.refresh();
 
     expect(summary.embedded).toBe(1);
+    expect(batchEmbedContents).toHaveBeenCalledTimes(1);
+    expect(batchEmbedContents.mock.calls[0][0].requests).toHaveLength(1);
+  });
+
+  it('embeds all stale FAQs in one batch call instead of one request per FAQ', async () => {
+    const rows = seedRows();
+    const service = makeService(makeRepo(rows));
+
+    const summary = await service.refresh();
+
+    expect(summary).toEqual({ indexed: 2, embedded: 2, failed: 0 });
+    expect(batchEmbedContents).toHaveBeenCalledTimes(1);
+    const { requests } = batchEmbedContents.mock.calls[0][0];
+    expect(requests).toHaveLength(2);
+    expect(requests.every((r) => r.taskType === 'RETRIEVAL_DOCUMENT')).toBe(
+      true,
+    );
+    expect(embedContent).not.toHaveBeenCalled();
+    // Each row received the vector of its own text (results map back in order).
+    expect(rows[0].embedding).toEqual(
+      fakeEmbed(`${rows[0].question}\n${rows[0].answer}`),
+    );
+    expect(rows[1].embedding).toEqual(
+      fakeEmbed(`${rows[1].question}\n${rows[1].answer}`),
+    );
+  });
+
+  it('splits more than 100 stale FAQs across several batch calls', async () => {
+    const rows = Array.from({ length: 250 }, (_, i) =>
+      makeFaq(`faq-${i}`, `Câu hỏi số ${i}?`, `Câu trả lời số ${i}.`),
+    );
+    const service = makeService(makeRepo(rows));
+
+    const summary = await service.refresh();
+
+    expect(summary).toEqual({ indexed: 250, embedded: 250, failed: 0 });
+    expect(
+      batchEmbedContents.mock.calls.map((call) => call[0].requests.length),
+    ).toEqual([100, 100, 50]);
+  });
+
+  it('when a batch fails, retries row by row so one bad FAQ does not hide the others', async () => {
+    const rows = seedRows();
+    const repo = makeRepo(rows);
+    const service = makeService(repo);
+    batchEmbedContents.mockRejectedValueOnce(new Error('400 invalid content'));
+    // Row-by-row retry runs in order: the first FAQ is the unembeddable one.
+    embedContent.mockRejectedValueOnce(new Error('text too long'));
+
+    const summary = await service.refresh();
+
+    expect(summary).toEqual({ indexed: 1, embedded: 1, failed: 1 });
+    expect(embedContent).toHaveBeenCalledTimes(2);
+    expect(repo.update).toHaveBeenCalledTimes(1);
+    expect(rows[0].embedding).toBeNull(); // failed row stays stale -> retried next time
+    expect(rows[1].embedding).not.toBeNull();
+
+    // The failure kept the index "not ready", so the next refresh embeds the bad row again.
+    const retry = await service.refresh();
+    expect(retry).toEqual({ indexed: 2, embedded: 1, failed: 0 });
   });
 
   it('excludes inactive FAQs from search results', async () => {
