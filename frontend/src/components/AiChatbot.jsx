@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLazyGetAiHistoryQuery, useSendAiMessageMutation } from '../services/aiAgent';
 import useDraggableWidget from '../hooks/useDraggableWidget';
+import useExclusiveChatPanel from '../hooks/useExclusiveChatPanel';
 import {
     buildMessagesFromHistory,
     clearStoredConversationId,
@@ -25,7 +26,7 @@ const AiChatbot = () => {
     const { isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
 
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useExclusiveChatPanel('ai');
     const [conversationId, setConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputStr, setInputStr] = useState('');
