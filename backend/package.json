@@ -27,6 +27,7 @@
     "eval:rag": "ts-node -r tsconfig-paths/register src/ai-agent/rag/eval/evaluate-rag.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1136.0",
     "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
