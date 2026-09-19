@@ -43,6 +43,7 @@ import { HotelConfigModule } from './hotel-config/hotel-config.module';
           config.get<string>('DB_SSL') === 'true'
             ? { rejectUnauthorized: false }
             : false,
+        extra:{options:`-c timezone=${process.env.TZ}`},
       }),
     }),
     UserModule,

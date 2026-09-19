@@ -50,6 +50,40 @@ const NEGATED_AFFIRMATIVE_RE = new RegExp(
   'iu',
 );
 
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const ROOM_NAME_SYNONYMS: Record<string, string> = {
+  'tieu chuan': 'standard',
+  'gia dinh': 'family',
+  'cao cap': 'deluxe',
+  'sang trong': 'deluxe',
+  'thuong gia': 'executive',
+  'huong bien': 'ocean view',
+  'view bien': 'ocean view',
+  'huong pho': 'city view',
+  'huong thanh pho': 'city view',
+  'view thanh pho': 'city view',
+};
+
+function toRoomNameKeywords(input: string): string[] {
+  let text = normalizeText(input).replace(/\b(phong|room)\b/g, ' ');
+  const phrases = Object.keys(ROOM_NAME_SYNONYMS).sort(
+    (a, b) => b.length - a.length,
+  );
+  for (const phrase of phrases) {
+    text = text.replaceAll(phrase, ROOM_NAME_SYNONYMS[phrase]);
+  }
+  return text.split(' ').filter(Boolean);
+}
+
 @Injectable()
 export class AiAgentToolsService {
   private readonly logger = new Logger(AiAgentToolsService.name);
@@ -134,8 +168,11 @@ export class AiAgentToolsService {
       guests,
     );
     if (roomTypeName) {
-      const needle = roomTypeName.toLowerCase();
-      results = results.filter((rt) => rt.name.toLowerCase().includes(needle));
+      const keywords = toRoomNameKeywords(roomTypeName);
+      results = results.filter((rt) => {
+        const name = normalizeText(rt.name);
+        return keywords.every((kw) => name.includes(kw));
+      });
     }
     // Lọc giá ngay ở server thay vì để model chỉ lọc bằng lời trong câu trả lời — nếu
     // không, danh sách card phòng hiển thị cho khách (lấy nguyên kết quả tool này) sẽ
@@ -421,7 +458,8 @@ export class AiAgentToolsService {
     // LLM có thể truyền radius sai định dạng (chuỗi rỗng, mô tả chữ...) -> Number() ra
     // NaN, không phải undefined nên tham số mặc định của PlacesService không tự kích
     // hoạt được — lọc kỹ để rơi về undefined (dùng mặc định) thay vì gửi NaN xuống.
-    const rawRadius = args.radius !== undefined ? Number(args.radius) : undefined;
+    const rawRadius =
+      args.radius !== undefined ? Number(args.radius) : undefined;
     const radius =
       rawRadius !== undefined && Number.isFinite(rawRadius) && rawRadius > 0
         ? rawRadius

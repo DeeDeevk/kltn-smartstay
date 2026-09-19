@@ -36,6 +36,7 @@ import ShiftSchedulePage from '../components/admin/shifts/ShiftSchedulePage'
 import MySchedulePage from '../components/admin/shifts/MySchedulePage'
 import RevenueSummaryPage from '../components/admin/revenue/RevenueSummaryPage'
 import HotelLocationSettingsPage from '../components/admin/settings/HotelLocationSettingsPage'
+import FaqManagementPage from '../components/admin/faqs/FaqManagementPage'
 import RevenueByStaffPage from '../components/admin/revenue/RevenueByStaffPage'
 import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
 import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
@@ -911,6 +912,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <HotelLocationSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="faqs"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <FaqManagementPage />
               </ProtectedRoute>
             }
           />

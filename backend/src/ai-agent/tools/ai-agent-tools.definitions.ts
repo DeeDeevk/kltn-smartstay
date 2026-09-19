@@ -30,7 +30,8 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
         },
         roomTypeName: {
           type: 'string',
-          description: 'Tên loại phòng khách muốn lọc (không bắt buộc)',
+          description:
+            'Tên hoặc mô tả loại phòng khách muốn lọc, giữ nguyên cách khách nói (VD "phòng tiêu chuẩn", "deluxe hướng biển") — server tự quy đổi sang tên tiếng Anh. Nếu kết quả rỗng, KHÔNG gọi lại mà bỏ bộ lọc; hãy báo khách không có loại phòng đó trống và hỏi khách có muốn xem các phòng khác không (không bắt buộc).',
         },
         maxPrice: {
           type: 'integer',
