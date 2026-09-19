@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AiAgentService } from './ai-agent.service';
 import { AiConversation } from './entities/ai-conversation.entity';
 import { AiMessage } from './entities/ai-message.entity';
@@ -31,8 +32,20 @@ class FakeRepo<T extends { createdAt?: Date }> {
     );
   }
 
-  findOne(): Promise<T | undefined> {
-    return Promise.resolve(this.rows[this.rows.length - 1]);
+  // Lọc theo các field trong `where` (so sánh bằng ===), lấy bản ghi lưu gần nhất khớp —
+  // giống findOne thật: không khớp thì trả undefined thay vì bản ghi bất kỳ.
+  findOne(options?: {
+    where?: Record<string, unknown>;
+  }): Promise<T | undefined> {
+    const where = Object.entries(options?.where ?? {});
+    const match = [...this.rows]
+      .reverse()
+      .find((row) =>
+        where.every(
+          ([key, value]) => (row as Record<string, unknown>)[key] === value,
+        ),
+      );
+    return Promise.resolve(match);
   }
 }
 
@@ -62,13 +75,13 @@ describe('AiAgentService', () => {
       toolsService as unknown as never,
     );
 
-    // getOwnedConversation so sánh conversation.user.userId — set sẵn để findOne trả về
-    // đúng owner cho các lượt hội thoại tiếp theo trong cùng 1 test.
+    // getOwnedConversation so sánh conversation.userId (cột FK mà repo thật tự điền khi
+    // findOne) — set sẵn để findOne trả về đúng owner cho các lượt tiếp theo trong test.
     conversationRepo.create = function (partial) {
       return {
         ...partial,
         conversationId: randomUUID(),
-        user: { userId },
+        userId,
       } as unknown as AiConversation;
     };
   });
@@ -149,6 +162,40 @@ describe('AiAgentService', () => {
     );
     /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     expect(turn2.reply).toContain('thành công');
+  });
+
+  it('hội thoại không tồn tại thì báo 404 và không gọi LLM', async () => {
+    await expect(
+      service.sendMessage(userId, {
+        conversationId: randomUUID(),
+        message: 'Xin chào',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+  });
+
+  it('hội thoại của người khác thì báo 403, cả khi nhắn tin lẫn khi xem lịch sử', async () => {
+    llmProvider.chat.mockResolvedValue({
+      text: 'Dạ em chào anh/chị ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+    const { conversationId } = await service.sendMessage(userId, {
+      message: 'Xin chào',
+    });
+    llmProvider.chat.mockClear();
+
+    await expect(
+      service.sendMessage('user-2', { conversationId, message: 'Cho tôi xem' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.getHistory(conversationId, 'user-2'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+
+    // Chủ sở hữu thật vẫn xem được.
+    await expect(
+      service.getHistory(conversationId, userId),
+    ).resolves.toHaveLength(2);
   });
 
   it('luồng thiếu thông tin: agent hỏi lại thay vì gọi tool khi khách chưa cho đủ dữ liệu', async () => {

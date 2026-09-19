@@ -219,7 +219,9 @@ export class AiAgentService {
     if (!conversation) {
       throw new NotFoundException('Không tìm thấy cuộc hội thoại');
     }
-    if (conversation.user.userId !== userId) {
+    // Vẫn tách 2 bước để phân biệt "không tồn tại" (404) và "của người khác" (403) như
+    // trước; conversation.userId là cột FK đọc trong cùng query, không tải entity User.
+    if (conversation.userId !== userId) {
       throw new ForbiddenException(
         'Bạn không có quyền truy cập cuộc hội thoại này',
       );
