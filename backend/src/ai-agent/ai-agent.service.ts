@@ -32,6 +32,12 @@ const FALLBACK_REPLY =
 // Chỉ gửi cho LLM N lượt hỏi-đáp gần nhất — hội thoại dài mà gửi toàn bộ thì mỗi tin
 // nhắn mới đều tốn token cho cả lịch sử cũ, chậm và đắt dần theo thời gian.
 const MAX_HISTORY_TURNS = 10;
+// Số dòng tối đa đọc từ DB để dựng ngữ cảnh cho LLM (sendMessage) — buildHistoryContext()
+// chỉ dùng MAX_HISTORY_TURNS lượt gần nhất + vài kết quả tool nên không cần tải cả hội
+// thoại dài mỗi tin nhắn. Mỗi lượt chiếm USER + các dòng TOOL + MODEL, nên 40 dòng đủ cho
+// 10 lượt khi trung bình mỗi lượt gọi không quá 2 tool. getHistory() thì không dùng
+// giới hạn này (xem ghi chú tại đó).
+const HISTORY_FETCH_LIMIT = 40;
 // Lỗi tạm thời từ nhà cung cấp LLM (quá tải/giới hạn tần suất) — đáng để thử lại.
 const RETRYABLE_LLM_STATUS = new Set([429, 500, 502, 503, 504]);
 const LLM_RETRY_DELAYS_MS = [1000, 3000];
@@ -54,10 +60,7 @@ export class AiAgentService {
       ? await this.getOwnedConversation(dto.conversationId, userId)
       : await this.createConversation(userId);
 
-    const history = await this.messageRepo.find({
-      where: { conversation: { conversationId: conversation.conversationId } },
-      order: { createdAt: 'ASC' },
-    });
+    const history = await this.loadRecentMessages(conversation.conversationId);
 
     const userMessage = await this.messageRepo.save(
       this.messageRepo.create({
@@ -185,6 +188,10 @@ export class AiAgentService {
       conversationId,
       userId,
     );
+    // Cố ý tải TOÀN BỘ, không giới hạn như loadRecentMessages(): hàm này trả lại đầy đủ
+    // hội thoại cho khách xem/cuộn lại, còn loadRecentMessages() chỉ dựng ngữ cảnh gửi
+    // LLM (vốn đã tự cắt còn vài lượt gần nhất). Hai mục đích khác nhau, không phải
+    // thiếu nhất quán.
     const messages = await this.messageRepo.find({
       where: { conversation: { conversationId: conversation.conversationId } },
       order: { createdAt: 'ASC' },
@@ -198,6 +205,25 @@ export class AiAgentService {
       toolResult: m.toolResult,
       createdAt: m.createdAt,
     }));
+  }
+
+  // Lấy HISTORY_FETCH_LIMIT dòng gần nhất ở tầng DB (DESC + take) rồi đảo lại thành thứ
+  // tự cũ -> mới như buildHistoryContext() mong đợi. Cửa sổ theo số dòng có thể bắt đầu
+  // giữa 1 lượt (VD ngay tại dòng TOOL/MODEL) nên bỏ các dòng đầu cho tới tin nhắn USER
+  // đầu tiên — buildHistoryContext() luôn giả định ngữ cảnh mở đầu bằng câu của khách.
+  private async loadRecentMessages(
+    conversationId: string,
+  ): Promise<AiMessage[]> {
+    const newestFirst = await this.messageRepo.find({
+      where: { conversation: { conversationId } },
+      order: { createdAt: 'DESC' },
+      take: HISTORY_FETCH_LIMIT,
+    });
+    const oldestFirst = newestFirst.reverse();
+    const firstUserIndex = oldestFirst.findIndex(
+      (m) => m.role === AiMessageRole.USER,
+    );
+    return firstUserIndex === -1 ? [] : oldestFirst.slice(firstUserIndex);
   }
 
   private async createConversation(userId: string): Promise<AiConversation> {

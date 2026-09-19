@@ -24,11 +24,18 @@ class FakeRepo<T extends { createdAt?: Date }> {
     return Promise.resolve(entity);
   }
 
-  find(): Promise<T[]> {
+  // Hỗ trợ order theo createdAt và take. DESC = sắp ASC (ổn định) rồi đảo, để các dòng
+  // trùng createdAt (lưu liên tiếp trong cùng mili-giây) vẫn giữ đúng thứ tự thời gian.
+  find(options?: {
+    order?: { createdAt?: 'ASC' | 'DESC' };
+    take?: number;
+  }): Promise<T[]> {
+    const sorted = [...this.rows].sort(
+      (a, b) => a.createdAt!.getTime() - b.createdAt!.getTime(),
+    );
+    if (options?.order?.createdAt === 'DESC') sorted.reverse();
     return Promise.resolve(
-      [...this.rows].sort(
-        (a, b) => a.createdAt!.getTime() - b.createdAt!.getTime(),
-      ),
+      options?.take === undefined ? sorted : sorted.slice(0, options.take),
     );
   }
 
@@ -323,5 +330,63 @@ describe('AiAgentService', () => {
     expect(userTexts[0]).toBe('câu hỏi số 2');
     expect(userTexts.at(-1)).toBe('câu hỏi số 12');
     expect(sent[0].role).toBe('user');
+  });
+
+  it('chỉ đọc 40 dòng gần nhất từ DB; cửa sổ cắt giữa lượt vẫn mở đầu bằng tin nhắn khách, còn getHistory trả đủ', async () => {
+    // Mỗi lượt = 1 USER + 4 TOOL + 1 MODEL = 6 dòng nên 12 lượt (72 dòng) vượt xa 40.
+    llmProvider.chat.mockImplementation((messages: Array<{ role: string }>) =>
+      Promise.resolve(
+        messages.at(-1)?.role === 'tool'
+          ? { text: 'Dạ vâng ạ.', toolCalls: [] }
+          : {
+              text: null,
+              toolCalls: [1, 2, 3, 4].map((n) => ({
+                id: `c${n}`,
+                name: 'search_rooms',
+                args: {},
+              })),
+            },
+      ),
+    );
+    toolsService.execute.mockResolvedValue({ success: true, data: [] });
+
+    let conversationId: string | undefined;
+    for (let i = 1; i <= 12; i += 1) {
+      const result = await service.sendMessage(userId, {
+        conversationId,
+        message: `câu hỏi số ${i}`,
+      });
+      conversationId = result.conversationId;
+    }
+
+    const findSpy = jest.spyOn(messageRepo, 'find');
+    llmProvider.chat.mockClear();
+    await service.sendMessage(userId, {
+      conversationId,
+      message: 'câu hỏi số 13',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const expectedQuery = expect.objectContaining({
+      order: { createdAt: 'DESC' },
+      take: 40,
+    });
+    expect(findSpy).toHaveBeenCalledWith(expectedQuery);
+
+    // Lần gọi LLM đầu tiên của lượt 13. 40 dòng cuối của 72 dòng bắt đầu ở 1 dòng TOOL
+    // của lượt 6 -> bị bỏ cho tới USER kế tiếp (câu 7); thứ tự vẫn cũ -> mới.
+    const firstCall = llmProvider.chat.mock.calls[0] as [
+      Array<{ role: string; parts: Array<{ text?: string }> }>,
+    ];
+    const sent = firstCall[0].filter((m) => m.role !== 'system');
+    expect(sent[0].role).toBe('user');
+    expect(
+      sent.filter((m) => m.role === 'user').map((m) => m.parts[0].text),
+    ).toEqual([7, 8, 9, 10, 11, 12, 13].map((n) => `câu hỏi số ${n}`));
+
+    // getHistory vẫn trả toàn bộ 13 lượt x 6 dòng, không bị giới hạn.
+    await expect(
+      service.getHistory(conversationId!, userId),
+    ).resolves.toHaveLength(78);
   });
 });
