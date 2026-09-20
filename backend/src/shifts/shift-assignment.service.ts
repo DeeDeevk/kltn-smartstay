@@ -417,7 +417,7 @@ export class ShiftAssignmentService {
     });
     if (!openShift) {
       throw new ForbiddenException(
-        'Bạn cần vô ca trước khi check-in/check-out cho khách',
+        'Bạn cần vô ca trước khi làm thủ tục nhận/trả phòng cho khách',
       );
     }
     const { end } = buildShiftWindow(

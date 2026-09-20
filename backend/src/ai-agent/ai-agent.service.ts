@@ -49,7 +49,7 @@ export class AiAgentService {
     private readonly toolsService: AiAgentToolsService,
   ) {}
 
-  async sendMessage(userId: string, dto: SendMessageDto) {
+  async sendMessage(userId: string, dto: SendMessageDto, role = 'CUSTOMER') {
     const conversation = dto.conversationId
       ? await this.getOwnedConversation(dto.conversationId, userId)
       : await this.createConversation(userId);
@@ -114,6 +114,7 @@ export class AiAgentService {
           call.args,
           {
             userId,
+            role,
             conversation,
             currentUserMessage: {
               text: userMessage.content ?? '',

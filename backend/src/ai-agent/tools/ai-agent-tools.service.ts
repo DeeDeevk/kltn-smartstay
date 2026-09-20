@@ -10,6 +10,8 @@ import { ServiceService } from 'src/services/service.service';
 import { PaymentService } from 'src/payments/payment.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
+import { BookingStatus } from 'src/common/enums/booking-status.enum';
+import { UserRole } from 'src/common/enums/user-role.enum';
 import { PlaceCategory } from 'src/common/enums/place-category.enum';
 import { PlacesService } from 'src/hotel-config/places.service';
 import { LocalEventService } from 'src/hotel-config/local-event.service';
@@ -21,6 +23,9 @@ import {
 
 export interface ToolExecutionContext {
   userId: string;
+  // Vai trò của người đang chat — quyết định phạm vi dữ liệu được xem (vd. khách chỉ
+  // xem được đơn của chính mình, lễ tân/admin xem được đơn của cả khách sạn).
+  role: string;
   conversation: AiConversation;
   currentUserMessage: {
     text: string;
@@ -32,6 +37,11 @@ export interface ToolExecutionContext {
 
 export type ToolExecutionResult =
   { success: true; data: unknown } | { success: false; error: string };
+
+const BOOKING_DATE_TYPES = ['arrival', 'departure', 'staying', 'created'];
+// Trần số đơn nhét vào ngữ cảnh model — 1 ngày đông khách vẫn đủ, mà không làm phình
+// prompt. Tổng số thật vẫn được trả kèm trong "total".
+const BOOKING_LIST_LIMIT = 30;
 
 const AFFIRMATIVE_WORDS =
   'đồng ý|dong y|xác nhận|xac nhan|chốt|chot|oke|okie|okay|ok|được|duoc|yes|confirm';
@@ -134,6 +144,8 @@ export class AiAgentToolsService {
         return this.getPromotions();
       case 'get_policy':
         return this.getPolicy(args);
+      case 'list_bookings_by_date':
+        return this.listBookingsByDate(args, ctx);
       case 'request_booking_form':
         // Tool này không thao tác dữ liệu gì — chỉ là tín hiệu để backend trả kèm
         // "bookingFormRequest" trong response cho frontend hiển thị biểu mẫu.
@@ -251,6 +263,57 @@ export class AiAgentToolsService {
         content: r.entry.answer,
         similarity: r.similarity,
         lowConfidence: r.lowConfidence,
+      })),
+    };
+  }
+
+  // Tra cứu đơn đặt phòng của 1 ngày. Phạm vi dữ liệu do VAI TRÒ quyết định ở đây, không
+  // để model tự chọn: khách hàng chỉ thấy đơn của chính mình, lễ tân/admin thấy toàn bộ.
+  private async listBookingsByDate(
+    args: Record<string, unknown>,
+    ctx: ToolExecutionContext,
+  ) {
+    const date = typeof args.date === 'string' ? args.date.trim() : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException(
+        'Thiếu ngày cần tra cứu hoặc sai định dạng (cần YYYY-MM-DD).',
+      );
+    }
+
+    const dateType = BOOKING_DATE_TYPES.includes(args.dateType as string)
+      ? (args.dateType as 'arrival' | 'departure' | 'staying' | 'created')
+      : 'arrival';
+    const status =
+      typeof args.status === 'string' &&
+      (Object.values(BookingStatus) as string[]).includes(args.status)
+        ? (args.status as BookingStatus)
+        : undefined;
+
+    const role = ctx.role as UserRole;
+    const isStaff = role === UserRole.STAFF || role === UserRole.ADMIN;
+    const result = await this.bookingService.findByDateForAgent({
+      date,
+      dateType,
+      status,
+      requesterUserId: isStaff ? undefined : ctx.userId,
+      limit: BOOKING_LIST_LIMIT,
+    });
+
+    return {
+      date,
+      dateType,
+      scope: isStaff ? 'hotel' : 'own',
+      total: result.total,
+      statusCounts: result.statusCounts,
+      // Model chỉ thấy tối đa BOOKING_LIST_LIMIT đơn, nhưng total là số thật — nói rõ để
+      // model không kết luận "chỉ có N đơn" khi danh sách bị cắt bớt.
+      truncated: result.total > result.bookings.length,
+      bookings: result.bookings.map((booking) => ({
+        ...booking,
+        // Mã đơn hiển thị cho khách = 8 ký tự đầu của UUID, viết hoa.
+        bookingCode: booking.bookingId.slice(0, 8).toUpperCase(),
+        // Khách không cần (và không nên) thấy số điện thoại trong danh sách.
+        guestPhone: isStaff ? booking.guestPhone : undefined,
       })),
     };
   }
