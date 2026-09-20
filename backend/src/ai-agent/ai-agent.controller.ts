@@ -23,7 +23,9 @@ export class AiAgentController {
 
   @Post('chat')
   chat(@Req() req: AuthenticatedRequest, @Body() dto: SendMessageDto) {
-    return this.aiAgentService.sendMessage(req.user.userId, dto);
+    // Truyền cả role: tool tra cứu đơn đặt phòng giới hạn phạm vi dữ liệu theo vai trò
+    // (khách chỉ xem đơn của mình, lễ tân/admin xem toàn bộ đơn của khách sạn).
+    return this.aiAgentService.sendMessage(req.user.userId, dto, req.user.role);
   }
 
   @Get('conversations/:id')

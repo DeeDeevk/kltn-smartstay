@@ -829,10 +829,12 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          {/* Lễ tân cũng cần xác nhận đơn/nhận phòng từ danh sách đặt phòng — mọi API
+              trang này dùng (list, confirm, check-in/out, cancel) đều đã mở cho STAFF. */}
           <Route
             path="bookings"
             element={
-              <ProtectedRoute roles={['ADMIN']}>
+              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
                 <BookingManagementPage />
               </ProtectedRoute>
             }

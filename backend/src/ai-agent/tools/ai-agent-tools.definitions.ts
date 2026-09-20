@@ -163,6 +163,39 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
     },
   },
   {
+    name: 'list_bookings_by_date',
+    description:
+      'Tra cứu các đơn đặt phòng của MỘT ngày cụ thể (số lượng đơn, tên khách, phòng, trạng thái, tiền). Dùng khi được hỏi về tình hình đặt phòng của một ngày: "hôm nay có bao nhiêu khách nhận phòng", "ngày 20/9 có đơn nào", "hôm nay ai trả phòng", "đơn nào đặt trong hôm nay". Khách hàng gọi tool này chỉ nhận được đơn của chính họ; lễ tân/quản trị viên nhận được toàn bộ đơn của khách sạn. LUÔN dựa vào số liệu tool trả về, tuyệt đối không tự suy đoán hay bịa số đơn.',
+    parameters: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description:
+            'Ngày cần tra cứu, định dạng YYYY-MM-DD. Khách nói "hôm nay"/"ngày mai" thì tự quy đổi theo ngày hiện tại đã nêu trong system prompt.',
+        },
+        dateType: {
+          type: 'string',
+          description:
+            'Cách hiểu ngày: arrival = đơn NHẬN phòng ngày đó (mặc định), departure = đơn TRẢ phòng ngày đó, staying = đơn đang lưu trú qua ngày đó, created = đơn được TẠO trong ngày đó.',
+          enum: ['arrival', 'departure', 'staying', 'created'],
+        },
+        status: {
+          type: 'string',
+          description: 'Lọc theo trạng thái đơn, không bắt buộc.',
+          enum: [
+            'PENDING',
+            'CONFIRMED',
+            'CHECKED_IN',
+            'CHECKED_OUT',
+            'CANCELLED',
+          ],
+        },
+      },
+      required: ['date'],
+    },
+  },
+  {
     name: 'create_booking',
     description:
       'Tạo booking thật trong hệ thống dựa trên đề xuất đã propose_booking và đã được khách xác nhận đồng ý ở lượt hội thoại kế tiếp. Không cần truyền tham số — server dùng lại đúng thông tin đã tóm tắt cho khách trước đó. Nếu khách chưa xác nhận, tool sẽ báo lỗi và không tạo booking.',
