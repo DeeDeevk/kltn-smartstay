@@ -451,6 +451,88 @@ export class BookingService {
     return this.toDetailResponse(booking);
   }
 
+  // Tra cứu đơn của MỘT ngày cụ thể, dùng cho trợ lý AI trả lời "hôm nay có bao nhiêu
+  // khách nhận phòng", "ngày 20/9 có đơn nào"...
+  // - arrival: đơn nhận phòng đúng ngày đó
+  // - departure: đơn trả phòng đúng ngày đó
+  // - staying: đơn đang lưu trú qua ngày đó (nhận trước/đúng ngày, trả sau ngày đó)
+  // - created: đơn được tạo trong ngày đó
+  // requesterUserId có giá trị (khách hàng) thì CHỈ trả đơn của chính họ — lễ tân/admin
+  // truyền undefined để xem toàn bộ đơn của khách sạn.
+  async findByDateForAgent(input: {
+    date: string;
+    dateType: 'arrival' | 'departure' | 'staying' | 'created';
+    status?: BookingStatus;
+    requesterUserId?: string;
+    limit: number;
+  }) {
+    const qb = this.baseQuery();
+
+    switch (input.dateType) {
+      case 'departure':
+        qb.where('booking.checkOutDate = :date', { date: input.date });
+        break;
+      case 'staying':
+        qb.where('booking.checkInDate <= :date', { date: input.date }).andWhere(
+          'booking.checkOutDate > :date',
+          { date: input.date },
+        );
+        break;
+      case 'created':
+        // createdAt là timestamp không timezone, session Postgres đã được đặt cùng múi
+        // giờ với Node (xem app.module) nên so theo ngày địa phương là đúng.
+        qb.where('CAST(booking.createdAt AS DATE) = :date', {
+          date: input.date,
+        });
+        break;
+      default:
+        qb.where('booking.checkInDate = :date', { date: input.date });
+    }
+
+    if (input.status) {
+      qb.andWhere('booking.status = :status', { status: input.status });
+    }
+    if (input.requesterUserId) {
+      qb.andWhere('user.userId = :requesterUserId', {
+        requesterUserId: input.requesterUserId,
+      });
+    }
+
+    const total = await qb.clone().getCount();
+    const bookings = await qb
+      .orderBy('booking.checkInDate', 'ASC')
+      .addOrderBy('booking.createdAt', 'ASC')
+      .take(input.limit)
+      .getMany();
+
+    const statusCounts: Record<string, number> = {};
+    for (const booking of bookings) {
+      statusCounts[booking.status] = (statusCounts[booking.status] ?? 0) + 1;
+    }
+
+    return {
+      total,
+      statusCounts,
+      bookings: bookings.map((booking) => {
+        const detail = this.toDetailResponse(booking);
+        return {
+          bookingId: booking.bookingId,
+          guestName: booking.guestInfo?.fullName ?? null,
+          guestPhone: booking.guestInfo?.phone ?? null,
+          roomTypeName: booking.roomType?.name ?? null,
+          roomNumber: booking.room?.roomNumber ?? null,
+          checkInDate: booking.checkInDate,
+          checkOutDate: booking.checkOutDate,
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          paymentMethod: booking.paymentMethod,
+          totalAmount: detail.totalAmount,
+          dueAmount: detail.dueAmount,
+        };
+      }),
+    };
+  }
+
   // Cấp 1 mã orderCode PayOS mới cho booking (ghi đè mã cũ) — dùng khi lễ tân tạo
   // link chuyển khoản thu phần còn lại lúc trả phòng, số tiền khác với lúc đặt.
   async assignFreshPayosOrderCode(bookingId: string): Promise<string> {

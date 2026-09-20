@@ -19,7 +19,10 @@ import type {
   LlmMessage,
   LlmProvider,
 } from './llm/llm-provider.interface';
-import { AI_AGENT_TOOLS } from './tools/ai-agent-tools.definitions';
+import {
+  AI_AGENT_TOOLS,
+  LOGIN_REQUIRED_TOOLS,
+} from './tools/ai-agent-tools.definitions';
 import { AiAgentToolsService } from './tools/ai-agent-tools.service';
 import { buildSystemPrompt } from './constants/system-prompt.constant';
 
@@ -51,6 +54,14 @@ export const AI_DAILY_QUOTA_EXCEEDED = 'AI_DAILY_QUOTA_EXCEEDED';
 const RETRYABLE_LLM_STATUS = new Set([429, 500, 502, 503, 504]);
 const LLM_RETRY_DELAYS_MS = [1000, 3000];
 
+// Khách chưa đăng nhập thì không gửi các tool cần tài khoản cho model — model không
+// "nhìn thấy" chúng nên sẽ mời khách đăng nhập thay vì gọi rồi nhận lỗi. Tool service
+// vẫn chặn lần nữa ở phía dưới, đây chỉ là lớp giúp hội thoại mượt hơn.
+function toolsForRequester(isLoggedIn: boolean) {
+  if (isLoggedIn) return AI_AGENT_TOOLS;
+  return AI_AGENT_TOOLS.filter((tool) => !LOGIN_REQUIRED_TOOLS.has(tool.name));
+}
+
 @Injectable()
 export class AiAgentService {
   private readonly logger = new Logger(AiAgentService.name);
@@ -64,11 +75,19 @@ export class AiAgentService {
     private readonly toolsService: AiAgentToolsService,
   ) {}
 
-  async sendMessage(userId: string, dto: SendMessageDto) {
-    await this.assertWithinDailyQuota(userId);
+  // userId = null: khách vãng lai chưa đăng nhập. Vẫn chat/tra cứu được, nhưng các tool
+  // đặt phòng bị gỡ khỏi danh sách tool gửi cho model (xem toolsForRequester).
+  async sendMessage(
+    userId: string | null,
+    dto: SendMessageDto,
+    role = 'CUSTOMER',
+  ) {
+    // Hạn mức ngày tính theo tài khoản nên chỉ áp dụng cho người đã đăng nhập; khách vãng
+    // lai chỉ bị giới hạn theo IP bằng @Throttle ở controller.
+    if (userId) await this.assertWithinDailyQuota(userId);
 
     const conversation = dto.conversationId
-      ? await this.getOwnedConversation(dto.conversationId, userId)
+      ? await this.getAccessibleConversation(dto.conversationId, userId)
       : await this.createConversation(userId);
 
     const history = await this.loadRecentMessages(conversation.conversationId);
@@ -84,7 +103,9 @@ export class AiAgentService {
     const llmMessages: LlmMessage[] = [
       {
         role: 'system',
-        parts: [{ type: 'text', text: buildSystemPrompt() }],
+        parts: [
+          { type: 'text', text: buildSystemPrompt({ isGuest: !userId }) },
+        ],
       },
       ...this.buildHistoryContext(history),
       this.toLlmMessage(userMessage),
@@ -95,8 +116,9 @@ export class AiAgentService {
     let latestPromotions: unknown[] | null = null;
     let latestBooking: unknown = null;
     let latestBookingFormRequest: unknown = null;
+    const tools = toolsForRequester(Boolean(userId));
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const result = await this.chatWithRetry(llmMessages);
+      const result = await this.chatWithRetry(llmMessages, tools);
       // LLM vẫn lỗi sau khi đã thử lại -> dừng, trả FALLBACK_REPLY thay vì lỗi 500.
       if (!result) break;
 
@@ -128,6 +150,7 @@ export class AiAgentService {
           call.args,
           {
             userId,
+            role,
             conversation,
             currentUserMessage: {
               text: userMessage.content ?? '',
@@ -194,8 +217,8 @@ export class AiAgentService {
     };
   }
 
-  async getHistory(conversationId: string, userId: string) {
-    const conversation = await this.getOwnedConversation(
+  async getHistory(conversationId: string, userId: string | null) {
+    const conversation = await this.getAccessibleConversation(
       conversationId,
       userId,
     );
@@ -265,18 +288,26 @@ export class AiAgentService {
     return firstUserIndex === -1 ? [] : oldestFirst.slice(firstUserIndex);
   }
 
-  private async createConversation(userId: string): Promise<AiConversation> {
+  private async createConversation(
+    userId: string | null,
+  ): Promise<AiConversation> {
     const conversation = this.conversationRepo.create({
-      user: { userId } as AiConversation['user'],
+      user: userId ? { userId } : null,
       pendingBooking: null,
       pendingBookingProposedAt: null,
     });
     return this.conversationRepo.save(conversation);
   }
 
-  private async getOwnedConversation(
+  // Quy tắc truy cập hội thoại:
+  // - Hội thoại có chủ: chỉ chính chủ mới xem/tiếp tục được.
+  // - Hội thoại của khách vãng lai (chưa có chủ): ai cầm đúng conversationId (UUID ngẫu
+  //   nhiên, chỉ lưu trong trình duyệt của khách đó) thì tiếp tục được. Nếu lúc này khách
+  //   đã đăng nhập, gắn luôn hội thoại vào tài khoản để khách chat tiếp rồi đăng nhập đặt
+  //   phòng mà không mất ngữ cảnh đang trao đổi.
+  private async getAccessibleConversation(
     conversationId: string,
-    userId: string,
+    userId: string | null,
   ): Promise<AiConversation> {
     const conversation = await this.conversationRepo.findOne({
       where: { conversationId },
@@ -284,8 +315,17 @@ export class AiAgentService {
     if (!conversation) {
       throw new NotFoundException('Không tìm thấy cuộc hội thoại');
     }
-    // Vẫn tách 2 bước để phân biệt "không tồn tại" (404) và "của người khác" (403) như
-    // trước; conversation.userId là cột FK đọc trong cùng query, không tải entity User.
+    // Đọc chủ sở hữu qua conversation.userId (cột FK có sẵn trong cùng query), KHÔNG dùng
+    // conversation.user: quan hệ user không còn eager nên luôn là undefined, nếu kiểm tra
+    // theo nó thì mọi hội thoại sẽ bị coi là của khách vãng lai và ai có ID cũng chiếm được.
+    if (!conversation.userId) {
+      if (userId) {
+        conversation.user = { userId } as AiConversation['user'];
+        await this.conversationRepo.save(conversation);
+      }
+      return conversation;
+    }
+    // Vẫn tách 2 bước để phân biệt "không tồn tại" (404) và "của người khác" (403).
     if (conversation.userId !== userId) {
       throw new ForbiddenException(
         'Bạn không có quyền truy cập cuộc hội thoại này',
@@ -304,10 +344,11 @@ export class AiAgentService {
   // lỗi — người gọi sẽ trả FALLBACK_REPLY cho khách thay vì để lỗi 500 lọt ra ngoài.
   private async chatWithRetry(
     messages: LlmMessage[],
+    tools: typeof AI_AGENT_TOOLS = AI_AGENT_TOOLS,
   ): Promise<LlmChatResult | null> {
     for (let attempt = 0; ; attempt += 1) {
       try {
-        return await this.llmProvider.chat(messages, AI_AGENT_TOOLS);
+        return await this.llmProvider.chat(messages, tools);
       } catch (err) {
         const status = (err as { status?: number })?.status;
         const retryable =

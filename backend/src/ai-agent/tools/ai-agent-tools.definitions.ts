@@ -8,6 +8,16 @@ import { LlmTool } from '../llm/llm-provider.interface';
 // lời đồng ý rõ ràng — đây là cách hiện thực guardrail "phải tóm tắt & chờ khách xác
 // nhận ở lượt kế tiếp" một cách chắc chắn bằng code, thay vì chỉ dựa vào việc model
 // tự giác làm đúng theo system prompt.
+// Tool chỉ dùng được khi khách đã đăng nhập: đều cần một tài khoản để gắn đơn đặt phòng
+// hoặc để giới hạn dữ liệu theo người xem. Khách vãng lai vẫn hỏi phòng trống, giá,
+// khuyến mãi, chính sách (FAQ), địa điểm/sự kiện quanh khách sạn bình thường.
+export const LOGIN_REQUIRED_TOOLS = new Set([
+  'propose_booking',
+  'create_booking',
+  'request_booking_form',
+  'list_bookings_by_date',
+]);
+
 export const AI_AGENT_TOOLS: LlmTool[] = [
   {
     name: 'search_rooms',
@@ -30,7 +40,8 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
         },
         roomTypeName: {
           type: 'string',
-          description: 'Tên loại phòng khách muốn lọc (không bắt buộc)',
+          description:
+            'Tên hoặc mô tả loại phòng khách muốn lọc, giữ nguyên cách khách nói (VD "phòng tiêu chuẩn", "deluxe hướng biển") — server tự quy đổi sang tên tiếng Anh. Nếu kết quả rỗng, KHÔNG gọi lại mà bỏ bộ lọc; hãy báo khách không có loại phòng đó trống và hỏi khách có muốn xem các phòng khác không (không bắt buộc).',
         },
         maxPrice: {
           type: 'integer',
@@ -159,6 +170,39 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
         'guestPhone',
         'paymentMethod',
       ],
+    },
+  },
+  {
+    name: 'list_bookings_by_date',
+    description:
+      'Tra cứu các đơn đặt phòng của MỘT ngày cụ thể (số lượng đơn, tên khách, phòng, trạng thái, tiền). Dùng khi được hỏi về tình hình đặt phòng của một ngày: "hôm nay có bao nhiêu khách nhận phòng", "ngày 20/9 có đơn nào", "hôm nay ai trả phòng", "đơn nào đặt trong hôm nay". Khách hàng gọi tool này chỉ nhận được đơn của chính họ; lễ tân/quản trị viên nhận được toàn bộ đơn của khách sạn. LUÔN dựa vào số liệu tool trả về, tuyệt đối không tự suy đoán hay bịa số đơn.',
+    parameters: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description:
+            'Ngày cần tra cứu, định dạng YYYY-MM-DD. Khách nói "hôm nay"/"ngày mai" thì tự quy đổi theo ngày hiện tại đã nêu trong system prompt.',
+        },
+        dateType: {
+          type: 'string',
+          description:
+            'Cách hiểu ngày: arrival = đơn NHẬN phòng ngày đó (mặc định), departure = đơn TRẢ phòng ngày đó, staying = đơn đang lưu trú qua ngày đó, created = đơn được TẠO trong ngày đó.',
+          enum: ['arrival', 'departure', 'staying', 'created'],
+        },
+        status: {
+          type: 'string',
+          description: 'Lọc theo trạng thái đơn, không bắt buộc.',
+          enum: [
+            'PENDING',
+            'CONFIRMED',
+            'CHECKED_IN',
+            'CHECKED_OUT',
+            'CANCELLED',
+          ],
+        },
+      },
+      required: ['date'],
     },
   },
   {

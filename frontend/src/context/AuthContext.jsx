@@ -5,15 +5,17 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import apiClient from "../services/apiClient";
-import { store } from "../store";
+import apiClient, { refreshAccessToken } from "../services/apiClient";
+import { setAccessToken } from "../services/tokenStore";
+import { resetApiCaches, store } from "../store";
 import { authApi } from "../services/auth";
 
 const AuthContext = createContext(null);
 
+// Chỉ còn lưu thông tin hiển thị (tên, email...) để F5 hiện ngay tên người dùng —
+// không phải bí mật. Token KHÔNG còn nằm trong localStorage: access token giữ trong bộ
+// nhớ (tokenStore), refresh token nằm trong cookie httpOnly do backend đặt.
 const STORAGE_KEYS = {
-  accessToken: "access_token",
-  refreshToken: "refresh_token",
   user: "auth_user",
 };
 
@@ -26,28 +28,32 @@ const readStoredUser = () => {
   }
 };
 
-const persistTokens = ({ accessToken, refreshToken }) => {
-  localStorage.setItem(STORAGE_KEYS.accessToken, accessToken);
-  localStorage.setItem(STORAGE_KEYS.refreshToken, refreshToken);
+// Refresh token do backend đặt vào cookie httpOnly trong cùng response — ở đây chỉ
+// giữ access token trong bộ nhớ.
+const persistTokens = ({ accessToken }) => {
+  setAccessToken(accessToken);
 };
 
 const clearSession = () => {
-  localStorage.removeItem(STORAGE_KEYS.accessToken);
-  localStorage.removeItem(STORAGE_KEYS.refreshToken);
+  setAccessToken(null);
   localStorage.removeItem(STORAGE_KEYS.user);
+  // Dọn token còn sót lại từ phiên bản cũ (khi token còn lưu localStorage).
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
 };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readStoredUser());
 
-  // Khi app tải lại, lấy hồ sơ mới nhất từ backend thay vì tin vào bản lưu cũ trong localStorage.
-  // Nếu access token đã hết hạn/không hợp lệ thì coi như đã đăng xuất.
+  // Sau F5 access token trong bộ nhớ đã mất -> dùng cookie refresh token lấy access
+  // token mới, rồi tải hồ sơ mới nhất. Refresh thất bại (hết hạn/bị thu hồi/đã đăng xuất
+  // ở tab khác) thì coi như đã đăng xuất. Chỉ thử khi lần trước đã đăng nhập (còn
+  // auth_user) để khách vãng lai mở web không bắn 1 request /auth/refresh lỗi 401.
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.accessToken);
-    if (!token) return;
+    if (!readStoredUser()) return;
 
-    apiClient
-      .get("/auth/me")
+    refreshAccessToken()
+      .then(() => apiClient.get("/auth/me"))
       .then(({ data }) => {
         const nextUser = { ...data, name: data.fullName };
         localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser));
@@ -64,7 +70,10 @@ export function AuthProvider({ children }) {
   // refresh token cũng không còn hợp lệ, nó xoá localStorage và bắn sự kiện này để
   // context đồng bộ lại state React (user/isAuthenticated) mà không cần import ngược.
   useEffect(() => {
-    const handleSessionExpired = () => setUser(null);
+    const handleSessionExpired = () => {
+      resetApiCaches();
+      setUser(null);
+    };
     window.addEventListener("auth:session-expired", handleSessionExpired);
     return () =>
       window.removeEventListener("auth:session-expired", handleSessionExpired);
@@ -78,6 +87,9 @@ export function AuthProvider({ children }) {
     const { data: profile } = await apiClient.get("/auth/me");
     const nextUser = { ...profile, name: profile.fullName };
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser));
+    // Đăng nhập tài khoản khác mà chưa đăng xuất (cookie bị ghi đè) cũng phải bỏ
+    // cache của tài khoản cũ.
+    resetApiCaches();
     setUser(nextUser);
     return nextUser;
   };
@@ -177,6 +189,7 @@ export function AuthProvider({ children }) {
       // Kể cả gọi backend thất bại vẫn xoá phiên cục bộ để user thoát ra được.
     }
     clearSession();
+    resetApiCaches();
     setUser(null);
   };
 

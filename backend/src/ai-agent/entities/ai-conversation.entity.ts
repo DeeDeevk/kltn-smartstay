@@ -44,16 +44,20 @@ export class AiConversation {
   @PrimaryGeneratedColumn('uuid', { name: 'conversationId' })
   conversationId!: string;
 
+  // null = khách vãng lai chưa đăng nhập. Khách vẫn chat hỏi phòng/chính sách được,
+  // chỉ các thao tác đặt phòng mới bắt buộc đăng nhập. Khi khách đăng nhập giữa chừng,
+  // cuộc hội thoại được gắn vào tài khoản đó (xem AiAgentService.getAccessibleConversation).
   // Không eager: mỗi tin nhắn đều tải conversation, mà eager sẽ kéo theo cả entity User
-  // (gồm CMND/CCCD và các dữ liệu nhạy cảm khác) chỉ để so sánh userId.
-  @ManyToOne(() => User)
+  // (gồm CMND/CCCD và các dữ liệu nhạy cảm khác) chỉ để so sánh userId — dùng `userId` bên
+  // dưới để biết chủ sở hữu, đừng kiểm tra `user` (luôn undefined khi chưa join).
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'userId' })
-  user!: User;
+  user!: User | null;
 
   // Giá trị cột FK userId của quan hệ trên, đọc trong cùng câu query lấy conversation —
-  // đủ để kiểm tra chủ sở hữu mà không cần join hay tải User.
+  // đủ để kiểm tra chủ sở hữu mà không cần join hay tải User. null = khách vãng lai.
   @RelationId((conversation: AiConversation) => conversation.user)
-  userId!: string;
+  userId!: string | null;
 
   @Column({ name: 'pendingBooking', type: 'jsonb', nullable: true })
   pendingBooking!: PendingBookingSummary | null;

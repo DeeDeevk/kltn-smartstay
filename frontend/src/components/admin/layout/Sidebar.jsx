@@ -12,6 +12,7 @@ import {
   UserRoundCheck,
   MessageCircle,
   MapPin,
+  CircleHelp,
   LogOut,
   ChevronLeft,
   X,
@@ -29,7 +30,7 @@ const MENU_ITEMS = [
   { icon: BarChart3, label: 'Tổng quan', path: '/admin', ready: true, roles: ['ADMIN'] },
   { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', ready: true, roles: ['ADMIN', 'STAFF'] },
   { icon: MessageCircle, label: 'Chat với khách', path: '/admin/chat', ready: true, roles: ['STAFF'] },
-  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: true, roles: ['ADMIN'] },
+  { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', ready: true, roles: ['ADMIN', 'STAFF'] },
   { icon: Settings, label: 'Loại phòng', path: '/admin/room-types', ready: true, roles: ['ADMIN'] },
   { icon: Users, label: 'Quản lý tài khoản', path: '/admin/accounts', ready: true, roles: ['ADMIN'] },
   { icon: IdCard, label: 'Quản lý nhân viên', path: '/admin/staff', ready: true, roles: ['ADMIN'] },
@@ -38,6 +39,7 @@ const MENU_ITEMS = [
   { icon: Wallet, label: 'Báo cáo doanh thu', path: '/admin/revenue', ready: true, roles: ['ADMIN'] },
   { icon: UserRoundCheck, label: 'Doanh thu nhân viên', path: '/admin/revenue/staff', ready: true, roles: ['ADMIN'] },
   { icon: MapPin, label: 'Vị trí khách sạn', path: '/admin/settings/location', ready: true, roles: ['ADMIN'] },
+  { icon: CircleHelp, label: 'FAQ trợ lý AI', path: '/admin/faqs', ready: true, roles: ['ADMIN'] },
 ];
 
 // Mục nào có path là tiền tố của một mục khác (vd. /admin/schedule là tiền tố của

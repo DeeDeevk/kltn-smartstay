@@ -51,6 +51,7 @@ const ShiftSchedulePage = lazy(() => import('../components/admin/shifts/ShiftSch
 const MySchedulePage = lazy(() => import('../components/admin/shifts/MySchedulePage'))
 const RevenueSummaryPage = lazy(() => import('../components/admin/revenue/RevenueSummaryPage'))
 const HotelLocationSettingsPage = lazy(() => import('../components/admin/settings/HotelLocationSettingsPage'))
+const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
 const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
 const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
 const RoomMapPage = lazy(() => import('../components/admin/roomMap/RoomMapPage'))
@@ -792,8 +793,9 @@ export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      {/* Tạm ẩn nút chat với lễ tân theo yêu cầu, chỉ để lại trợ lý AI — bật lại khi cần
-          bằng cách bỏ comment dòng dưới. */}
+      {/* Tạm ẩn nút chat với lễ tân theo yêu cầu, chỉ để lại trợ lý AI — bật lại bằng
+          cách bỏ comment dòng import ở trên và dòng <Chatbot /> dưới đây. Khi bật lại,
+          2 khung chat tự loại trừ nhau (useExclusiveChatPanel). */}
       {/* <Chatbot /> */}
       <AiChatbot />
       <Suspense fallback={<PageLoader className="min-h-screen" />}>
@@ -847,10 +849,12 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          {/* Lễ tân cũng cần xác nhận đơn/nhận phòng từ danh sách đặt phòng — mọi API
+              trang này dùng (list, confirm, check-in/out, cancel) đều đã mở cho STAFF. */}
           <Route
             path="bookings"
             element={
-              <ProtectedRoute roles={['ADMIN']}>
+              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
                 <BookingManagementPage />
               </ProtectedRoute>
             }
@@ -930,6 +934,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <HotelLocationSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="faqs"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <FaqManagementPage />
               </ProtectedRoute>
             }
           />

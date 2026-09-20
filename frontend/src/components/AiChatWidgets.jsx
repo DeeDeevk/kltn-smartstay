@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     BedDouble,
@@ -32,19 +32,54 @@ export const formatVnd = (value) => {
     return new Intl.NumberFormat('vi-VN').format(value) + ' đ';
 };
 
-const renderInlineBold = (text) => {
+const renderInlineBold = (text, keyPrefix = '') => {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) =>
         part.startsWith('**') && part.endsWith('**') ? (
-            <strong key={i}>{part.slice(2, -2)}</strong>
+            <strong key={`${keyPrefix}${i}`}>{part.slice(2, -2)}</strong>
         ) : (
-            <React.Fragment key={i}>{part}</React.Fragment>
+            <React.Fragment key={`${keyPrefix}${i}`}>{part}</React.Fragment>
         ),
     );
 };
 
-// Trả lời của AI dùng markdown tối giản (**in đậm**, gạch đầu dòng, danh sách số) —
-// dựng riêng thay vì thêm thư viện markdown vì chỉ cần đúng 2-3 cú pháp này.
+// Link markdown [text](https://...) hoặc URL trần https://... — chỉ nhận http(s) để
+// không render được link javascript:. URL dài (vd. link PayOS) không có khoảng trắng
+// nên phải cho ngắt giữa chừng (break-all), nếu không sẽ tràn khỏi bong bóng chat.
+const LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)/g;
+
+const renderInline = (text) => {
+    const nodes = [];
+    let lastIndex = 0;
+    let match;
+    LINK_PATTERN.lastIndex = 0;
+    while ((match = LINK_PATTERN.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            nodes.push(...renderInlineBold(text.slice(lastIndex, match.index), `t${match.index}-`));
+        }
+        const [, label, labeledUrl, bareUrl] = match;
+        const url = labeledUrl ?? bareUrl;
+        nodes.push(
+            <a
+                key={`a${match.index}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`font-semibold text-blue-600 underline hover:text-blue-800 ${label ? '' : 'break-all'}`}
+            >
+                {label ?? url}
+            </a>,
+        );
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+        nodes.push(...renderInlineBold(text.slice(lastIndex), 'end-'));
+    }
+    return nodes;
+};
+
+// Trả lời của AI dùng markdown tối giản (**in đậm**, gạch đầu dòng, danh sách số,
+// link) — dựng riêng thay vì thêm thư viện markdown vì chỉ cần đúng vài cú pháp này.
 export const FormattedMessage = ({ text }) => {
     const lines = (text ?? '').split('\n');
     const blocks = [];
@@ -55,7 +90,7 @@ export const FormattedMessage = ({ text }) => {
         blocks.push(
             <ul key={`ul-${blocks.length}`} className="list-disc pl-5 space-y-0.5">
                 {currentList.map((item, i) => (
-                    <li key={i}>{renderInlineBold(item)}</li>
+                    <li key={i}>{renderInline(item)}</li>
                 ))}
             </ul>,
         );
@@ -78,14 +113,15 @@ export const FormattedMessage = ({ text }) => {
         if (trimmed !== '') {
             blocks.push(
                 <p key={idx} className="leading-relaxed">
-                    {renderInlineBold(line)}
+                    {renderInline(line)}
                 </p>,
             );
         }
     });
     flushList();
 
-    return <div className="space-y-1.5">{blocks}</div>;
+    // wrap-anywhere: chốt chặn cuối cho mọi chuỗi dài không có khoảng trắng khác.
+    return <div className="space-y-1.5 wrap-anywhere">{blocks}</div>;
 };
 
 export const RoomCard = ({ room, onSelect, index = 0 }) => {
@@ -242,16 +278,20 @@ export const BookingConfirmedCard = ({ booking }) => {
     const paymentQrRef = useRef(null);
     const isPayos = booking?.paymentMethod === 'PAYOS';
     const isExpired = isPayos && booking?.expiredAt && Date.now() / 1000 > booking.expiredAt;
-    const [isPaid, setIsPaid] = useState(false);
 
-    const { data: syncResult } = useSyncPayOSStatusQuery(booking?.bookingId, {
+    // Dữ liệu booking trong tin nhắn là ảnh chụp lúc vừa tạo đơn (luôn UNPAID) — phải hỏi
+    // trạng thái thật từ server mỗi lần thẻ hiển thị, KỂ CẢ khi QR đã hết hạn: khách có
+    // thể đã chuyển khoản xong rồi mới quay lại xem lịch sử chat. Chỉ poll liên tục khi QR
+    // còn hạn và chưa thanh toán; hết hạn thì hỏi 1 lần là đủ.
+    const { data: syncResult, isLoading: isCheckingPayment } = useSyncPayOSStatusQuery(
+        booking?.bookingId,
+        { skip: !isPayos || !booking?.bookingId, refetchOnMountOrArgChange: true },
+    );
+    const isPaid = syncResult?.paymentStatus === 'PAID';
+    useSyncPayOSStatusQuery(booking?.bookingId, {
         skip: !isPayos || !booking?.qrCode || isPaid || isExpired,
         pollingInterval: PAYOS_POLL_INTERVAL_MS,
     });
-
-    useEffect(() => {
-        if (syncResult?.paymentStatus === 'PAID') setIsPaid(true);
-    }, [syncResult]);
 
     if (!booking) return null;
 
@@ -295,7 +335,11 @@ export const BookingConfirmedCard = ({ booking }) => {
 
             {isPayos && !isPaid && (
                 <>
-                    {isExpired ? (
+                    {isExpired && isCheckingPayment ? (
+                        <p className="text-xs text-gray-500 flex items-center gap-1.5 px-1">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang kiểm tra trạng thái thanh toán...
+                        </p>
+                    ) : isExpired ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                             Mã QR thanh toán đã hết hạn, quý khách vui lòng vào mục "Đơn đặt phòng của tôi" để tạo lại link thanh toán.
                         </p>

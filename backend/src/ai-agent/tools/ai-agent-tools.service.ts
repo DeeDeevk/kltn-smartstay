@@ -10,17 +10,24 @@ import { ServiceService } from 'src/services/service.service';
 import { PaymentService } from 'src/payments/payment.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
+import { BookingStatus } from 'src/common/enums/booking-status.enum';
+import { UserRole } from 'src/common/enums/user-role.enum';
 import { PlaceCategory } from 'src/common/enums/place-category.enum';
 import { PlacesService } from 'src/hotel-config/places.service';
 import { LocalEventService } from 'src/hotel-config/local-event.service';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
+import { LOGIN_REQUIRED_TOOLS } from './ai-agent-tools.definitions';
 import {
   AiConversation,
   PendingBookingSummary,
 } from '../entities/ai-conversation.entity';
 
 export interface ToolExecutionContext {
-  userId: string;
+  // null = khách vãng lai chưa đăng nhập.
+  userId: string | null;
+  // Vai trò của người đang chat — quyết định phạm vi dữ liệu được xem (vd. khách chỉ
+  // xem được đơn của chính mình, lễ tân/admin xem được đơn của cả khách sạn).
+  role: string;
   conversation: AiConversation;
   currentUserMessage: {
     text: string;
@@ -32,6 +39,22 @@ export interface ToolExecutionContext {
 
 export type ToolExecutionResult =
   { success: true; data: unknown } | { success: false; error: string };
+
+// Các tool cần tài khoản đã bị chặn từ dispatch(), hàm này chỉ để TypeScript biết
+// userId chắc chắn có giá trị khi chạy tới đây.
+function requireUserId(ctx: ToolExecutionContext): string {
+  if (!ctx.userId) {
+    throw new BadRequestException(
+      'Thao tác này cần khách đăng nhập tài khoản.',
+    );
+  }
+  return ctx.userId;
+}
+
+const BOOKING_DATE_TYPES = ['arrival', 'departure', 'staying', 'created'];
+// Trần số đơn nhét vào ngữ cảnh model — 1 ngày đông khách vẫn đủ, mà không làm phình
+// prompt. Tổng số thật vẫn được trả kèm trong "total".
+const BOOKING_LIST_LIMIT = 30;
 
 const AFFIRMATIVE_WORDS =
   'đồng ý|dong y|xác nhận|xac nhan|chốt|chot|oke|okie|okay|ok|được|duoc|yes|confirm';
@@ -49,6 +72,40 @@ const NEGATED_AFFIRMATIVE_RE = new RegExp(
     `${wholeWord(AFFIRMATIVE_WORDS)}\\s*${wholeWord(NEGATION_WORDS)}`,
   'iu',
 );
+
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const ROOM_NAME_SYNONYMS: Record<string, string> = {
+  'tieu chuan': 'standard',
+  'gia dinh': 'family',
+  'cao cap': 'deluxe',
+  'sang trong': 'deluxe',
+  'thuong gia': 'executive',
+  'huong bien': 'ocean view',
+  'view bien': 'ocean view',
+  'huong pho': 'city view',
+  'huong thanh pho': 'city view',
+  'view thanh pho': 'city view',
+};
+
+function toRoomNameKeywords(input: string): string[] {
+  let text = normalizeText(input).replace(/\b(phong|room)\b/g, ' ');
+  const phrases = Object.keys(ROOM_NAME_SYNONYMS).sort(
+    (a, b) => b.length - a.length,
+  );
+  for (const phrase of phrases) {
+    text = text.replaceAll(phrase, ROOM_NAME_SYNONYMS[phrase]);
+  }
+  return text.split(' ').filter(Boolean);
+}
 
 @Injectable()
 export class AiAgentToolsService {
@@ -91,6 +148,15 @@ export class AiAgentToolsService {
     args: Record<string, unknown>,
     ctx: ToolExecutionContext,
   ): Promise<unknown> {
+    // Chốt chặn thật cho khách vãng lai: kể cả model cố gọi tool cần tài khoản (vd. do
+    // lịch sử hội thoại cũ) thì vẫn bị từ chối ở đây, không chỉ dựa vào việc đã lọc
+    // danh sách tool gửi cho model.
+    if (!ctx.userId && LOGIN_REQUIRED_TOOLS.has(name)) {
+      throw new BadRequestException(
+        'Thao tác này cần khách đăng nhập tài khoản. Hãy mời khách đăng nhập (hoặc đăng ký) rồi quay lại tiếp tục.',
+      );
+    }
+
     switch (name) {
       case 'search_rooms':
         return this.searchRooms(args);
@@ -100,6 +166,8 @@ export class AiAgentToolsService {
         return this.getPromotions();
       case 'get_policy':
         return this.getPolicy(args);
+      case 'list_bookings_by_date':
+        return this.listBookingsByDate(args, ctx);
       case 'request_booking_form':
         // Tool này không thao tác dữ liệu gì — chỉ là tín hiệu để backend trả kèm
         // "bookingFormRequest" trong response cho frontend hiển thị biểu mẫu.
@@ -134,8 +202,11 @@ export class AiAgentToolsService {
       guests,
     );
     if (roomTypeName) {
-      const needle = roomTypeName.toLowerCase();
-      results = results.filter((rt) => rt.name.toLowerCase().includes(needle));
+      const keywords = toRoomNameKeywords(roomTypeName);
+      results = results.filter((rt) => {
+        const name = normalizeText(rt.name);
+        return keywords.every((kw) => name.includes(kw));
+      });
     }
     // Lọc giá ngay ở server thay vì để model chỉ lọc bằng lời trong câu trả lời — nếu
     // không, danh sách card phòng hiển thị cho khách (lấy nguyên kết quả tool này) sẽ
@@ -214,6 +285,57 @@ export class AiAgentToolsService {
         content: r.entry.answer,
         similarity: r.similarity,
         lowConfidence: r.lowConfidence,
+      })),
+    };
+  }
+
+  // Tra cứu đơn đặt phòng của 1 ngày. Phạm vi dữ liệu do VAI TRÒ quyết định ở đây, không
+  // để model tự chọn: khách hàng chỉ thấy đơn của chính mình, lễ tân/admin thấy toàn bộ.
+  private async listBookingsByDate(
+    args: Record<string, unknown>,
+    ctx: ToolExecutionContext,
+  ) {
+    const date = typeof args.date === 'string' ? args.date.trim() : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException(
+        'Thiếu ngày cần tra cứu hoặc sai định dạng (cần YYYY-MM-DD).',
+      );
+    }
+
+    const dateType = BOOKING_DATE_TYPES.includes(args.dateType as string)
+      ? (args.dateType as 'arrival' | 'departure' | 'staying' | 'created')
+      : 'arrival';
+    const status =
+      typeof args.status === 'string' &&
+      (Object.values(BookingStatus) as string[]).includes(args.status)
+        ? (args.status as BookingStatus)
+        : undefined;
+
+    const role = ctx.role as UserRole;
+    const isStaff = role === UserRole.STAFF || role === UserRole.ADMIN;
+    const result = await this.bookingService.findByDateForAgent({
+      date,
+      dateType,
+      status,
+      requesterUserId: isStaff ? undefined : requireUserId(ctx),
+      limit: BOOKING_LIST_LIMIT,
+    });
+
+    return {
+      date,
+      dateType,
+      scope: isStaff ? 'hotel' : 'own',
+      total: result.total,
+      statusCounts: result.statusCounts,
+      // Model chỉ thấy tối đa BOOKING_LIST_LIMIT đơn, nhưng total là số thật — nói rõ để
+      // model không kết luận "chỉ có N đơn" khi danh sách bị cắt bớt.
+      truncated: result.total > result.bookings.length,
+      bookings: result.bookings.map((booking) => ({
+        ...booking,
+        // Mã đơn hiển thị cho khách = 8 ký tự đầu của UUID, viết hoa.
+        bookingCode: booking.bookingId.slice(0, 8).toUpperCase(),
+        // Khách không cần (và không nên) thấy số điện thoại trong danh sách.
+        guestPhone: isStaff ? booking.guestPhone : undefined,
       })),
     };
   }
@@ -361,7 +483,7 @@ export class AiAgentToolsService {
       promotionCode: pendingBooking.promotionCode,
       paymentMethod: pendingBooking.paymentMethod,
     };
-    const booking = await this.bookingService.create(ctx.userId, dto);
+    const booking = await this.bookingService.create(requireUserId(ctx), dto);
 
     ctx.conversation.pendingBooking = null;
     ctx.conversation.pendingBookingProposedAt = null;
@@ -382,7 +504,7 @@ export class AiAgentToolsService {
       try {
         const link = await this.paymentService.createLinkForBooking(
           booking.bookingId,
-          { userId: ctx.userId, role: 'CUSTOMER' },
+          { userId: requireUserId(ctx), role: 'CUSTOMER' },
         );
         result.checkoutUrl = link.checkoutUrl;
         result.qrCode = link.qrCode;
@@ -421,7 +543,8 @@ export class AiAgentToolsService {
     // LLM có thể truyền radius sai định dạng (chuỗi rỗng, mô tả chữ...) -> Number() ra
     // NaN, không phải undefined nên tham số mặc định của PlacesService không tự kích
     // hoạt được — lọc kỹ để rơi về undefined (dùng mặc định) thay vì gửi NaN xuống.
-    const rawRadius = args.radius !== undefined ? Number(args.radius) : undefined;
+    const rawRadius =
+      args.radius !== undefined ? Number(args.radius) : undefined;
     const radius =
       rawRadius !== undefined && Number.isFinite(rawRadius) && rawRadius > 0
         ? rawRadius

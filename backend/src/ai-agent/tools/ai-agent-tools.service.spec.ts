@@ -12,6 +12,7 @@ describe('AiAgentToolsService', () => {
     getRoomTypeAvailability: jest.Mock;
     findAvailableRoomTypes: jest.Mock;
     create: jest.Mock;
+    findByDateForAgent: jest.Mock;
   };
   let promotionService: { validateCode: jest.Mock };
   let serviceService: { findActiveByIds: jest.Mock };
@@ -55,6 +56,24 @@ describe('AiAgentToolsService', () => {
         bookingId: 'b-1',
         status: 'PENDING',
         totalAmount: 2160000,
+      }),
+      findByDateForAgent: jest.fn().mockResolvedValue({
+        total: 2,
+        statusCounts: { CONFIRMED: 1, PENDING: 1 },
+        bookings: [
+          {
+            bookingId: '4ae6e73a-1111-2222-3333-444455556666',
+            guestName: 'Nguyễn Văn A',
+            guestPhone: '0901234567',
+            status: 'CONFIRMED',
+          },
+          {
+            bookingId: '5bf7f84b-1111-2222-3333-444455556666',
+            guestName: 'Trần Thị B',
+            guestPhone: '0907654321',
+            status: 'PENDING',
+          },
+        ],
       }),
     };
     promotionService = { validateCode: jest.fn() };
@@ -102,6 +121,7 @@ describe('AiAgentToolsService', () => {
       },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: { text: 'đặt phòng deluxe', createdAt: new Date() },
       },
@@ -131,6 +151,7 @@ describe('AiAgentToolsService', () => {
       },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: { text: 'đặt phòng deluxe', createdAt: new Date() },
       },
@@ -148,6 +169,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: { text: 'Đồng ý', createdAt: new Date() },
       },
@@ -169,6 +191,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         // Tin nhắn hiện tại có createdAt TRƯỚC/BẰNG thời điểm propose -> chưa đủ 1 lượt
         // round-trip, phải coi như chưa xác nhận.
@@ -195,6 +218,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: {
           text: 'Thôi không đồng ý đâu, để tôi suy nghĩ thêm',
@@ -228,6 +252,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: {
           text: 'Dạ đồng ý ạ',
@@ -269,6 +294,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: {
           text,
@@ -340,6 +366,7 @@ describe('AiAgentToolsService', () => {
     };
     const ctx = {
       userId: 'user-1',
+      role: 'CUSTOMER',
       conversation: makeConversation(),
       currentUserMessage: { text: 'đặt phòng', createdAt: new Date() },
     };
@@ -380,6 +407,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation,
         currentUserMessage: {
           text: 'Dạ đồng ý ạ',
@@ -418,6 +446,7 @@ describe('AiAgentToolsService', () => {
       { query: 'trả phòng trễ có bị tính phí không' },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: {
           text: 'trả phòng trễ có bị tính phí không',
@@ -450,6 +479,7 @@ describe('AiAgentToolsService', () => {
       { query: '   ' },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: { text: 'hi', createdAt: new Date() },
       },
@@ -470,6 +500,7 @@ describe('AiAgentToolsService', () => {
       },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: {
           text: 'phòng 1 người dưới 2 triệu',
@@ -497,6 +528,7 @@ describe('AiAgentToolsService', () => {
       { category: 'zoo' },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: {
           text: 'gần đây có gì chơi',
@@ -525,6 +557,7 @@ describe('AiAgentToolsService', () => {
       { category: 'restaurant', radius: 1000 },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: { text: 'quán ăn gần đây', createdAt: new Date() },
       },
@@ -547,6 +580,7 @@ describe('AiAgentToolsService', () => {
       {},
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: {
           text: 'cuối tuần này có sự kiện gì',
@@ -576,6 +610,7 @@ describe('AiAgentToolsService', () => {
       { date: '2026-03-21' },
       {
         userId: 'user-1',
+        role: 'CUSTOMER',
         conversation: makeConversation(),
         currentUserMessage: {
           text: 'thứ 7 này có sự kiện gì không',
@@ -594,5 +629,80 @@ describe('AiAgentToolsService', () => {
         recurrence: 'WEEKLY',
       },
     ]);
+  });
+
+  // Phạm vi dữ liệu đơn đặt phòng do VAI TRÒ quyết định ở server, không phải do model
+  // truyền tham số — khách hàng không được xem đơn của người khác dù có dụ model.
+  function listBookingsCtx(role: string) {
+    return {
+      userId: 'user-1',
+      role,
+      conversation: makeConversation(),
+      currentUserMessage: {
+        text: 'hôm nay có bao nhiêu khách nhận phòng',
+        createdAt: new Date(),
+      },
+    };
+  }
+
+  it('list_bookings_by_date: lễ tân xem được toàn bộ đơn của khách sạn', async () => {
+    const result = await tools.execute(
+      'list_bookings_by_date',
+      { date: '2026-09-20' },
+      listBookingsCtx('STAFF'),
+    );
+
+    expect(bookingService.findByDateForAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        date: '2026-09-20',
+        dateType: 'arrival',
+        requesterUserId: undefined,
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const data = result.data as {
+      scope: string;
+      total: number;
+      bookings: { bookingCode: string; guestPhone?: string }[];
+    };
+    expect(data.scope).toBe('hotel');
+    expect(data.total).toBe(2);
+    expect(data.bookings[0].bookingCode).toBe('4AE6E73A');
+    expect(data.bookings[0].guestPhone).toBe('0901234567');
+  });
+
+  it('list_bookings_by_date: khách hàng chỉ xem được đơn của chính mình, không lộ SĐT', async () => {
+    const result = await tools.execute(
+      'list_bookings_by_date',
+      { date: '2026-09-20', dateType: 'departure' },
+      listBookingsCtx('CUSTOMER'),
+    );
+
+    expect(bookingService.findByDateForAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateType: 'departure',
+        requesterUserId: 'user-1',
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const data = result.data as {
+      scope: string;
+      bookings: { guestPhone?: string }[];
+    };
+    expect(data.scope).toBe('own');
+    expect(data.bookings[0].guestPhone).toBeUndefined();
+  });
+
+  it('list_bookings_by_date: từ chối khi ngày sai định dạng', async () => {
+    const result = await tools.execute(
+      'list_bookings_by_date',
+      { date: '20/09/2026' },
+      listBookingsCtx('STAFF'),
+    );
+
+    expect(result.success).toBe(false);
+    expect(bookingService.findByDateForAgent).not.toHaveBeenCalled();
   });
 });
