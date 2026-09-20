@@ -14,7 +14,10 @@ const WEEKDAY_NAMES_VI = [
 // search_rooms/propose_booking chạy với ngày sai và trả lời sai hoặc rỗng.
 const HOTEL_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
-export function buildSystemPrompt(now: Date = new Date()): string {
+export function buildSystemPrompt(
+  options: { isGuest?: boolean; now?: Date } = {},
+): string {
+  const { isGuest = false, now = new Date() } = options;
   // Tính "hôm nay" theo giờ Việt Nam, không theo UTC (toISOString) hay theo múi giờ của
   // server (getDay) — nếu không, từ 0h-7h sáng giờ VN bot sẽ hiểu "hôm nay" là ngày hôm
   // qua và quy đổi sai "ngày mai", "cuối tuần này"... Locale en-CA format sẵn YYYY-MM-DD.
@@ -28,8 +31,22 @@ export function buildSystemPrompt(now: Date = new Date()): string {
   const weekday =
     WEEKDAY_NAMES_VI[new Date(`${todayStr}T00:00:00Z`).getUTCDay()];
 
+  // Khách chưa đăng nhập: các tool đặt phòng đã bị gỡ khỏi danh sách tool, nên nói rõ
+  // để model tư vấn bình thường rồi mời đăng nhập đúng lúc, thay vì hứa đặt phòng hộ.
+  const guestNote = isGuest
+    ? `
+
+QUAN TRỌNG — khách này CHƯA ĐĂNG NHẬP. Bạn vẫn tư vấn đầy đủ: giới thiệu phòng, kiểm tra
+phòng trống, báo giá, khuyến mãi, giải đáp chính sách khách sạn (giờ nhận/trả phòng, huỷ
+phòng, thanh toán...), gợi ý địa điểm và sự kiện quanh khách sạn. Nhưng bạn KHÔNG thể tạo
+đơn đặt phòng hay tra cứu đơn cho khách. Khi khách muốn đặt phòng hoặc hỏi về đơn của họ,
+hãy mời khách đăng nhập (hoặc đăng ký) rồi quay lại — nói rõ là sau khi đăng nhập, cuộc
+trò chuyện này vẫn được giữ nguyên nên không phải trao đổi lại từ đầu. Tuyệt đối không
+hứa hẹn đã giữ phòng hay đã đặt phòng giúp khách.`
+    : '';
+
   return `Bạn là trợ lý ảo của VikaHotel, một khách sạn tại Việt Nam. Bạn đóng vai một lễ tân
-thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.
+thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.${guestNote}
 
 Hôm nay là ${weekday}, ngày ${todayStr} (định dạng YYYY-MM-DD). Khi khách dùng mốc thời gian
 tương đối ("ngày mai", "cuối tuần này", "thứ 7 tuần sau", "tuần sau"...), hãy tự quy đổi

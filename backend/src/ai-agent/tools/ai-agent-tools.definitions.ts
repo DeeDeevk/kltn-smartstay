@@ -8,6 +8,16 @@ import { LlmTool } from '../llm/llm-provider.interface';
 // lời đồng ý rõ ràng — đây là cách hiện thực guardrail "phải tóm tắt & chờ khách xác
 // nhận ở lượt kế tiếp" một cách chắc chắn bằng code, thay vì chỉ dựa vào việc model
 // tự giác làm đúng theo system prompt.
+// Tool chỉ dùng được khi khách đã đăng nhập: đều cần một tài khoản để gắn đơn đặt phòng
+// hoặc để giới hạn dữ liệu theo người xem. Khách vãng lai vẫn hỏi phòng trống, giá,
+// khuyến mãi, chính sách (FAQ), địa điểm/sự kiện quanh khách sạn bình thường.
+export const LOGIN_REQUIRED_TOOLS = new Set([
+  'propose_booking',
+  'create_booking',
+  'request_booking_form',
+  'list_bookings_by_date',
+]);
+
 export const AI_AGENT_TOOLS: LlmTool[] = [
   {
     name: 'search_rooms',

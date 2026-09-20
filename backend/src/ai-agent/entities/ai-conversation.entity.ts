@@ -43,9 +43,12 @@ export class AiConversation {
   @PrimaryGeneratedColumn('uuid', { name: 'conversationId' })
   conversationId!: string;
 
-  @ManyToOne(() => User, { eager: true })
+  // null = khách vãng lai chưa đăng nhập. Khách vẫn chat hỏi phòng/chính sách được,
+  // chỉ các thao tác đặt phòng mới bắt buộc đăng nhập. Khi khách đăng nhập giữa chừng,
+  // cuộc hội thoại được gắn vào tài khoản đó (xem AiAgentService.getAccessibleConversation).
+  @ManyToOne(() => User, { eager: true, nullable: true })
   @JoinColumn({ name: 'userId' })
-  user!: User;
+  user!: User | null;
 
   @Column({ name: 'pendingBooking', type: 'jsonb', nullable: true })
   pendingBooking!: PendingBookingSummary | null;
