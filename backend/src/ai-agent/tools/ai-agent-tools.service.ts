@@ -16,13 +16,15 @@ import { PlaceCategory } from 'src/common/enums/place-category.enum';
 import { PlacesService } from 'src/hotel-config/places.service';
 import { LocalEventService } from 'src/hotel-config/local-event.service';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
+import { LOGIN_REQUIRED_TOOLS } from './ai-agent-tools.definitions';
 import {
   AiConversation,
   PendingBookingSummary,
 } from '../entities/ai-conversation.entity';
 
 export interface ToolExecutionContext {
-  userId: string;
+  // null = khách vãng lai chưa đăng nhập.
+  userId: string | null;
   // Vai trò của người đang chat — quyết định phạm vi dữ liệu được xem (vd. khách chỉ
   // xem được đơn của chính mình, lễ tân/admin xem được đơn của cả khách sạn).
   role: string;
@@ -37,6 +39,17 @@ export interface ToolExecutionContext {
 
 export type ToolExecutionResult =
   { success: true; data: unknown } | { success: false; error: string };
+
+// Các tool cần tài khoản đã bị chặn từ dispatch(), hàm này chỉ để TypeScript biết
+// userId chắc chắn có giá trị khi chạy tới đây.
+function requireUserId(ctx: ToolExecutionContext): string {
+  if (!ctx.userId) {
+    throw new BadRequestException(
+      'Thao tác này cần khách đăng nhập tài khoản.',
+    );
+  }
+  return ctx.userId;
+}
 
 const BOOKING_DATE_TYPES = ['arrival', 'departure', 'staying', 'created'];
 // Trần số đơn nhét vào ngữ cảnh model — 1 ngày đông khách vẫn đủ, mà không làm phình
@@ -135,6 +148,15 @@ export class AiAgentToolsService {
     args: Record<string, unknown>,
     ctx: ToolExecutionContext,
   ): Promise<unknown> {
+    // Chốt chặn thật cho khách vãng lai: kể cả model cố gọi tool cần tài khoản (vd. do
+    // lịch sử hội thoại cũ) thì vẫn bị từ chối ở đây, không chỉ dựa vào việc đã lọc
+    // danh sách tool gửi cho model.
+    if (!ctx.userId && LOGIN_REQUIRED_TOOLS.has(name)) {
+      throw new BadRequestException(
+        'Thao tác này cần khách đăng nhập tài khoản. Hãy mời khách đăng nhập (hoặc đăng ký) rồi quay lại tiếp tục.',
+      );
+    }
+
     switch (name) {
       case 'search_rooms':
         return this.searchRooms(args);
@@ -295,7 +317,7 @@ export class AiAgentToolsService {
       date,
       dateType,
       status,
-      requesterUserId: isStaff ? undefined : ctx.userId,
+      requesterUserId: isStaff ? undefined : requireUserId(ctx),
       limit: BOOKING_LIST_LIMIT,
     });
 
@@ -461,7 +483,7 @@ export class AiAgentToolsService {
       promotionCode: pendingBooking.promotionCode,
       paymentMethod: pendingBooking.paymentMethod,
     };
-    const booking = await this.bookingService.create(ctx.userId, dto);
+    const booking = await this.bookingService.create(requireUserId(ctx), dto);
 
     ctx.conversation.pendingBooking = null;
     ctx.conversation.pendingBookingProposedAt = null;
@@ -482,7 +504,7 @@ export class AiAgentToolsService {
       try {
         const link = await this.paymentService.createLinkForBooking(
           booking.bookingId,
-          { userId: ctx.userId, role: 'CUSTOMER' },
+          { userId: requireUserId(ctx), role: 'CUSTOMER' },
         );
         result.checkoutUrl = link.checkoutUrl;
         result.qrCode = link.qrCode;

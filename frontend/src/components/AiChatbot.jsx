@@ -46,6 +46,12 @@ const AiChatbot = () => {
     // User đã được nạp lịch sử (dùng ref thay vì state để việc đánh dấu không kích
     // hoạt lại effect nạp lịch sử).
     const historyLoadedForRef = useRef(null);
+    // Khách vãng lai cũng cần nhớ hội thoại qua F5 — dùng chung cơ chế lưu theo key,
+    // với 'guest' thay cho userId. Hội thoại của khách vãng lai không thuộc tài khoản
+    // nào nên chỉ trình duyệt đang giữ conversationId mới mở lại được.
+    const storageId = userId ?? 'guest';
+    // userId của lần render trước, để nhận ra thời điểm khách vừa đăng nhập.
+    const previousUserIdRef = useRef(userId);
 
     const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
         initialBottom: 112,
@@ -60,19 +66,37 @@ const AiChatbot = () => {
     // SĐT, thông tin đặt phòng) của user trước và gửi kèm conversationId không phải
     // của mình (backend trả 403).
     useEffect(() => {
+        const previousUserId = previousUserIdRef.current;
+        previousUserIdRef.current = userId;
+
+        // Khách vãng lai vừa đăng nhập: GIỮ nguyên cuộc trò chuyện đang dở (backend tự
+        // gắn hội thoại chưa có chủ vào tài khoản vừa đăng nhập) để khách đặt phòng tiếp
+        // mà không phải trao đổi lại từ đầu.
+        if (!previousUserId && userId) {
+            historyLoadedForRef.current = userId;
+            if (conversationId) {
+                storeConversationId(userId, conversationId);
+                clearStoredConversationId('guest');
+            }
+            return;
+        }
+
         setMessages([]);
         setConversationId(null);
         setDismissedFormAt(-1);
         setInputStr('');
         historyLoadedForRef.current = null;
+        // conversationId cố tình không nằm trong deps: effect này chỉ chạy khi đổi tài
+        // khoản, không phải mỗi lần hội thoại thay đổi.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId]);
 
     // Nạp lại cuộc hội thoại gần nhất của user khi mở widget lần đầu (VD sau F5).
     useEffect(() => {
-        if (!isOpen || !userId || historyLoadedForRef.current === userId) return;
-        historyLoadedForRef.current = userId;
+        if (!isOpen || historyLoadedForRef.current === storageId) return;
+        historyLoadedForRef.current = storageId;
 
-        const storedId = readStoredConversationId(userId);
+        const storedId = readStoredConversationId(storageId);
         if (!storedId) return;
 
         loadHistory(storedId)
@@ -84,9 +108,9 @@ const AiChatbot = () => {
             })
             .catch(() => {
                 // Hội thoại không còn tồn tại/không thuộc user này -> bắt đầu hội thoại mới.
-                clearStoredConversationId(userId);
+                clearStoredConversationId(storageId);
             });
-    }, [isOpen, userId, loadHistory]);
+    }, [isOpen, userId, storageId, loadHistory]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,7 +126,7 @@ const AiChatbot = () => {
             const result = await sendAiMessage({ conversationId, message: content, ...extra }).unwrap();
             if (currentUserIdRef.current !== sentForUserId) return;
             setConversationId(result.conversationId);
-            if (sentForUserId) storeConversationId(sentForUserId, result.conversationId);
+            storeConversationId(sentForUserId ?? 'guest', result.conversationId);
             setMessages((prev) => [
                 ...prev,
                 {
@@ -121,7 +145,7 @@ const AiChatbot = () => {
             // bỏ đi để lần gửi tiếp theo backend tạo hội thoại mới.
             if (error?.status === 403 || error?.status === 404) {
                 setConversationId(null);
-                if (sentForUserId) clearStoredConversationId(sentForUserId);
+                clearStoredConversationId(sentForUserId ?? 'guest');
             }
             setMessages((prev) => [
                 ...prev,
@@ -206,20 +230,26 @@ const AiChatbot = () => {
                         </button>
                     </div>
 
-                    {!isAuthenticated ? (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-                            <p className="text-gray-600">Đăng nhập để trò chuyện với trợ lý ảo Vika Hotel.</p>
+                    {/* Khách vãng lai vẫn chat được (hỏi phòng, giá, chính sách); chỉ thao
+                        tác đặt phòng mới cần đăng nhập — backend gỡ sẵn các tool đó cho
+                        khách chưa đăng nhập. Thanh nhắc bên dưới là lối đăng nhập nhanh. */}
+                    {!isAuthenticated && (
+                        <div className="flex items-center justify-between gap-2 border-b border-amber-100 bg-amber-50 px-4 py-2">
+                            <p className="text-xs text-amber-800">
+                                Vui lòng đăng nhập để được hỗ trợ đặt phòng
+                            </p>
                             <button
                                 onClick={() => {
                                     setIsOpen(false);
                                     navigate('/login');
                                 }}
-                                className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition-colors"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors"
                             >
-                                <LogIn className="w-4 h-4" /> Đăng nhập
+                                <LogIn className="w-3.5 h-3.5" /> Đăng nhập
                             </button>
                         </div>
-                    ) : (
+                    )}
+                    {(
                         <>
                             <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-white/95 flex flex-col gap-4">
                                 {isLoadingHistory && messages.length === 0 && (

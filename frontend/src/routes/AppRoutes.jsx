@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
-import Chatbot from '../components/Chatbot'
+// import Chatbot from '../components/Chatbot' // tạm ẩn, xem ghi chú ở nơi render bên dưới
 import AiChatbot from '../components/AiChatbot'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
@@ -776,9 +776,10 @@ export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      {/* 2 nút chat nổi xếp chồng góc phải: lễ tân (dưới) và trợ lý AI (trên) — mở
-          khung này thì khung kia tự đóng (useExclusiveChatPanel). */}
-      <Chatbot />
+      {/* Tạm ẩn nút chat với lễ tân theo yêu cầu, chỉ để lại trợ lý AI — bật lại bằng
+          cách bỏ comment dòng import ở trên và dòng <Chatbot /> dưới đây. Khi bật lại,
+          2 khung chat tự loại trừ nhau (useExclusiveChatPanel). */}
+      {/* <Chatbot /> */}
       <AiChatbot />
       <Routes>
         <Route path="/" element={<HomePage />} />
