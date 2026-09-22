@@ -17,8 +17,16 @@ export class LocalEventService {
     private readonly localEventRepo: Repository<LocalEvent>,
   ) {}
 
+  // Rows with a dayOfWeek (WEEKLY, recurs indefinitely) sort before one-time rows (dayOfWeek
+  // IS NULL) simply because non-null values sort before NULL under "NULLS LAST" — no extra
+  // "is this recurring" expression needed. Within each group, ascending order is already
+  // the useful one: dayOfWeek 0..6 (Sun..Sat), specificDate soonest-first.
   findAll(): Promise<LocalEvent[]> {
-    return this.localEventRepo.find({ order: { createdAt: 'DESC' } });
+    return this.localEventRepo
+      .createQueryBuilder('event')
+      .orderBy('event.dayOfWeek', 'ASC', 'NULLS LAST')
+      .addOrderBy('event.specificDate', 'ASC', 'NULLS LAST')
+      .getMany();
   }
 
   async findByIdForAdmin(eventId: string): Promise<LocalEvent> {
@@ -38,7 +46,7 @@ export class LocalEventService {
 
     const event = this.localEventRepo.create({
       title: dto.title,
-      description: dto.description,
+      description: dto.description ?? null,
       recurrence: dto.recurrence,
       dayOfWeek: dto.dayOfWeek ?? null,
       specificDate: dto.specificDate ?? null,
@@ -50,9 +58,18 @@ export class LocalEventService {
     const event = await this.findByIdForAdmin(eventId);
 
     const nextRecurrence = dto.recurrence ?? event.recurrence;
-    const nextDayOfWeek = dto.dayOfWeek ?? event.dayOfWeek ?? undefined;
+    // Only inherit the PREVIOUS dayOfWeek/specificDate when recurrence itself isn't
+    // changing. If it IS changing (e.g. WEEKLY -> ONCE sending only the new
+    // specificDate), the old type's field is stale and must be treated as absent —
+    // otherwise assertRecurrenceFields below would wrongly reject a legitimate type
+    // switch for "carrying" a field that belongs to the type being switched AWAY from.
+    const recurrenceUnchanged = nextRecurrence === event.recurrence;
+    const nextDayOfWeek =
+      dto.dayOfWeek ??
+      (recurrenceUnchanged ? (event.dayOfWeek ?? undefined) : undefined);
     const nextSpecificDate =
-      dto.specificDate ?? event.specificDate ?? undefined;
+      dto.specificDate ??
+      (recurrenceUnchanged ? (event.specificDate ?? undefined) : undefined);
     this.assertRecurrenceFields(
       nextRecurrence,
       nextDayOfWeek,
@@ -66,9 +83,13 @@ export class LocalEventService {
     // WEEKLY sang ONCE (chỉ gửi specificDate) để sót dayOfWeek cũ trong DB. Field của
     // loại lặp không còn áp dụng phải về null tường minh, không "kế thừa" từ giá trị cũ.
     event.dayOfWeek =
-      nextRecurrence === EventRecurrence.WEEKLY ? (nextDayOfWeek ?? null) : null;
+      nextRecurrence === EventRecurrence.WEEKLY
+        ? (nextDayOfWeek ?? null)
+        : null;
     event.specificDate =
-      nextRecurrence === EventRecurrence.ONCE ? (nextSpecificDate ?? null) : null;
+      nextRecurrence === EventRecurrence.ONCE
+        ? (nextSpecificDate ?? null)
+        : null;
 
     return this.localEventRepo.save(event);
   }
@@ -100,20 +121,39 @@ export class LocalEventService {
       .getMany();
   }
 
+  // Mutually exclusive by design: a WEEKLY event is defined by dayOfWeek and must NOT also
+  // carry a specificDate (and vice versa for ONCE) — reject explicitly with a 400 instead
+  // of silently accepting both and discarding one later. update() only reaches here with
+  // whichever field the caller actually sent still attached (see update()'s dto ?? event
+  // merge above), so a request that sends both together always gets caught.
   private assertRecurrenceFields(
     recurrence: EventRecurrence,
     dayOfWeek?: number,
     specificDate?: string,
   ): void {
-    if (recurrence === EventRecurrence.WEEKLY && dayOfWeek === undefined) {
-      throw new BadRequestException(
-        'Sự kiện lặp hàng tuần (WEEKLY) phải có dayOfWeek (0-6)',
-      );
+    if (recurrence === EventRecurrence.WEEKLY) {
+      if (dayOfWeek === undefined) {
+        throw new BadRequestException(
+          'Sự kiện lặp hàng tuần (WEEKLY) phải có dayOfWeek (0-6)',
+        );
+      }
+      if (specificDate) {
+        throw new BadRequestException(
+          'Sự kiện lặp hàng tuần (WEEKLY) không được có specificDate',
+        );
+      }
     }
-    if (recurrence === EventRecurrence.ONCE && !specificDate) {
-      throw new BadRequestException(
-        'Sự kiện diễn ra một lần (ONCE) phải có specificDate',
-      );
+    if (recurrence === EventRecurrence.ONCE) {
+      if (!specificDate) {
+        throw new BadRequestException(
+          'Sự kiện diễn ra một lần (ONCE) phải có specificDate',
+        );
+      }
+      if (dayOfWeek !== undefined) {
+        throw new BadRequestException(
+          'Sự kiện diễn ra một lần (ONCE) không được có dayOfWeek',
+        );
+      }
     }
   }
 }

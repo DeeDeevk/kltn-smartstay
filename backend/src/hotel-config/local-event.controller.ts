@@ -27,6 +27,11 @@ export class LocalEventController {
     return this.localEventService.findAll();
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.localEventService.findByIdForAdmin(id);
+  }
+
   @Post()
   create(@Body() dto: CreateLocalEventDto) {
     return this.localEventService.create(dto);

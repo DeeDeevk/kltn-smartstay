@@ -48,7 +48,12 @@ export class HotelConfig {
   // reflect-metadata trả design:type là Object (không phải String) cho union, khiến
   // TypeORM không suy ra được kiểu cột Postgres và app không khởi động được
   // (DataTypeNotSupportedError). Xem cancelReason ở booking.entity.ts — cùng lý do.
-  @Column({ name: 'googlePlaceId', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'googlePlaceId',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   googlePlaceId!: string | null;
 
   @CreateDateColumn({ name: 'createdAt' })
