@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -12,6 +13,10 @@ import { AiConversation } from './ai-conversation.entity';
 // Log đầy đủ hội thoại (kể cả các lượt gọi tool) — phục vụ làm dataset đánh giá độ
 // chính xác của agent cho báo cáo đồ án. USER/MODEL lưu nội dung văn bản ở "content";
 // TOOL lưu tên tool + tham số model gọi + kết quả trả về (không có "content" văn bản).
+// Mọi lần tải lịch sử đều lọc theo conversationId rồi sắp theo createdAt — index kép này
+// phục vụ đúng truy vấn đó. Tên đặt cố định để khớp với migration
+// AddIndexAiMessageConversationCreatedAt (không để TypeORM tự sinh tên dạng hash).
+@Index('IDX_ai_message_conversation_created_at', ['conversation', 'createdAt'])
 @Entity('AiMessage')
 export class AiMessage {
   @PrimaryGeneratedColumn('uuid', { name: 'messageId' })

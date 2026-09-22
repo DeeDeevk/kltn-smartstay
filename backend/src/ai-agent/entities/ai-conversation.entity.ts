@@ -6,6 +6,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  RelationId,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
@@ -46,9 +47,17 @@ export class AiConversation {
   // null = khách vãng lai chưa đăng nhập. Khách vẫn chat hỏi phòng/chính sách được,
   // chỉ các thao tác đặt phòng mới bắt buộc đăng nhập. Khi khách đăng nhập giữa chừng,
   // cuộc hội thoại được gắn vào tài khoản đó (xem AiAgentService.getAccessibleConversation).
-  @ManyToOne(() => User, { eager: true, nullable: true })
+  // Không eager: mỗi tin nhắn đều tải conversation, mà eager sẽ kéo theo cả entity User
+  // (gồm CMND/CCCD và các dữ liệu nhạy cảm khác) chỉ để so sánh userId — dùng `userId` bên
+  // dưới để biết chủ sở hữu, đừng kiểm tra `user` (luôn undefined khi chưa join).
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'userId' })
   user!: User | null;
+
+  // Giá trị cột FK userId của quan hệ trên, đọc trong cùng câu query lấy conversation —
+  // đủ để kiểm tra chủ sở hữu mà không cần join hay tải User. null = khách vãng lai.
+  @RelationId((conversation: AiConversation) => conversation.user)
+  userId!: string | null;
 
   @Column({ name: 'pendingBooking', type: 'jsonb', nullable: true })
   pendingBooking!: PendingBookingSummary | null;

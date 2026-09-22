@@ -15,6 +15,7 @@ import {
   CircleHelp,
   LogOut,
   ChevronLeft,
+  X,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -57,7 +58,9 @@ const ROLE_LABELS = {
   CUSTOMER: 'Khách hàng',
 };
 
-export default function Sidebar({ collapsed = false, onToggle }) {
+// collapsed: chỉ áp dụng ở desktop (layout đã tự bỏ qua trên màn hình nhỏ).
+// mobileOpen/onClose: dưới 1024px sidebar là ngăn kéo trượt từ mép trái.
+export default function Sidebar({ collapsed = false, onToggle, mobileOpen = false, onClose }) {
   const { user, logout } = useAuth();
   const { t } = useTranslation();
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -75,17 +78,23 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   return (
     <>
     <aside
-      className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
+      className={`fixed left-0 top-0 z-30 flex h-screen w-64 flex-col border-r border-gray-200 bg-white transition-[transform,width,box-shadow] duration-300 ease-out lg:z-20 lg:translate-x-0 lg:shadow-none ${
+        mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+      } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
     >
-      {/* Nút thu gọn / mở rộng — nổi trên viền phải của sidebar */}
+      {/* Nút thu gọn / mở rộng (chỉ desktop) — đặt ở hàng logo (top-5, cao đúng bằng h-16),
+          KHÔNG đặt ở top-20 như trước: chỗ đó nằm trong vùng menu cuộn được (nav có
+          overflow-y-auto), khi cửa sổ thấp thanh cuộn của menu hiện ra sát mép phải sidebar
+          và bị nút đè lên. Mở rộng: nằm hẳn bên trong sidebar; thu gọn (sidebar chỉ rộng
+          w-20, logo chiếm giữa): bám viền phải như cũ. */}
       <button
         type="button"
         onClick={onToggle}
         aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
         title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
-        className="absolute -right-3 top-20 z-30 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800"
+        className={`press absolute top-5 z-30 hidden h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800 lg:flex ${
+          collapsed ? '-right-3' : 'right-3'
+        }`}
       >
         <ChevronLeft
           size={14}
@@ -97,12 +106,21 @@ export default function Sidebar({ collapsed = false, onToggle }) {
       <div className={`flex h-16 items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'gap-3 px-6'}`}>
         <img src={vikaLogo} alt="Vika Hotel" className="h-9 w-9 shrink-0 object-contain" />
         {!collapsed && <span className="text-xl font-bold text-gray-900">VIKAHOTEL</span>}
+        {/* Nút đóng ngăn kéo (chỉ dưới 1024px) */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Đóng menu"
+          className="press ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 lg:hidden"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Menu */}
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
         {MENU_ITEMS.filter((item) => item.roles.includes(user?.role)).map((item, index) => {
-          const base = `w-full flex items-center rounded-lg text-sm font-medium transition-colors ${
+          const base = `group w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-200 ${
             collapsed ? 'justify-center px-0 py-3' : 'gap-3 px-4 py-3'
           }`;
           return item.ready ? (
@@ -119,7 +137,10 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 }`
               }
             >
-              <item.icon size={20} className="shrink-0" />
+              <item.icon
+                size={20}
+                className="shrink-0 transition-transform duration-200 group-hover:scale-110"
+              />
               {!collapsed && item.label}
             </NavLink>
           ) : (

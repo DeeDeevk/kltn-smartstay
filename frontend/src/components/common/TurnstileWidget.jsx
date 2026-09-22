@@ -13,8 +13,11 @@ export default function TurnstileWidget({
     );
   }
 
+  // size "flexible" = 100% chiều rộng phần tử cha. KHÔNG được bọc trong flex + justify-center:
+  // phần tử cha sẽ co theo nội dung (lúc iframe chưa vẽ là 0) khiến widget vô hình nhưng
+  // vẫn chiếm ~65px chiều cao. Dùng block w-full để container luôn đủ rộng.
   return (
-    <div className="flex justify-center">
+    <div className="w-full">
       <Turnstile
         key={resetKey}
         siteKey={siteKey}

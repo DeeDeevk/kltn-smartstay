@@ -43,10 +43,11 @@ export default function RoomCard({ room, startDate, endDate }) {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow duration-300 flex flex-col h-full group">
+    <div className="anim-fade-up bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-[transform,box-shadow] duration-300 flex flex-col h-full group">
       {/* ... image section ... */}
       <div className="relative h-48 overflow-hidden">
         <img
+          loading="lazy"
           src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2070&auto=format&fit=crop'}
           alt={room.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"

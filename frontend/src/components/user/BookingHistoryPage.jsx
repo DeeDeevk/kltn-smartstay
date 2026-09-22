@@ -167,6 +167,7 @@ export default function BookingHistoryPage() {
                               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                                 {booking.roomType?.images?.[0] ? (
                                   <img
+                                    loading="lazy"
                                     src={booking.roomType.images[0]}
                                     alt={booking.roomType?.name}
                                     className="h-full w-full object-cover"
@@ -246,6 +247,7 @@ export default function BookingHistoryPage() {
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
                         {booking.roomType?.images?.[0] ? (
                           <img
+                            loading="lazy"
                             src={booking.roomType.images[0]}
                             alt={booking.roomType?.name}
                             className="h-full w-full object-cover"

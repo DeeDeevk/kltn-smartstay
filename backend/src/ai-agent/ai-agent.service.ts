@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   Logger,
@@ -35,6 +37,19 @@ const FALLBACK_REPLY =
 // Chỉ gửi cho LLM N lượt hỏi-đáp gần nhất — hội thoại dài mà gửi toàn bộ thì mỗi tin
 // nhắn mới đều tốn token cho cả lịch sử cũ, chậm và đắt dần theo thời gian.
 const MAX_HISTORY_TURNS = 10;
+// Số dòng tối đa đọc từ DB để dựng ngữ cảnh cho LLM (sendMessage) — buildHistoryContext()
+// chỉ dùng MAX_HISTORY_TURNS lượt gần nhất + vài kết quả tool nên không cần tải cả hội
+// thoại dài mỗi tin nhắn. Mỗi lượt chiếm USER + các dòng TOOL + MODEL, nên 40 dòng đủ cho
+// 10 lượt khi trung bình mỗi lượt gọi không quá 2 tool. getHistory() thì không dùng
+// giới hạn này (xem ghi chú tại đó).
+const HISTORY_FETCH_LIMIT = 40;
+// Mỗi tin nhắn của khách tốn ít nhất 1 lần gọi Gemini (quota/tiền) — giới hạn theo tài
+// khoản trong 24 giờ gần nhất để 1 người (hoặc bot) không dùng hết hạn mức của cả hệ
+// thống. Bổ sung cho @Throttle theo IP ở controller, vốn không chặn được việc đổi IP.
+const MAX_USER_MESSAGES_PER_DAY = 100;
+const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Frontend dựa vào mã này để hiện đúng thông báo hết lượt (khác với 429 do @Throttle).
+export const AI_DAILY_QUOTA_EXCEEDED = 'AI_DAILY_QUOTA_EXCEEDED';
 // Lỗi tạm thời từ nhà cung cấp LLM (quá tải/giới hạn tần suất) — đáng để thử lại.
 const RETRYABLE_LLM_STATUS = new Set([429, 500, 502, 503, 504]);
 const LLM_RETRY_DELAYS_MS = [1000, 3000];
@@ -67,14 +82,15 @@ export class AiAgentService {
     dto: SendMessageDto,
     role = 'CUSTOMER',
   ) {
+    // Hạn mức ngày tính theo tài khoản nên chỉ áp dụng cho người đã đăng nhập; khách vãng
+    // lai chỉ bị giới hạn theo IP bằng @Throttle ở controller.
+    if (userId) await this.assertWithinDailyQuota(userId);
+
     const conversation = dto.conversationId
       ? await this.getAccessibleConversation(dto.conversationId, userId)
       : await this.createConversation(userId);
 
-    const history = await this.messageRepo.find({
-      where: { conversation: { conversationId: conversation.conversationId } },
-      order: { createdAt: 'ASC' },
-    });
+    const history = await this.loadRecentMessages(conversation.conversationId);
 
     const userMessage = await this.messageRepo.save(
       this.messageRepo.create({
@@ -206,6 +222,10 @@ export class AiAgentService {
       conversationId,
       userId,
     );
+    // Cố ý tải TOÀN BỘ, không giới hạn như loadRecentMessages(): hàm này trả lại đầy đủ
+    // hội thoại cho khách xem/cuộn lại, còn loadRecentMessages() chỉ dựng ngữ cảnh gửi
+    // LLM (vốn đã tự cắt còn vài lượt gần nhất). Hai mục đích khác nhau, không phải
+    // thiếu nhất quán.
     const messages = await this.messageRepo.find({
       where: { conversation: { conversationId: conversation.conversationId } },
       order: { createdAt: 'ASC' },
@@ -219,6 +239,53 @@ export class AiAgentService {
       toolResult: m.toolResult,
       createdAt: m.createdAt,
     }));
+  }
+
+  private async assertWithinDailyQuota(userId: string): Promise<void> {
+    const since = new Date(Date.now() - QUOTA_WINDOW_MS);
+    const used = await this.countRecentUserMessages(userId, since);
+    if (used >= MAX_USER_MESSAGES_PER_DAY) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          code: AI_DAILY_QUOTA_EXCEEDED,
+          message: `Bạn đã dùng hết ${MAX_USER_MESSAGES_PER_DAY} lượt hỏi trợ lý ảo trong 24 giờ qua. Vui lòng thử lại sau hoặc liên hệ lễ tân để được hỗ trợ.`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private countRecentUserMessages(
+    userId: string,
+    since: Date,
+  ): Promise<number> {
+    return this.messageRepo
+      .createQueryBuilder('message')
+      .innerJoin('message.conversation', 'conversation')
+      .where('conversation.user = :userId', { userId })
+      .andWhere('message.role = :role', { role: AiMessageRole.USER })
+      .andWhere('message.createdAt >= :since', { since })
+      .getCount();
+  }
+
+  // Lấy HISTORY_FETCH_LIMIT dòng gần nhất ở tầng DB (DESC + take) rồi đảo lại thành thứ
+  // tự cũ -> mới như buildHistoryContext() mong đợi. Cửa sổ theo số dòng có thể bắt đầu
+  // giữa 1 lượt (VD ngay tại dòng TOOL/MODEL) nên bỏ các dòng đầu cho tới tin nhắn USER
+  // đầu tiên — buildHistoryContext() luôn giả định ngữ cảnh mở đầu bằng câu của khách.
+  private async loadRecentMessages(
+    conversationId: string,
+  ): Promise<AiMessage[]> {
+    const newestFirst = await this.messageRepo.find({
+      where: { conversation: { conversationId } },
+      order: { createdAt: 'DESC' },
+      take: HISTORY_FETCH_LIMIT,
+    });
+    const oldestFirst = newestFirst.reverse();
+    const firstUserIndex = oldestFirst.findIndex(
+      (m) => m.role === AiMessageRole.USER,
+    );
+    return firstUserIndex === -1 ? [] : oldestFirst.slice(firstUserIndex);
   }
 
   private async createConversation(
@@ -248,14 +315,18 @@ export class AiAgentService {
     if (!conversation) {
       throw new NotFoundException('Không tìm thấy cuộc hội thoại');
     }
-    if (!conversation.user) {
+    // Đọc chủ sở hữu qua conversation.userId (cột FK có sẵn trong cùng query), KHÔNG dùng
+    // conversation.user: quan hệ user không còn eager nên luôn là undefined, nếu kiểm tra
+    // theo nó thì mọi hội thoại sẽ bị coi là của khách vãng lai và ai có ID cũng chiếm được.
+    if (!conversation.userId) {
       if (userId) {
         conversation.user = { userId } as AiConversation['user'];
         await this.conversationRepo.save(conversation);
       }
       return conversation;
     }
-    if (conversation.user.userId !== userId) {
+    // Vẫn tách 2 bước để phân biệt "không tồn tại" (404) và "của người khác" (403).
+    if (conversation.userId !== userId) {
       throw new ForbiddenException(
         'Bạn không có quyền truy cập cuộc hội thoại này',
       );

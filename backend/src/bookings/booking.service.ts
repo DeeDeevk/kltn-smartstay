@@ -300,17 +300,21 @@ export class BookingService {
     const query: QueryRoomTypeDto = guests ? { capacity: guests } : {};
     const roomTypes = await this.roomTypeService.findAllActive(query);
 
+    if (roomTypes.length === 0) return [];
+
+    // 2 query gộp (thay vì 2 query cho mỗi loại phòng) — số query không tăng theo số
+    // loại phòng.
+    const roomTypeIds = roomTypes.map((roomType) => roomType.roomTypeId);
+    const [totalRooms, overlapping] = await Promise.all([
+      this.countRoomsByRoomType(roomTypeIds),
+      this.countOverlappingBookingsByRoomType(roomTypeIds, checkIn, checkOut),
+    ]);
+
     const available: Array<RoomType & { availableCount: number }> = [];
     for (const roomType of roomTypes) {
-      const totalRooms = await this.roomRepo.count({
-        where: { roomType: { roomTypeId: roomType.roomTypeId } },
-      });
-      const overlapping = await this.countOverlappingBookings(
-        roomType.roomTypeId,
-        checkIn,
-        checkOut,
-      );
-      const availableCount = totalRooms - overlapping;
+      const availableCount =
+        (totalRooms.get(roomType.roomTypeId) ?? 0) -
+        (overlapping.get(roomType.roomTypeId) ?? 0);
       if (availableCount > 0) {
         available.push({ ...roomType, availableCount });
       }
@@ -1042,16 +1046,13 @@ export class BookingService {
     return { data: rows.map((b) => this.toDetailResponse(b)), total };
   }
 
-  private async countOverlappingBookings(
-    roomTypeId: string,
-    checkIn: string,
-    checkOut: string,
-  ): Promise<number> {
+  // Điều kiện "booking đang giữ chỗ và có đêm nghỉ giao với [checkIn, checkOut)" — dùng
+  // chung cho cả đếm 1 loại phòng lẫn đếm gộp nhiều loại phòng để 2 nơi không lệch nhau.
+  private overlappingBookingsQuery(checkIn: string, checkOut: string) {
     return this.bookingRepo
       .createQueryBuilder('booking')
       .innerJoin('booking.roomType', 'roomType')
-      .where('roomType.roomTypeId = :roomTypeId', { roomTypeId })
-      .andWhere('booking.status IN (:...statuses)', {
+      .where('booking.status IN (:...statuses)', {
         statuses: [
           BookingStatus.PENDING,
           BookingStatus.CONFIRMED,
@@ -1059,8 +1060,48 @@ export class BookingService {
         ],
       })
       .andWhere('booking.checkInDate < :checkOut', { checkOut })
-      .andWhere('booking.checkOutDate > :checkIn', { checkIn })
+      .andWhere('booking.checkOutDate > :checkIn', { checkIn });
+  }
+
+  private async countOverlappingBookings(
+    roomTypeId: string,
+    checkIn: string,
+    checkOut: string,
+  ): Promise<number> {
+    return this.overlappingBookingsQuery(checkIn, checkOut)
+      .andWhere('roomType.roomTypeId = :roomTypeId', { roomTypeId })
       .getCount();
+  }
+
+  // Cùng ý nghĩa với countOverlappingBookings nhưng cho nhiều loại phòng trong 1 query
+  // (GROUP BY) — loại phòng không có booking trùng ngày sẽ không xuất hiện trong Map.
+  private async countOverlappingBookingsByRoomType(
+    roomTypeIds: string[],
+    checkIn: string,
+    checkOut: string,
+  ): Promise<Map<string, number>> {
+    const rows = await this.overlappingBookingsQuery(checkIn, checkOut)
+      .andWhere('roomType.roomTypeId IN (:...roomTypeIds)', { roomTypeIds })
+      .select('roomType.roomTypeId', 'roomTypeId')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('roomType.roomTypeId')
+      .getRawMany<{ roomTypeId: string; count: string }>();
+    return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
+  }
+
+  // Tổng số phòng vật lý (mọi trạng thái) của từng loại phòng, 1 query GROUP BY.
+  private async countRoomsByRoomType(
+    roomTypeIds: string[],
+  ): Promise<Map<string, number>> {
+    const rows = await this.roomRepo
+      .createQueryBuilder('room')
+      .innerJoin('room.roomType', 'roomType')
+      .where('roomType.roomTypeId IN (:...roomTypeIds)', { roomTypeIds })
+      .select('roomType.roomTypeId', 'roomTypeId')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('roomType.roomTypeId')
+      .getRawMany<{ roomTypeId: string; count: string }>();
+    return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
   private getStayDates(checkIn: string, checkOut: string): string[] {

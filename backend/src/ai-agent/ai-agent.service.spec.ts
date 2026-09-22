@@ -1,5 +1,10 @@
 import { randomUUID } from 'crypto';
-import { AiAgentService } from './ai-agent.service';
+import {
+  ForbiddenException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
+import { AI_DAILY_QUOTA_EXCEEDED, AiAgentService } from './ai-agent.service';
 import { AiConversation } from './entities/ai-conversation.entity';
 import { AiMessage } from './entities/ai-message.entity';
 import { AiMessageRole } from 'src/common/enums/ai-message-role.enum';
@@ -23,16 +28,35 @@ class FakeRepo<T extends { createdAt?: Date }> {
     return Promise.resolve(entity);
   }
 
-  find(): Promise<T[]> {
+  // Hỗ trợ order theo createdAt và take. DESC = sắp ASC (ổn định) rồi đảo, để các dòng
+  // trùng createdAt (lưu liên tiếp trong cùng mili-giây) vẫn giữ đúng thứ tự thời gian.
+  find(options?: {
+    order?: { createdAt?: 'ASC' | 'DESC' };
+    take?: number;
+  }): Promise<T[]> {
+    const sorted = [...this.rows].sort(
+      (a, b) => a.createdAt!.getTime() - b.createdAt!.getTime(),
+    );
+    if (options?.order?.createdAt === 'DESC') sorted.reverse();
     return Promise.resolve(
-      [...this.rows].sort(
-        (a, b) => a.createdAt!.getTime() - b.createdAt!.getTime(),
-      ),
+      options?.take === undefined ? sorted : sorted.slice(0, options.take),
     );
   }
 
-  findOne(): Promise<T | undefined> {
-    return Promise.resolve(this.rows[this.rows.length - 1]);
+  // Lọc theo các field trong `where` (so sánh bằng ===), lấy bản ghi lưu gần nhất khớp —
+  // giống findOne thật: không khớp thì trả undefined thay vì bản ghi bất kỳ.
+  findOne(options?: {
+    where?: Record<string, unknown>;
+  }): Promise<T | undefined> {
+    const where = Object.entries(options?.where ?? {});
+    const match = [...this.rows]
+      .reverse()
+      .find((row) =>
+        where.every(
+          ([key, value]) => (row as Record<string, unknown>)[key] === value,
+        ),
+      );
+    return Promise.resolve(match);
   }
 }
 
@@ -44,6 +68,10 @@ describe('AiAgentService', () => {
     execute: jest.MockedFunction<AiAgentToolsService['execute']>;
   };
   let service: AiAgentService;
+  let countRecentUserMessages: jest.SpyInstance<
+    Promise<number>,
+    [string, Date]
+  >;
 
   const userId = 'user-1';
 
@@ -62,13 +90,24 @@ describe('AiAgentService', () => {
       toolsService as unknown as never,
     );
 
-    // getOwnedConversation so sánh conversation.user.userId — set sẵn để findOne trả về
-    // đúng owner cho các lượt hội thoại tiếp theo trong cùng 1 test.
+    // Đếm hạn mức ngày dùng QueryBuilder (fake repo không có) — mặc định 0 lượt đã dùng,
+    // test riêng về hạn mức sẽ đặt giá trị khác.
+    countRecentUserMessages = jest
+      .spyOn(
+        service as unknown as {
+          countRecentUserMessages: (u: string, s: Date) => Promise<number>;
+        },
+        'countRecentUserMessages',
+      )
+      .mockResolvedValue(0);
+
+    // getOwnedConversation so sánh conversation.userId (cột FK mà repo thật tự điền khi
+    // findOne) — set sẵn để findOne trả về đúng owner cho các lượt tiếp theo trong test.
     conversationRepo.create = function (partial) {
       return {
         ...partial,
         conversationId: randomUUID(),
-        user: { userId },
+        userId,
       } as unknown as AiConversation;
     };
   });
@@ -149,6 +188,72 @@ describe('AiAgentService', () => {
     );
     /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     expect(turn2.reply).toContain('thành công');
+  });
+
+  it('hết hạn mức 100 tin/24 giờ thì báo 429 kèm mã riêng và không gọi LLM', async () => {
+    countRecentUserMessages.mockResolvedValue(100);
+
+    const error = await service
+      .sendMessage(userId, { message: 'Xin chào' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(429);
+    expect((error as HttpException).getResponse()).toMatchObject({
+      code: AI_DAILY_QUOTA_EXCEEDED,
+    });
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+  });
+
+  it('còn dưới hạn mức (99 tin) thì vẫn trả lời; đếm theo đúng user trong 24 giờ gần nhất', async () => {
+    countRecentUserMessages.mockResolvedValue(99);
+    llmProvider.chat.mockResolvedValueOnce({
+      text: 'Dạ em chào anh/chị ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    const result = await service.sendMessage(userId, { message: 'Xin chào' });
+
+    expect(result.reply).toBe('Dạ em chào anh/chị ạ.');
+    const [countedUser, since] = countRecentUserMessages.mock.calls[0];
+    expect(countedUser).toBe(userId);
+    const windowMs = Date.now() - since.getTime();
+    expect(windowMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 1000);
+    expect(windowMs).toBeLessThan(24 * 60 * 60 * 1000 + 5000);
+  });
+
+  it('hội thoại không tồn tại thì báo 404 và không gọi LLM', async () => {
+    await expect(
+      service.sendMessage(userId, {
+        conversationId: randomUUID(),
+        message: 'Xin chào',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+  });
+
+  it('hội thoại của người khác thì báo 403, cả khi nhắn tin lẫn khi xem lịch sử', async () => {
+    llmProvider.chat.mockResolvedValue({
+      text: 'Dạ em chào anh/chị ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+    const { conversationId } = await service.sendMessage(userId, {
+      message: 'Xin chào',
+    });
+    llmProvider.chat.mockClear();
+
+    await expect(
+      service.sendMessage('user-2', { conversationId, message: 'Cho tôi xem' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.getHistory(conversationId, 'user-2'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(llmProvider.chat).not.toHaveBeenCalled();
+
+    // Chủ sở hữu thật vẫn xem được.
+    await expect(
+      service.getHistory(conversationId, userId),
+    ).resolves.toHaveLength(2);
   });
 
   it('luồng thiếu thông tin: agent hỏi lại thay vì gọi tool khi khách chưa cho đủ dữ liệu', async () => {
@@ -276,5 +381,63 @@ describe('AiAgentService', () => {
     expect(userTexts[0]).toBe('câu hỏi số 2');
     expect(userTexts.at(-1)).toBe('câu hỏi số 12');
     expect(sent[0].role).toBe('user');
+  });
+
+  it('chỉ đọc 40 dòng gần nhất từ DB; cửa sổ cắt giữa lượt vẫn mở đầu bằng tin nhắn khách, còn getHistory trả đủ', async () => {
+    // Mỗi lượt = 1 USER + 4 TOOL + 1 MODEL = 6 dòng nên 12 lượt (72 dòng) vượt xa 40.
+    llmProvider.chat.mockImplementation((messages: Array<{ role: string }>) =>
+      Promise.resolve(
+        messages.at(-1)?.role === 'tool'
+          ? { text: 'Dạ vâng ạ.', toolCalls: [] }
+          : {
+              text: null,
+              toolCalls: [1, 2, 3, 4].map((n) => ({
+                id: `c${n}`,
+                name: 'search_rooms',
+                args: {},
+              })),
+            },
+      ),
+    );
+    toolsService.execute.mockResolvedValue({ success: true, data: [] });
+
+    let conversationId: string | undefined;
+    for (let i = 1; i <= 12; i += 1) {
+      const result = await service.sendMessage(userId, {
+        conversationId,
+        message: `câu hỏi số ${i}`,
+      });
+      conversationId = result.conversationId;
+    }
+
+    const findSpy = jest.spyOn(messageRepo, 'find');
+    llmProvider.chat.mockClear();
+    await service.sendMessage(userId, {
+      conversationId,
+      message: 'câu hỏi số 13',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const expectedQuery = expect.objectContaining({
+      order: { createdAt: 'DESC' },
+      take: 40,
+    });
+    expect(findSpy).toHaveBeenCalledWith(expectedQuery);
+
+    // Lần gọi LLM đầu tiên của lượt 13. 40 dòng cuối của 72 dòng bắt đầu ở 1 dòng TOOL
+    // của lượt 6 -> bị bỏ cho tới USER kế tiếp (câu 7); thứ tự vẫn cũ -> mới.
+    const firstCall = llmProvider.chat.mock.calls[0] as [
+      Array<{ role: string; parts: Array<{ text?: string }> }>,
+    ];
+    const sent = firstCall[0].filter((m) => m.role !== 'system');
+    expect(sent[0].role).toBe('user');
+    expect(
+      sent.filter((m) => m.role === 'user').map((m) => m.parts[0].text),
+    ).toEqual([7, 8, 9, 10, 11, 12, 13].map((n) => `câu hỏi số ${n}`));
+
+    // getHistory vẫn trả toàn bộ 13 lượt x 6 dòng, không bị giới hạn.
+    await expect(
+      service.getHistory(conversationId!, userId),
+    ).resolves.toHaveLength(78);
   });
 });

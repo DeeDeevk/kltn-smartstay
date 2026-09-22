@@ -24,7 +24,11 @@
     "seed:faqs": "ts-node -r tsconfig-paths/register src/database/seed-faqs.ts",
     "seed:more-rooms": "ts-node -r tsconfig-paths/register src/database/seed-more-rooms.ts",
     "rooms:rename": "ts-node -r tsconfig-paths/register src/database/rename-rooms.ts",
-    "eval:rag": "ts-node -r tsconfig-paths/register src/ai-agent/rag/eval/evaluate-rag.ts"
+    "eval:rag": "ts-node -r tsconfig-paths/register src/ai-agent/rag/eval/evaluate-rag.ts",
+    "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/data-source.ts",
+    "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/data-source.ts",
+    "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/data-source.ts",
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/data-source.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1136.0",
@@ -48,6 +52,7 @@
     "cloudinary": "^2.10.1",
     "cookie-parser": "^1.4.7",
     "google-auth-library": "^11.0.2",
+    "helmet": "^8.3.0",
     "ioredis": "^5.11.1",
     "nodemailer": "^9.0.5",
     "passport": "^0.7.0",
@@ -55,6 +60,7 @@
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.4",
     "socket.io": "^4.8.3",
     "typeorm": "^1.1.0"
   },

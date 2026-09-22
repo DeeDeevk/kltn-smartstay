@@ -1,3 +1,6 @@
 .agents/
 skills-lock.json
 node_modules/
+
+# Cache embedding runtime của script eval RAG — sinh lại khi chạy `npm run eval:rag`
+backend/src/ai-agent/rag/eval/*.cache.json
