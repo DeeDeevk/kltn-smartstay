@@ -19,10 +19,27 @@ export const WEEKDAY_NAMES_VI = [
 // search_rooms/propose_booking chạy với ngày sai và trả lời sai hoặc rỗng.
 const HOTEL_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
+export interface HotelLocationInfo {
+  // false when HotelConfig is still at its default (0,0) placeholder — see
+  // HotelConfigService.getOrCreate() — i.e. the admin has never saved a real address yet.
+  configured: boolean;
+  address?: string;
+}
+
 export function buildSystemPrompt(
-  options: { isGuest?: boolean; now?: Date } = {},
+  options: {
+    isGuest?: boolean;
+    now?: Date;
+    hotelLocation?: HotelLocationInfo;
+  } = {},
 ): string {
-  const { isGuest = false, now = new Date() } = options;
+  const {
+    isGuest = false,
+    now = new Date(),
+    // Default to "not configured" (never fabricate an address) for any caller that
+    // doesn't pass this — e.g. existing tests that don't care about this section.
+    hotelLocation = { configured: false },
+  } = options;
   // Tính "hôm nay" theo giờ Việt Nam, không theo UTC (toISOString) hay theo múi giờ của
   // server (getDay) — nếu không, từ 0h-7h sáng giờ VN bot sẽ hiểu "hôm nay" là ngày hôm
   // qua và quy đổi sai "ngày mai", "cuối tuần này"... Locale en-CA format sẵn YYYY-MM-DD.
@@ -50,8 +67,27 @@ trò chuyện này vẫn được giữ nguyên nên không phải trao đổi l
 hứa hẹn đã giữ phòng hay đã đặt phòng giúp khách.`
     : '';
 
+  // Static "about the hotel itself" context, refreshed from HotelConfig on every request
+  // by the caller (see AiAgentService.sendMessage) — cheap (single-row lookup), so the
+  // model never needs a tool call just to answer "where is the hotel". Explicitly told
+  // apart from get_nearby_places (which is about places AROUND the hotel, not the hotel
+  // itself) to stop the model reaching for the wrong tool for a plain address question.
+  const hotelLocationNote = hotelLocation.configured
+    ? `
+
+Thông tin khách sạn: VikaHotel, địa chỉ: ${hotelLocation.address}. Khi khách hỏi khách sạn ở
+đâu, địa chỉ là gì, hoặc muốn biết vị trí khách sạn, hãy trả lời TRỰC TIẾP bằng địa chỉ này
+— KHÔNG cần gọi tool nào cho câu hỏi kiểu này. Phân biệt rõ với get_nearby_places: tool đó
+chỉ dùng để tìm địa điểm ăn uống/vui chơi/tham quan BÊN NGOÀI, gần khách sạn — không phải để
+trả lời câu hỏi về chính khách sạn.`
+    : `
+
+Thông tin khách sạn: VikaHotel. Địa chỉ khách sạn CHƯA được cấu hình trong hệ thống. Nếu
+khách hỏi khách sạn ở đâu/địa chỉ là gì, hãy nói rõ hiện chưa có thông tin địa chỉ chính xác
+và mời khách liên hệ lễ tân để được hỗ trợ — TUYỆT ĐỐI không tự bịa địa chỉ.`;
+
   return `Bạn là trợ lý ảo của VikaHotel, một khách sạn tại Việt Nam. Bạn đóng vai một lễ tân
-thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.${guestNote}
+thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.${guestNote}${hotelLocationNote}
 
 Hôm nay là ${weekday}, ngày ${todayStr} (định dạng YYYY-MM-DD). Khi khách dùng mốc thời gian
 tương đối ("ngày mai", "cuối tuần này", "thứ 7 tuần sau", "tuần sau"...), hãy tự quy đổi

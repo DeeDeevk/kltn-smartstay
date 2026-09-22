@@ -67,6 +67,7 @@ describe('AiAgentService', () => {
   let toolsService: {
     execute: jest.MockedFunction<AiAgentToolsService['execute']>;
   };
+  let hotelConfigService: { getOrCreate: jest.Mock };
   let service: AiAgentService;
   let countRecentUserMessages: jest.SpyInstance<
     Promise<number>,
@@ -82,12 +83,22 @@ describe('AiAgentService', () => {
     toolsService = {
       execute: jest.fn() as jest.MockedFunction<AiAgentToolsService['execute']>,
     };
+    // Default: a configured hotel with a real address — matches the common case. Tests
+    // about the "not configured" wording override this per-test.
+    hotelConfigService = {
+      getOrCreate: jest.fn().mockResolvedValue({
+        address: '123 Lê Lợi, Q1, TP.HCM',
+        latitude: 10.77,
+        longitude: 106.7,
+      }),
+    };
 
     service = new AiAgentService(
       conversationRepo as unknown as never,
       messageRepo as unknown as never,
       llmProvider,
       toolsService as unknown as never,
+      hotelConfigService as unknown as never,
     );
 
     // Đếm hạn mức ngày dùng QueryBuilder (fake repo không có) — mặc định 0 lượt đã dùng,
@@ -110,6 +121,64 @@ describe('AiAgentService', () => {
         userId,
       } as unknown as AiConversation;
     };
+  });
+
+  it('system prompt kèm đúng địa chỉ khách sạn khi HotelConfig đã cấu hình, và dặn không cần gọi tool', async () => {
+    llmProvider.chat.mockResolvedValueOnce({
+      text: 'Dạ khách sạn ở 123 Lê Lợi ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    await service.sendMessage(userId, { message: 'Khách sạn ở đâu?' });
+
+    const [messages] = llmProvider.chat.mock.calls[0] as [
+      Array<{ role: string; parts: Array<{ type: string; text?: string }> }>,
+    ];
+    const systemText = messages[0].parts[0].text ?? '';
+    expect(systemText).toContain('123 Lê Lợi, Q1, TP.HCM');
+    expect(systemText).toContain('KHÔNG cần gọi tool');
+  });
+
+  it('system prompt nói rõ CHƯA cấu hình địa chỉ khi HotelConfig còn ở toạ độ mặc định (0,0), không bịa địa chỉ', async () => {
+    hotelConfigService.getOrCreate.mockResolvedValue({
+      address: '',
+      latitude: 0,
+      longitude: 0,
+    });
+    llmProvider.chat.mockResolvedValueOnce({
+      text: 'Dạ hiện khách sạn chưa cập nhật địa chỉ ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    await service.sendMessage(userId, { message: 'Khách sạn ở đâu?' });
+
+    const [messages] = llmProvider.chat.mock.calls[0] as [
+      Array<{ role: string; parts: Array<{ type: string; text?: string }> }>,
+    ];
+    const systemText = messages[0].parts[0].text ?? '';
+    expect(systemText).toContain('CHƯA được cấu hình');
+    expect(systemText).not.toContain('123 Lê Lợi');
+  });
+
+  it('vẫn trả lời bình thường (không throw/500) khi HotelConfig lookup lỗi tạm thời, và coi như chưa cấu hình', async () => {
+    hotelConfigService.getOrCreate.mockRejectedValue(
+      new Error('connection pool exhausted'),
+    );
+    llmProvider.chat.mockResolvedValueOnce({
+      text: 'Dạ hiện tôi chưa có thông tin địa chỉ ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult);
+
+    const result = await service.sendMessage(userId, {
+      message: 'Khách sạn ở đâu?',
+    });
+
+    expect(result.reply).toBe('Dạ hiện tôi chưa có thông tin địa chỉ ạ.');
+    const [messages] = llmProvider.chat.mock.calls[0] as [
+      Array<{ role: string; parts: Array<{ type: string; text?: string }> }>,
+    ];
+    const systemText = messages[0].parts[0].text ?? '';
+    expect(systemText).toContain('CHƯA được cấu hình');
   });
 
   it('luồng tư vấn thành công: đề xuất đặt phòng rồi tạo booking sau khi khách xác nhận ở lượt kế tiếp', async () => {
