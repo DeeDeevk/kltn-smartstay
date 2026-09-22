@@ -1,4 +1,9 @@
-const WEEKDAY_NAMES_VI = [
+// Exported so tool results (get_local_events) can attach the Vietnamese weekday name
+// for the exact date that was queried — LLMs are unreliable at manual date-to-weekday
+// arithmetic (observed live: it correctly matched date 2026-09-26 but labelled it "Thứ
+// Sáu" instead of "Thứ Bảy" in its reply), so the backend computes it once and the model
+// just quotes it back instead of re-deriving it from scratch.
+export const WEEKDAY_NAMES_VI = [
   'Chủ Nhật',
   'Thứ Hai',
   'Thứ Ba',
@@ -115,5 +120,29 @@ QUY TẮC BẮT BUỘC:
    đang trò chuyện — hãy nói rõ điều đó thay vì khẳng định là toàn bộ đơn của khách sạn.
 10. Trả lời ngắn gọn, rõ ràng, đúng trọng tâm, dùng đơn vị tiền VNĐ khi nói về giá. Có thể
    dùng **in đậm** cho tên loại phòng/số tiền quan trọng và gạch đầu dòng khi liệt kê
-   nhiều mục, vì phần hiển thị phía khách có hỗ trợ định dạng này.`;
+   nhiều mục, vì phần hiển thị phía khách có hỗ trợ định dạng này.
+11. Khi khách hỏi về lịch trình, kế hoạch đi chơi, hoặc một câu hỏi MỞ về hoạt động trong
+   ngày quanh khách sạn (VD "lên lịch cho tôi 1 ngày đi chơi", "tối nay và mai nên đi
+   đâu", "gợi ý lịch trình quanh đây") — khác với hỏi đúng 1 việc cụ thể như "gần đây có
+   quán ăn ngon không":
+   - Gọi get_nearby_places NHIỀU LẦN trong cùng một lượt, mỗi lần một category liên quan
+     (ăn uống: "restaurant"/"cafe", vui chơi: "night_club"/"shopping_mall", tham quan:
+     "tourist_attraction") — không dừng lại sau khi gọi đúng 1 category.
+   - Gọi thêm get_local_events RIÊNG cho TỪNG ngày được khách hỏi tới (mỗi ngày một lần
+     gọi, không gộp); nếu khách không nói rõ ngày, dùng hôm nay và/hoặc ngày mai tuỳ ngữ
+     cảnh câu hỏi.
+   - Tổng hợp toàn bộ kết quả thành lịch trình theo khung giờ (Sáng / Trưa / Chiều / Tối):
+     mỗi gợi ý nêu tên địa điểm, đánh giá (nếu tool có trả về) và link Google Maps (nếu
+     có). Khi nêu ngày/thứ của sự kiện, PHẢI dùng đúng "date" và "weekday" mà
+     get_local_events trả về cho lần gọi đó — TUYỆT ĐỐI không tự tính nhẩm thứ từ ngày
+     (dễ tính sai thứ dù ngày đúng). Chỉ nhắc tới sự kiện ở ĐÚNG (các) ngày mà
+     get_local_events đã thực sự trả về kết quả khớp cho ngày đó — kể cả với sự kiện lặp
+     hàng tuần, TUYỆT ĐỐI không tự suy rộng một sự kiện sang các ngày lân cận (VD hôm
+     trước/hôm sau) mà bạn chưa gọi tool hoặc tool không trả về kết quả cho đúng ngày đó.
+   - Nếu bất kỳ lần gọi get_nearby_places nào trả về "configured": false, PHẢI nói thẳng
+     với khách là khách sạn chưa cập nhật vị trí nên chưa gợi ý được địa điểm cụ thể —
+     TUYỆT ĐỐI không bịa tên quán/địa điểm hay tự dùng toạ độ (0,0) để suy diễn.
+   - Nếu kết quả có "source": "unavailable" (Google Places tạm thời lỗi, "places" rỗng),
+     nói rõ với khách là hiện chưa tra cứu được địa điểm trực tuyến, mời khách hỏi thêm lễ
+     tân — TUYỆT ĐỐI không tự đặt ra tên địa điểm không có trong kết quả tool trả về.`;
 }

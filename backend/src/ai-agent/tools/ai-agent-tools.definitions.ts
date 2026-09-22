@@ -214,7 +214,7 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
   {
     name: 'get_nearby_places',
     description:
-      'Tìm các địa điểm ăn uống/vui chơi/tham quan/mua sắm gần khách sạn theo danh mục, lấy từ Google Places (tên, địa chỉ, đánh giá, link Google Maps). Dùng khi khách hỏi có gì ăn/chơi/tham quan/mua sắm gần đây, quán cà phê gần đây, quán bar/club gần đây, v.v.',
+      'Tìm các địa điểm ăn uống/vui chơi/tham quan/mua sắm gần khách sạn theo MỘT danh mục, lấy từ Google Places (tên, địa chỉ, đánh giá, link Google Maps). Dùng khi khách hỏi có gì ăn/chơi/tham quan/mua sắm gần đây, quán cà phê gần đây, quán bar/club gần đây, v.v. Mỗi lần gọi chỉ trả về ĐÚNG 1 danh mục — nếu khách hỏi chung chung về "đi chơi", "lịch trình", "hoạt động trong ngày" (không rõ ăn uống hay vui chơi hay tham quan), hãy gọi tool này NHIỀU LẦN trong cùng một lượt, mỗi lần một category liên quan (VD "restaurant" + "cafe" + "tourist_attraction"), rồi tự tổng hợp kết quả — đừng chỉ gọi 1 category rồi coi như đã đủ. Kết quả trả về có "configured": false nếu khách sạn CHƯA cấu hình vị trí — lúc đó PHẢI nói thẳng với khách là chưa có vị trí khách sạn để tra cứu, KHÔNG tự bịa toạ độ hay địa điểm. Có "source": "unavailable" và "places" rỗng nghĩa là Google Places tạm thời không lấy được dữ liệu — nói rõ với khách là hiện chưa tra cứu được, mời hỏi lễ tân, TUYỆT ĐỐI không tự đặt ra tên quán/địa điểm không có trong kết quả trả về.',
     parameters: {
       type: 'object',
       properties: {
@@ -241,7 +241,7 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
   {
     name: 'get_local_events',
     description:
-      'Tra cứu sự kiện/hoạt động địa phương (do khách sạn quản lý) diễn ra vào một ngày cụ thể — lễ hội, chợ đêm, sự kiện định kỳ trong tuần... Dùng khi khách hỏi "có sự kiện gì" hoặc "cuối tuần này có gì chơi" quanh khu vực khách sạn.',
+      'Tra cứu sự kiện/hoạt động địa phương (do khách sạn quản lý) diễn ra vào một ngày cụ thể — lễ hội, chợ đêm, sự kiện định kỳ trong tuần... Dùng khi khách hỏi "có sự kiện gì" hoặc "cuối tuần này có gì chơi" quanh khu vực khách sạn. Tự động khớp cả sự kiện diễn ra đúng ngày đó VÀ sự kiện lặp lại hàng tuần rơi vào đúng thứ của ngày đó — không cần gọi thêm lần nào khác cho cùng 1 ngày. Nếu khách hỏi về một khoảng ngày (VD "cuối tuần này", "2 ngày tới"), hãy gọi tool này RIÊNG cho từng ngày trong khoảng đó. Khi khách hỏi câu hỏi mở về lịch trình/kế hoạch đi chơi trong ngày (không chỉ hỏi sự kiện), hãy gọi tool này CÙNG với get_nearby_places (nhiều category) trong cùng một lượt để có đủ dữ liệu tổng hợp thành lịch trình, không chỉ dùng 1 trong 2 tool. Kết quả trả về kèm sẵn "weekday" (tên thứ tiếng Việt) ứng với đúng "date" đã truyền vào — PHẢI dùng đúng "weekday" này khi nói với khách, KHÔNG tự tính nhẩm thứ từ ngày (dễ tính sai).',
     parameters: {
       type: 'object',
       properties: {
