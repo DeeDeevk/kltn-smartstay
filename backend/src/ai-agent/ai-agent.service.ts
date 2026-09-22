@@ -25,6 +25,7 @@ import {
 } from './tools/ai-agent-tools.definitions';
 import { AiAgentToolsService } from './tools/ai-agent-tools.service';
 import { buildSystemPrompt } from './constants/system-prompt.constant';
+import { HotelConfigService } from 'src/hotel-config/hotel-config.service';
 
 // Số vòng gọi tool tối đa cho 1 tin nhắn của khách — chặn vòng lặp vô hạn nếu model
 // cứ liên tục gọi tool mà không bao giờ trả lời bằng văn bản. Đặt 6 vì flow đặt phòng
@@ -73,6 +74,7 @@ export class AiAgentService {
     private readonly messageRepo: Repository<AiMessage>,
     @Inject(LLM_PROVIDER) private readonly llmProvider: LlmProvider,
     private readonly toolsService: AiAgentToolsService,
+    private readonly hotelConfigService: HotelConfigService,
   ) {}
 
   // userId = null: khách vãng lai chưa đăng nhập. Vẫn chat/tra cứu được, nhưng các tool
@@ -100,11 +102,36 @@ export class AiAgentService {
       }),
     );
 
+    // Cheap single-row lookup, refreshed every message so the model always has the
+    // CURRENT address (no stale cache) — this is what lets it answer "hotel address?"
+    // directly from the system prompt instead of needing a tool call for it. Wrapped in
+    // try/catch: this is a plain DB read with no retry of its own (unlike chatWithRetry
+    // below), so a transient DB hiccup here must not 500 the whole chat turn — fall back
+    // to "not configured" (never fabricate an address) and let the rest of the flow run.
+    let hotelLocation:
+      { configured: false } | { configured: true; address: string } = {
+      configured: false,
+    };
+    try {
+      const hotelConfig = await this.hotelConfigService.getOrCreate();
+      hotelLocation =
+        hotelConfig.latitude === 0 && hotelConfig.longitude === 0
+          ? { configured: false }
+          : { configured: true, address: hotelConfig.address };
+    } catch (err) {
+      this.logger.error(
+        `Failed to load HotelConfig for system prompt: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     const llmMessages: LlmMessage[] = [
       {
         role: 'system',
         parts: [
-          { type: 'text', text: buildSystemPrompt({ isGuest: !userId }) },
+          {
+            type: 'text',
+            text: buildSystemPrompt({ isGuest: !userId, hotelLocation }),
+          },
         ],
       },
       ...this.buildHistoryContext(history),

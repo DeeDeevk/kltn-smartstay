@@ -17,6 +17,7 @@ import { PlacesService } from 'src/hotel-config/places.service';
 import { LocalEventService } from 'src/hotel-config/local-event.service';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
 import { LOGIN_REQUIRED_TOOLS } from './ai-agent-tools.definitions';
+import { WEEKDAY_NAMES_VI } from '../constants/system-prompt.constant';
 import {
   AiConversation,
   PendingBookingSummary,
@@ -561,10 +562,20 @@ export class AiAgentToolsService {
       throw new BadRequestException('Thiếu ngày cần tra cứu sự kiện.');
     }
     const events = await this.localEventService.findForDate(date);
-    return events.map((event) => ({
-      title: event.title,
-      description: event.description,
-      recurrence: event.recurrence,
-    }));
+    // Compute the Vietnamese weekday name here (server-side, deterministic) instead of
+    // letting the model derive it from the date string itself — live testing showed the
+    // LLM can pick the right date but still mislabel its weekday name when composing the
+    // reply. Echoing "date"/"weekday" back lets the system prompt tell the model to quote
+    // this instead of doing its own date-to-weekday arithmetic.
+    const weekday = WEEKDAY_NAMES_VI[new Date(`${date}T00:00:00Z`).getUTCDay()];
+    return {
+      date,
+      weekday,
+      events: events.map((event) => ({
+        title: event.title,
+        description: event.description,
+        recurrence: event.recurrence,
+      })),
+    };
   }
 }

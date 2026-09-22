@@ -111,9 +111,15 @@ export const FormattedMessage = ({ text }) => {
         }
         flushList();
         if (trimmed !== '') {
+            // System prompt tells the model not to use markdown headings in chat replies,
+            // but strip a stray leading #/##/### defensively anyway — otherwise it would
+            // leak into the bubble as literal "#" characters (the parser below has no
+            // concept of headings, only bold/bullets/links).
+            const headingMatch = trimmed.match(/^#{1,6}\s+(.*)/);
+            const content = headingMatch ? headingMatch[1] : line;
             blocks.push(
                 <p key={idx} className="leading-relaxed">
-                    {renderInline(line)}
+                    {renderInline(content)}
                 </p>,
             );
         }

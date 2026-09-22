@@ -51,6 +51,7 @@ const ShiftSchedulePage = lazy(() => import('../components/admin/shifts/ShiftSch
 const MySchedulePage = lazy(() => import('../components/admin/shifts/MySchedulePage'))
 const RevenueSummaryPage = lazy(() => import('../components/admin/revenue/RevenueSummaryPage'))
 const HotelLocationSettingsPage = lazy(() => import('../components/admin/settings/HotelLocationSettingsPage'))
+const LocalEventsSettingsPage = lazy(() => import('../components/admin/settings/LocalEventsSettingsPage'))
 const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
 const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
 const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
@@ -934,6 +935,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <HotelLocationSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings/local-events"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <LocalEventsSettingsPage />
               </ProtectedRoute>
             }
           />

@@ -622,13 +622,19 @@ describe('AiAgentToolsService', () => {
     expect(localEventService.findForDate).toHaveBeenCalledWith('2026-03-21');
     expect(result.success).toBe(true);
     if (!result.success) return;
-    expect(result.data).toEqual([
-      {
-        title: 'Chợ đêm phố đi bộ',
-        description: 'Diễn ra mỗi tối thứ Bảy',
-        recurrence: 'WEEKLY',
-      },
-    ]);
+    // 2026-03-21 is a Saturday ("Thứ Bảy") — computed server-side so the model quotes it
+    // instead of doing its own (unreliable) date-to-weekday arithmetic.
+    expect(result.data).toEqual({
+      date: '2026-03-21',
+      weekday: 'Thứ Bảy',
+      events: [
+        {
+          title: 'Chợ đêm phố đi bộ',
+          description: 'Diễn ra mỗi tối thứ Bảy',
+          recurrence: 'WEEKLY',
+        },
+      ],
+    });
   });
 
   // Phạm vi dữ liệu đơn đặt phòng do VAI TRÒ quyết định ở server, không phải do model

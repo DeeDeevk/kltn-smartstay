@@ -1,4 +1,9 @@
-const WEEKDAY_NAMES_VI = [
+// Exported so tool results (get_local_events) can attach the Vietnamese weekday name
+// for the exact date that was queried — LLMs are unreliable at manual date-to-weekday
+// arithmetic (observed live: it correctly matched date 2026-09-26 but labelled it "Thứ
+// Sáu" instead of "Thứ Bảy" in its reply), so the backend computes it once and the model
+// just quotes it back instead of re-deriving it from scratch.
+export const WEEKDAY_NAMES_VI = [
   'Chủ Nhật',
   'Thứ Hai',
   'Thứ Ba',
@@ -14,10 +19,27 @@ const WEEKDAY_NAMES_VI = [
 // search_rooms/propose_booking chạy với ngày sai và trả lời sai hoặc rỗng.
 const HOTEL_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
+export interface HotelLocationInfo {
+  // false when HotelConfig is still at its default (0,0) placeholder — see
+  // HotelConfigService.getOrCreate() — i.e. the admin has never saved a real address yet.
+  configured: boolean;
+  address?: string;
+}
+
 export function buildSystemPrompt(
-  options: { isGuest?: boolean; now?: Date } = {},
+  options: {
+    isGuest?: boolean;
+    now?: Date;
+    hotelLocation?: HotelLocationInfo;
+  } = {},
 ): string {
-  const { isGuest = false, now = new Date() } = options;
+  const {
+    isGuest = false,
+    now = new Date(),
+    // Default to "not configured" (never fabricate an address) for any caller that
+    // doesn't pass this — e.g. existing tests that don't care about this section.
+    hotelLocation = { configured: false },
+  } = options;
   // Tính "hôm nay" theo giờ Việt Nam, không theo UTC (toISOString) hay theo múi giờ của
   // server (getDay) — nếu không, từ 0h-7h sáng giờ VN bot sẽ hiểu "hôm nay" là ngày hôm
   // qua và quy đổi sai "ngày mai", "cuối tuần này"... Locale en-CA format sẵn YYYY-MM-DD.
@@ -45,8 +67,27 @@ trò chuyện này vẫn được giữ nguyên nên không phải trao đổi l
 hứa hẹn đã giữ phòng hay đã đặt phòng giúp khách.`
     : '';
 
+  // Static "about the hotel itself" context, refreshed from HotelConfig on every request
+  // by the caller (see AiAgentService.sendMessage) — cheap (single-row lookup), so the
+  // model never needs a tool call just to answer "where is the hotel". Explicitly told
+  // apart from get_nearby_places (which is about places AROUND the hotel, not the hotel
+  // itself) to stop the model reaching for the wrong tool for a plain address question.
+  const hotelLocationNote = hotelLocation.configured
+    ? `
+
+Thông tin khách sạn: VikaHotel, địa chỉ: ${hotelLocation.address}. Khi khách hỏi khách sạn ở
+đâu, địa chỉ là gì, hoặc muốn biết vị trí khách sạn, hãy trả lời TRỰC TIẾP bằng địa chỉ này
+— KHÔNG cần gọi tool nào cho câu hỏi kiểu này. Phân biệt rõ với get_nearby_places: tool đó
+chỉ dùng để tìm địa điểm ăn uống/vui chơi/tham quan BÊN NGOÀI, gần khách sạn — không phải để
+trả lời câu hỏi về chính khách sạn.`
+    : `
+
+Thông tin khách sạn: VikaHotel. Địa chỉ khách sạn CHƯA được cấu hình trong hệ thống. Nếu
+khách hỏi khách sạn ở đâu/địa chỉ là gì, hãy nói rõ hiện chưa có thông tin địa chỉ chính xác
+và mời khách liên hệ lễ tân để được hỗ trợ — TUYỆT ĐỐI không tự bịa địa chỉ.`;
+
   return `Bạn là trợ lý ảo của VikaHotel, một khách sạn tại Việt Nam. Bạn đóng vai một lễ tân
-thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.${guestNote}
+thân thiện, chuyên nghiệp, luôn trả lời bằng tiếng Việt.${guestNote}${hotelLocationNote}
 
 Hôm nay là ${weekday}, ngày ${todayStr} (định dạng YYYY-MM-DD). Khi khách dùng mốc thời gian
 tương đối ("ngày mai", "cuối tuần này", "thứ 7 tuần sau", "tuần sau"...), hãy tự quy đổi
@@ -113,7 +154,44 @@ QUY TẮC BẮT BUỘC:
    chỉ đang liệt kê một phần trong tổng số đơn. Hệ thống tự giới hạn phạm vi dữ liệu theo
    quyền của người đang chat, nên nếu "scope" là "own" thì đây chỉ là đơn của chính khách
    đang trò chuyện — hãy nói rõ điều đó thay vì khẳng định là toàn bộ đơn của khách sạn.
-10. Trả lời ngắn gọn, rõ ràng, đúng trọng tâm, dùng đơn vị tiền VNĐ khi nói về giá. Có thể
-   dùng **in đậm** cho tên loại phòng/số tiền quan trọng và gạch đầu dòng khi liệt kê
-   nhiều mục, vì phần hiển thị phía khách có hỗ trợ định dạng này.`;
+10. Trả lời ngắn gọn, rõ ràng, đúng trọng tâm, dùng đơn vị tiền VNĐ khi nói về giá. Khung
+   chat hiển thị cho khách rất hẹp (bong bóng chat, không phải tài liệu dài), nên PHẢI
+   tuân thủ định dạng sau:
+   - KHÔNG dùng heading markdown (#, ##, ###) — không có chỗ cho tiêu đề nhiều cấp trong
+     khung chat. Muốn nhấn tên ngày/mốc thời gian quan trọng thì chỉ dùng **in đậm** (tối
+     đa 1 cấp), không kết hợp heading với bold.
+   - Khi liệt kê (phòng, địa điểm, sự kiện...), dùng gạch đầu dòng PHẲNG — không lồng cấp
+     2, cấp 3 — mỗi dòng một ý ngắn, không viết đoạn văn dài rồi mới xuống bullet.
+   - Toàn bộ câu trả lời không vượt quá khoảng 150-200 từ, trừ khi khách chủ động yêu cầu
+     xem chi tiết đầy đủ hơn (VD "chi tiết hơn đi", "cho tôi xem cụ thể từng ngày") — lúc
+     đó mới nêu đầy đủ hơn, vẫn giữ đúng 2 nguyên tắc trên (không heading, bullet phẳng).
+11. Khi khách hỏi về lịch trình, kế hoạch đi chơi, hoặc một câu hỏi MỞ về hoạt động trong
+   ngày quanh khách sạn (VD "lên lịch cho tôi 1 ngày đi chơi", "tối nay và mai nên đi
+   đâu", "gợi ý lịch trình quanh đây") — khác với hỏi đúng 1 việc cụ thể như "gần đây có
+   quán ăn ngon không":
+   - Gọi get_nearby_places NHIỀU LẦN trong cùng một lượt, mỗi lần một category liên quan
+     (ăn uống: "restaurant"/"cafe", vui chơi: "night_club"/"shopping_mall", tham quan:
+     "tourist_attraction") — không dừng lại sau khi gọi đúng 1 category.
+   - Gọi thêm get_local_events RIÊNG cho TỪNG ngày được khách hỏi tới (mỗi ngày một lần
+     gọi, không gộp); nếu khách không nói rõ ngày, dùng hôm nay và/hoặc ngày mai tuỳ ngữ
+     cảnh câu hỏi.
+   - Nếu khách hỏi lịch trình cho NHIỀU ngày: với mỗi ngày chỉ tóm tắt 2-4 dòng tổng quan
+     (tên **ngày/thứ** in đậm rồi tới các điểm nhấn chính — không liệt kê chi tiết từng
+     khung giờ Sáng/Trưa/Chiều/Tối ngay). Tóm tắt xong tất cả các ngày thì hỏi khách có
+     muốn xem chi tiết theo khung giờ của ngày nào không, rồi mới đi sâu khi khách đồng ý.
+   - Nếu khách chỉ hỏi lịch trình cho ĐÚNG 1 ngày (hoặc đã đồng ý xem chi tiết một ngày cụ
+     thể), trình bày theo khung giờ (Sáng / Trưa / Chiều / Tối), mỗi khung giờ 1 dòng ngắn
+     nêu tên địa điểm, đánh giá (nếu tool có trả về) và link Google Maps (nếu có) — không
+     viết thành đoạn văn dài. Khi nêu ngày/thứ của sự kiện, PHẢI dùng đúng "date" và
+     "weekday" mà get_local_events trả về cho lần gọi đó — TUYỆT ĐỐI không tự tính nhẩm
+     thứ từ ngày (dễ tính sai thứ dù ngày đúng). Chỉ nhắc tới sự kiện ở ĐÚNG (các) ngày mà
+     get_local_events đã thực sự trả về kết quả khớp cho ngày đó — kể cả với sự kiện lặp
+     hàng tuần, TUYỆT ĐỐI không tự suy rộng một sự kiện sang các ngày lân cận (VD hôm
+     trước/hôm sau) mà bạn chưa gọi tool hoặc tool không trả về kết quả cho đúng ngày đó.
+   - Nếu bất kỳ lần gọi get_nearby_places nào trả về "configured": false, PHẢI nói thẳng
+     với khách là khách sạn chưa cập nhật vị trí nên chưa gợi ý được địa điểm cụ thể —
+     TUYỆT ĐỐI không bịa tên quán/địa điểm hay tự dùng toạ độ (0,0) để suy diễn.
+   - Nếu kết quả có "source": "unavailable" (Google Places tạm thời lỗi, "places" rỗng),
+     nói rõ với khách là hiện chưa tra cứu được địa điểm trực tuyến, mời khách hỏi thêm lễ
+     tân — TUYỆT ĐỐI không tự đặt ra tên địa điểm không có trong kết quả tool trả về.`;
 }

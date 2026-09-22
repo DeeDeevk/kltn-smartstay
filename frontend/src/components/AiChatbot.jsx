@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BotMessageSquare, X, Send, LogIn, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { BotMessageSquare, X, Send, LogIn, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLazyGetAiHistoryQuery, useSendAiMessageMutation } from '../services/aiAgent';
 import useDraggableWidget from '../hooks/useDraggableWidget';
 import useExclusiveChatPanel from '../hooks/useExclusiveChatPanel';
+import useMediaQuery from '../hooks/useMediaQuery';
 import {
     buildMessagesFromHistory,
     clearStoredConversationId,
@@ -24,6 +25,40 @@ import {
 // tiếng Việt) hoặc gửi quá nhanh (do @Throttle, không có thông báo dùng được cho khách).
 const AI_DAILY_QUOTA_EXCEEDED = 'AI_DAILY_QUOTA_EXCEEDED';
 
+// Trang xác thực (đăng nhập/đăng ký/quên mật khẩu) hiển thị 1 thẻ form nằm giữa màn
+// hình — trên các màn hình hẹp/trung bình, khung chat nổi góc dưới-phải (đặc biệt khi
+// đang mở) dễ đè lên thẻ này. Ẩn hẳn nút mở + khung chat khi khách đang ở các trang này
+// thay vì chỉnh z-index qua lại (đơn giản, không ảnh hưởng layout các trang khác).
+const AUTH_ROUTES = ['/login', '/register', '/forgot-password'];
+
+// 2 cỡ khung cố định (không cho kéo thả tự do) — đơn giản, ít lỗi khi phải làm gấp.
+// "Lớn" chỉ cần đặt maxHeight cao là đủ: useDraggableWidget tự ép còn tối đa 70% chiều
+// cao màn hình rồi, không cần tính lại % ở đây.
+const PANEL_SIZES = {
+    small: { width: 420, maxHeight: 550 },
+    large: { width: 560, maxHeight: 900 },
+};
+const PANEL_SIZE_STORAGE_KEY = 'vika-ai-chat-panel-size';
+
+// localStorage có thể bị chặn (chế độ riêng tư...) — lỗi ở đây chỉ làm mất tính năng
+// nhớ cỡ khung, không được làm hỏng khung chat (theo đúng cách xử lý localStorage đã
+// dùng ở aiChatHistory.js).
+function readStoredPanelSize() {
+    try {
+        return localStorage.getItem(PANEL_SIZE_STORAGE_KEY) === 'large' ? 'large' : 'small';
+    } catch {
+        return 'small';
+    }
+}
+
+function storePanelSize(size) {
+    try {
+        localStorage.setItem(PANEL_SIZE_STORAGE_KEY, size);
+    } catch {
+        // bỏ qua
+    }
+}
+
 function getSendErrorMessage(error) {
     if (error?.status === 429) {
         return error.data?.code === AI_DAILY_QUOTA_EXCEEDED
@@ -38,13 +73,20 @@ function getSendErrorMessage(error) {
 const AiChatbot = () => {
     const { isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [isOpen, setIsOpen] = useExclusiveChatPanel('ai');
     const [conversationId, setConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputStr, setInputStr] = useState('');
     const [dismissedFormAt, setDismissedFormAt] = useState(-1);
+    const [panelSize, setPanelSize] = useState(readStoredPanelSize);
     const messagesEndRef = useRef(null);
+
+    // < 640px (Tailwind "sm"): khung chat mở full-screen thay vì giữ tỉ lệ nhỏ như
+    // desktop — xem yêu cầu responsive ở Phần 3.
+    const isMobile = useMediaQuery('(max-width: 639px)');
+    const isAuthRoute = AUTH_ROUTES.includes(location.pathname);
 
     const [sendAiMessage, { isLoading: isSending }] = useSendAiMessageMutation();
     const [loadHistory, { isFetching: isLoadingHistory }] = useLazyGetAiHistoryQuery();
@@ -66,11 +108,26 @@ const AiChatbot = () => {
     // userId của lần render trước, để nhận ra thời điểm khách vừa đăng nhập.
     const previousUserIdRef = useRef(userId);
 
+    // Trừ biên 2 bên (EDGE_MARGIN*2 trong useDraggableWidget) để cỡ "Lớn" không bao giờ
+    // tràn khỏi các màn hình vừa (tablet) — dưới mốc isMobile thì panel full-screen nên
+    // không cần tính ở đây.
+    const { width: basePanelWidth, maxHeight: panelMaxHeight } = PANEL_SIZES[panelSize];
+    const panelWidth = Math.min(basePanelWidth, window.innerWidth - 48);
+
     const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
         initialBottom: 112,
         initialRight: 24,
-        panelWidth: 420,
+        panelWidth,
+        panelMaxHeight,
     });
+
+    const togglePanelSize = () => {
+        setPanelSize((prev) => {
+            const next = prev === 'small' ? 'large' : 'small';
+            storePanelSize(next);
+            return next;
+        });
+    };
 
     const isStaffAccount = user?.role === 'STAFF' || user?.role === 'ADMIN';
 
@@ -210,14 +267,23 @@ const AiChatbot = () => {
         sendText(parts.join(', ') + '.');
     };
 
-    if (isStaffAccount) return null;
+    if (isStaffAccount || isAuthRoute) return null;
 
     return (
         <>
+            {/* z-[60], không phải z-50: Header (Header.jsx) cũng fixed z-50, và widget này
+                được gắn TRƯỚC <Routes> trong AppRoutes.jsx nên cùng z-index thì Header sẽ
+                thắng theo thứ tự DOM, đè lên phần header của khung chat — lộ rõ nhất khi
+                khung full-screen trên mobile (mép trên khung chat trùng đúng vị trí Header).
+                60 vẫn thấp hơn các modal quan trọng (z-[100]) nên không che chúng. */}
             {isOpen && (
                 <div
-                    style={panelStyle}
-                    className="anim-pop-in origin-bottom-right fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
+                    style={isMobile ? undefined : panelStyle}
+                    className={`anim-pop-in fixed z-[60] bg-white shadow-2xl flex flex-col overflow-hidden ${
+                        isMobile
+                            ? 'inset-0 origin-center'
+                            : 'origin-bottom-right rounded-2xl border border-gray-100'
+                    }`}
                 >
                     <div className="bg-gradient-to-r from-blue-600 via-violet-600 to-blue-600 p-4 flex items-center justify-between text-white shadow-md z-10">
                         <div className="flex items-center gap-3">
@@ -232,12 +298,30 @@ const AiChatbot = () => {
                                 </p>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            {/* Trên mobile khung đã full-screen sẵn nên ẩn nút đổi cỡ. */}
+                            {!isMobile && (
+                                <button
+                                    onClick={togglePanelSize}
+                                    className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                                    title={panelSize === 'small' ? 'Phóng to khung chat' : 'Thu nhỏ khung chat'}
+                                    aria-label={panelSize === 'small' ? 'Phóng to khung chat' : 'Thu nhỏ khung chat'}
+                                >
+                                    {panelSize === 'small' ? (
+                                        <Maximize2 className="w-4 h-4" />
+                                    ) : (
+                                        <Minimize2 className="w-4 h-4" />
+                                    )}
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                                aria-label="Đóng khung chat"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Khách vãng lai vẫn chat được (hỏi phòng, giá, chính sách); chỉ thao
@@ -396,7 +480,7 @@ const AiChatbot = () => {
                 onPointerMove={dragHandlers.onPointerMove}
                 onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
                 style={buttonStyle}
-                className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-50 cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-blue-500 via-violet-500 to-blue-600 text-white shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? 'ring-4 ring-blue-200' : ''}`}
+                className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-[60] cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-blue-500 via-violet-500 to-blue-600 text-white shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? 'ring-4 ring-blue-200' : ''}`}
             >
                 {!isOpen && (
                     <span className="absolute inset-0 rounded-full bg-blue-400 opacity-60 animate-ping" />

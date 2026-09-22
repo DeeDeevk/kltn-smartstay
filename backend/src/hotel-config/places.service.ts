@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
@@ -22,6 +16,21 @@ export interface NearbyPlace {
   rating: number | null;
   mapsUri: string | null;
   location: { latitude: number; longitude: number } | null;
+}
+
+// Structured result instead of a bare array: the AI agent needs to tell "hotel location
+// not configured yet" and "Google Places temporarily unavailable" apart from a genuine
+// empty result, and must never present a hardcoded/fabricated place list as if it were
+// real live data (that could send a paying guest looking for a restaurant that doesn't
+// exist). `source` lets the agent phrase its answer honestly:
+//  - 'live'/'cache': real data, safe to quote by name.
+//  - 'unavailable': no real data available right now — `places` is always empty; the
+//    agent must say so plainly instead of inventing place names.
+export interface NearbyPlacesResult {
+  configured: boolean;
+  source: 'live' | 'cache' | 'unavailable';
+  places: NearbyPlace[];
+  message?: string;
 }
 
 interface GooglePlacesSearchNearbyResponse {
@@ -47,21 +56,60 @@ export class PlacesService {
   async getNearbyPlaces(
     category: PlaceCategory,
     radius: number = DEFAULT_RADIUS_METERS,
-  ): Promise<NearbyPlace[]> {
+  ): Promise<NearbyPlacesResult> {
+    // Check configuration BEFORE touching cache/Google — a hotel that has never set its
+    // location has nothing meaningful to search around, regardless of what's cached.
+    const hotelConfig = await this.hotelConfigService.getOrCreate();
+    if (hotelConfig.latitude === 0 && hotelConfig.longitude === 0) {
+      return {
+        configured: false,
+        source: 'unavailable',
+        places: [],
+        message:
+          'Hotel location has not been configured yet (Admin > Cài đặt vị trí khách sạn).',
+      };
+    }
+
     const cacheKey = `nearby:${category}:${radius}`;
     const cached = await this.redisClient.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached) as NearbyPlace[];
+      return {
+        configured: true,
+        source: 'cache',
+        places: JSON.parse(cached) as NearbyPlace[],
+      };
     }
 
-    const places = await this.fetchFromGooglePlaces(category, radius);
-    await this.redisClient.set(
-      cacheKey,
-      JSON.stringify(places),
-      'EX',
-      CACHE_TTL_SECONDS,
-    );
-    return places;
+    try {
+      const places = await this.fetchFromGooglePlaces(
+        hotelConfig.latitude,
+        hotelConfig.longitude,
+        category,
+        radius,
+      );
+      await this.redisClient.set(
+        cacheKey,
+        JSON.stringify(places),
+        'EX',
+        CACHE_TTL_SECONDS,
+      );
+      return { configured: true, source: 'live', places };
+    } catch (err) {
+      // Google Places down/misconfigured -> fall back to an honest "unavailable" result
+      // instead of throwing. We deliberately do NOT hardcode a fake place list here: a
+      // hotel assistant naming a specific restaurant/cafe that doesn't actually exist
+      // near the hotel is worse than saying "can't check right now". Do not cache this
+      // failure, so the next request retries against Google instead of getting stuck.
+      this.logger.warn(
+        `getNearbyPlaces fallback for category=${category}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return {
+        configured: true,
+        source: 'unavailable',
+        places: [],
+        message: 'Could not fetch live nearby-places data right now.',
+      };
+    }
   }
 
   // Toạ độ khách sạn đổi (HotelConfigController gọi sau khi updateLocation() thành
@@ -76,22 +124,19 @@ export class PlacesService {
     }
   }
 
+  // Throws a plain Error on any failure (missing key, network, non-2xx) — the caller
+  // (getNearbyPlaces) turns that into a graceful 'unavailable' result, never a fabricated
+  // place list. Latitude/longitude are passed in explicitly so this stays a pure "call
+  // Google with these coordinates" function, not responsible for re-reading HotelConfig.
   private async fetchFromGooglePlaces(
+    latitude: number,
+    longitude: number,
     category: PlaceCategory,
     radius: number,
   ): Promise<NearbyPlace[]> {
     const apiKey = this.config.get<string>('GOOGLE_PLACES_API_KEY');
     if (!apiKey) {
-      throw new InternalServerErrorException(
-        'Thiếu biến môi trường GOOGLE_PLACES_API_KEY',
-      );
-    }
-
-    const hotelConfig = await this.hotelConfigService.getOrCreate();
-    if (hotelConfig.latitude === 0 && hotelConfig.longitude === 0) {
-      throw new BadRequestException(
-        'Chưa cấu hình vị trí khách sạn — vui lòng cập nhật ở trang Cài đặt trước khi tra cứu địa điểm gần đây.',
-      );
+      throw new Error('Missing GOOGLE_PLACES_API_KEY environment variable');
     }
 
     let response: Response;
@@ -111,10 +156,7 @@ export class PlacesService {
             maxResultCount: MAX_RESULTS,
             locationRestriction: {
               circle: {
-                center: {
-                  latitude: hotelConfig.latitude,
-                  longitude: hotelConfig.longitude,
-                },
+                center: { latitude, longitude },
                 radius,
               },
             },
@@ -122,21 +164,15 @@ export class PlacesService {
         },
       );
     } catch (err) {
-      this.logger.warn(
+      throw new Error(
         `Google Places API unreachable: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      throw new InternalServerErrorException(
-        'Không thể kết nối tới Google Places lúc này',
       );
     }
 
     if (!response.ok) {
       const errorBody = await response.text();
-      this.logger.warn(
+      throw new Error(
         `Google Places API error ${response.status}: ${errorBody}`,
-      );
-      throw new InternalServerErrorException(
-        'Không thể lấy dữ liệu địa điểm gần đây lúc này',
       );
     }
 

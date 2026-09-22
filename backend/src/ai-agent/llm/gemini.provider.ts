@@ -143,6 +143,34 @@ export class GeminiProvider implements LlmProvider {
     };
   }
 
+  // Sinh JSON có cấu trúc, kiểu one-shot — không gọi tool, không lịch sử nhiều lượt. Tái
+  // dùng đúng client/model như chat() nên nơi gọi (LocalEventExtractionService) không cần
+  // dựng thêm kết nối Gemini thứ hai hay xử lý API key trùng lặp. responseMimeType ép
+  // Gemini phải trả JSON hợp lệ, đáng tin cậy hơn nhiều so với dùng regex bóc JSON ra từ
+  // 1 câu trả lời văn bản tự do. Trả về giá trị đã parse dưới dạng `unknown` — nơi gọi tự
+  // chịu trách nhiệm kiểm tra cấu trúc có đúng như prompt yêu cầu không (Gemini vẫn có thể
+  // trả JSON sai cấu trúc, chỉ là không thể trả về dữ liệu KHÔNG phải JSON).
+  async generateJson(
+    systemPrompt: string,
+    userContent: string,
+  ): Promise<unknown> {
+    const model = this.client.getGenerativeModel({
+      model: this.modelName,
+      systemInstruction: systemPrompt,
+      generationConfig: { responseMimeType: 'application/json' },
+    });
+    const result = await model.generateContent(userContent);
+    const text = result.response.text();
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      this.logger.error(
+        `Failed to parse Gemini JSON response: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new InternalServerErrorException('Không đọc được phản hồi từ AI');
+    }
+  }
+
   private toGeminiSchema(schema: LlmToolParameterSchema): unknown {
     return {
       type: SCHEMA_TYPE_MAP[schema.type],
