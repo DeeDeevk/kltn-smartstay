@@ -3,11 +3,17 @@ import {
   Controller,
   Delete,
   Get,
+  HttpStatus,
   Param,
+  ParseFilePipeBuilder,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { LocalEventService } from './local-event.service';
 import { LocalEventExtractionService } from './local-event-extraction.service';
 import { CreateLocalEventDto } from './dto/create-local-event.dto';
@@ -30,6 +36,25 @@ export class LocalEventController {
   @Post('extract')
   extract(@Body() dto: ExtractLocalEventsDto) {
     return this.localEventExtractionService.extract(dto);
+  }
+
+  // Kiểm tra dung lượng ở đây (ParseFilePipeBuilder) trước khi file chạm tới service —
+  // đuôi file/nội dung để LocalEventExtractionService tự kiểm tra tiếp (mimetype trình
+  // duyệt gửi lên không đáng tin cho .docx).
+  @Post('extract-file')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  extractFromFile(
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addMaxSizeValidator({ maxSize: 10 * 1024 * 1024 })
+        .build({
+          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+          fileIsRequired: true,
+        }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.localEventExtractionService.extractFromFile(file);
   }
 
   @Get()

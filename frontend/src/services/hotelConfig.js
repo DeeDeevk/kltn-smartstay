@@ -61,6 +61,16 @@ export const hotelConfigApi = createApi({
         { type: 'LocalEvent', id: 'LIST' },
       ],
     }),
+    // Tải file .pdf/.docx/.txt lên để AI trích xuất — cùng kiểu FormData như
+    // uploadRoomTypeImage bên roomType.js.
+    extractLocalEventsFromFile: builder.mutation({
+      query: (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return { url: '/local-events/extract-file', method: 'post', data: formData };
+      },
+      invalidatesTags: [{ type: 'LocalEvent', id: 'LIST' }],
+    }),
   }),
 });
 
@@ -73,4 +83,5 @@ export const {
   useDeleteLocalEventMutation,
   useExtractLocalEventsMutation,
   useApproveLocalEventMutation,
+  useExtractLocalEventsFromFileMutation,
 } = hotelConfigApi;
