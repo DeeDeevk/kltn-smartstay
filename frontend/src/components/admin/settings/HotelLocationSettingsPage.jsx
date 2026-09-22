@@ -1,15 +1,35 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MapPin, Loader2, Save, Search } from 'lucide-react';
 import { toast } from 'react-toastify';
-import loadGoogleMaps from '../../../utils/loadGoogleMaps';
+import {
+    getPlaceDetail,
+    getVietmapStyleUrl,
+    loadVietmapGL,
+    reverseGeocode,
+    searchAddress,
+} from '../../../utils/vietmap';
 import {
     useGetHotelConfigQuery,
     useUpdateHotelLocationMutation,
 } from '../../../services/hotelConfig';
 
-// Trung tâm TP.HCM — chỉ dùng làm điểm bắt đầu khi khách sạn CHƯA từng cấu hình vị trí
-// (HotelConfig còn ở toạ độ mặc định 0,0 từ lúc getOrCreate() tạo bản ghi rỗng).
-const DEFAULT_CENTER = { lat: 10.776889, lng: 106.700897 };
+// Khách sạn CHƯA từng cấu hình vị trí (HotelConfig còn ở toạ độ mặc định 0,0 từ lúc
+// getOrCreate() tạo bản ghi rỗng) -> KHÔNG dùng (0,0): mở toàn cảnh TP.HCM ở zoom thấp và
+// chưa đặt ghim, cho tới khi admin chọn địa chỉ (lúc đó bay tới SELECTED_ZOOM).
+const DEFAULT_CENTER = { lat: 10.78, lng: 106.7 };
+const DEFAULT_ZOOM = 11;
+const SELECTED_ZOOM = 16;
+const MAP_LOAD_TIMEOUT_MS = 10000;
+const MIN_SEARCH_LENGTH = 2; // Vietmap Autocomplete yêu cầu tối thiểu 2 ký tự
+const SEARCH_DEBOUNCE_MS = 300;
+
+function describeMapError(err) {
+    const message = String(err?.message || err);
+    if (/webgl/i.test(message)) {
+        return 'Máy/trình duyệt này chưa bật WebGL nên không vẽ được bản đồ Vietmap. Bật "Sử dụng tăng tốc phần cứng" trong Chrome (Cài đặt → Hệ thống), kiểm tra tại chrome://gpu rồi tải lại trang.';
+    }
+    return message;
+}
 
 export default function HotelLocationSettingsPage() {
     const { data: config, isLoading: loadingConfig } = useGetHotelConfigQuery();
@@ -17,102 +37,116 @@ export default function HotelLocationSettingsPage() {
 
     const [address, setAddress] = useState('');
     const [position, setPosition] = useState(null); // { lat, lng } | null
-    const [googlePlaceId, setGooglePlaceId] = useState(null);
     const [mapsError, setMapsError] = useState(null);
     // Bản đồ tạo xong không tự kích hoạt re-render (mapRef/markerRef là ref, không phải
     // state) — cần cờ state riêng này thì effect áp vị trí đã lưu bên dưới mới re-run
-    // đúng lúc script Google Maps tải xong sau khi config đã có sẵn.
+    // đúng lúc thư viện bản đồ tải xong sau khi config đã có sẵn.
     const [mapReady, setMapReady] = useState(false);
 
-    const addressInputRef = useRef(null);
+    const [suggestions, setSuggestions] = useState([]);
+    // 'idle' | 'loading' | 'ready' | 'empty' | 'error'
+    const [suggestState, setSuggestState] = useState('idle');
+    const [searching, setSearching] = useState(false);
+    const [resolvingAddress, setResolvingAddress] = useState(false);
+
     const mapContainerRef = useRef(null);
-    const autocompleteContainerRef = useRef(null);
     const mapRef = useRef(null);
     const markerRef = useRef(null);
-    const geocoderRef = useRef(null);
+    // Marker chỉ được addTo(map) lần đầu khi đã có vị trí thật (chọn địa chỉ / vị trí đã lưu).
+    const markerOnMapRef = useRef(false);
+    const suggestTimerRef = useRef(null);
+    // Chống kết quả trả về lệch thứ tự: chỉ nhận response của request MỚI NHẤT.
+    const suggestSeqRef = useRef(0);
+    const reverseSeqRef = useRef(0);
     // Đánh dấu đã đưa marker/bản đồ về đúng vị trí đã lưu 1 lần — nếu không có cờ này,
     // mỗi lần query refetch (VD sau khi lưu xong, tag HotelConfig bị invalidate) sẽ kéo
     // bản đồ giật về lại vị trí cũ, đè lên thao tác khách vừa kéo ghim.
     const appliedConfigRef = useRef(false);
 
+    const placeMarker = useCallback((lat, lng) => {
+        const marker = markerRef.current;
+        const map = mapRef.current;
+        if (!marker || !map) return;
+        marker.setLngLat([lng, lat]);
+        if (!markerOnMapRef.current) {
+            marker.addTo(map);
+            markerOnMapRef.current = true;
+        }
+    }, []);
+
+    // Kéo ghim xong -> Reverse Geocoding lấy lại địa chỉ chữ cho ô nhập. Lỗi thì giữ nguyên
+    // địa chỉ cũ (không xoá trắng), admin vẫn tự sửa tay được.
+    const resolveAddress = useCallback(async (lat, lng) => {
+        const seq = ++reverseSeqRef.current;
+        setResolvingAddress(true);
+        try {
+            const text = await reverseGeocode(lat, lng);
+            if (seq === reverseSeqRef.current && text) setAddress(text);
+        } catch {
+            if (seq === reverseSeqRef.current) {
+                toast.warning('Không lấy được địa chỉ tại vị trí mới — giữ nguyên địa chỉ cũ, bạn có thể tự sửa.');
+            }
+        } finally {
+            if (seq === reverseSeqRef.current) setResolvingAddress(false);
+        }
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
+        let map = null;
+        let marker = null;
+        let loadTimer = null;
 
-        loadGoogleMaps()
-            .then((maps) => {
-                if (cancelled || !mapContainerRef.current || !autocompleteContainerRef.current) return;
+        loadVietmapGL()
+            .then((vietmapgl) => {
+                if (cancelled || !mapContainerRef.current) return;
 
-                // renderingType: RASTER ép buộc không dùng WebGL, tránh lỗi driver GPU trên
-                // một số máy. KHÔNG được chỉ dựa vào việc bỏ mapId — Google đã đổi default,
-                // nhiều project giờ tự dùng Vector kể cả không truyền mapId, nên phải ép rõ
-                // ràng bằng option này (đặt cùng cấp với center/zoom, không lồng vào đâu cả).
-                const map = new maps.Map(mapContainerRef.current, {
-                    center: DEFAULT_CENTER,
-                    zoom: 15,
-                    mapTypeControl: false,
-                    streetViewControl: false,
-                    renderingType: maps.RenderingType.RASTER,
+                // Vietmap chỉ có nền đường phố dạng vector (GL) — bắt buộc WebGL, không có
+                // chế độ raster như tuỳ chọn. Máy không có WebGL -> constructor ném lỗi,
+                // được .catch bên dưới đổi thành hướng dẫn bật tăng tốc phần cứng.
+                map = new vietmapgl.Map({
+                    container: mapContainerRef.current,
+                    style: getVietmapStyleUrl(),
+                    center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat], // GL dùng [lng, lat]
+                    zoom: DEFAULT_ZOOM,
                 });
-                // Xác nhận CHẮC CHẮN map thật sự dùng Raster (không chỉ dựa vào việc hết lỗi,
-                // vì lỗi driver GPU có thể ẩn tạm trên máy khác) — kiểm tra lại console mỗi
-                // lần đổi cấu hình rendering.
-                // eslint-disable-next-line no-console
-                console.log('[HotelLocationSettingsPage] renderingType:', map.getRenderingType());
-                // google.maps.Marker (cổ điển) — không cần mapId, không phụ thuộc WebGL như
-                // AdvancedMarkerElement, khớp với quyết định dùng Raster ở trên.
-                const marker = new maps.Marker({
-                    position: DEFAULT_CENTER,
-                    map,
-                    draggable: true,
-                });
-                geocoderRef.current = new maps.Geocoder();
+                map.addControl(new vietmapgl.NavigationControl({ showCompass: false }), 'top-right');
 
-                // Nếu Maps JS API load được (script không lỗi) nhưng project chưa bật/billing
-                // chưa cấu hình cho Maps JavaScript API, Google KHÔNG throw exception nào bắt
-                // được — chỉ log lỗi ra console và không bao giờ vẽ tile nào cả (khung bản đồ
-                // trắng trơn, không rõ nguyên nhân). Canh sự kiện 'tilesloaded' trong vài giây,
-                // không thấy thì tự hiện cảnh báo rõ ràng thay vì im lặng để trắng.
-                const tilesTimeout = window.setTimeout(() => {
-                    if (!cancelled) {
+                // Style/tile lỗi TRƯỚC khi bản đồ dựng xong (key sai, hết hạn mức 423...)
+                // thì báo rõ thay vì để khung trắng im lặng. Lỗi lẻ tẻ của 1 tile SAU khi đã
+                // dựng xong thì bỏ qua, không hiện banner. Thêm đồng hồ chờ vì có những lỗi
+                // (VD worker/tile không tải được) không bắn sự kiện 'error' nào cả.
+                let loaded = false;
+                loadTimer = window.setTimeout(() => {
+                    if (!loaded && !cancelled) {
                         setMapsError(
-                            'Bản đồ không hiển thị được. Vui lòng kiểm tra Console (F12) để xem lỗi cụ thể từ Google Maps, và kiểm tra API key đã bật "Maps JavaScript API" + bật Billing trong Google Cloud Console chưa.',
+                            'Nền bản đồ Vietmap chưa tải xong sau 10 giây. Kiểm tra kết nối mạng rồi tải lại trang; nếu vẫn lỗi, kiểm tra VITE_VIETMAP_TILEMAP_KEY.',
                         );
                     }
-                }, 4000);
-                maps.event.addListenerOnce(map, 'tilesloaded', () => {
-                    window.clearTimeout(tilesTimeout);
+                }, MAP_LOAD_TIMEOUT_MS);
+                map.once('load', () => {
+                    loaded = true;
+                    window.clearTimeout(loadTimer);
+                    setMapsError(null);
+                });
+                map.on('error', (event) => {
+                    if (!loaded && !cancelled) {
+                        setMapsError(
+                            `Không tải được nền bản đồ Vietmap (${describeMapError(event.error)}). Kiểm tra VITE_VIETMAP_TILEMAP_KEY và hạn mức key.`,
+                        );
+                    }
                 });
 
-                // Kéo ghim là nguồn toạ độ CUỐI CÙNG, ưu tiên hơn toạ độ Autocomplete chọn
-                // trước đó — đúng yêu cầu "ưu tiên giá trị này khi lưu".
-                marker.addListener('dragend', () => {
-                    const pos = marker.getPosition();
-                    if (!pos) return;
-                    setPosition({ lat: pos.lat(), lng: pos.lng() });
-                });
-
-                // PlaceAutocompleteElement thay cho Autocomplete cũ — không "gắn thêm" vào 1
-                // <input> có sẵn như trước mà là 1 custom element tự có input riêng, phải tự
-                // chèn vào DOM. Chọn 1 gợi ý xong phải gọi fetchFields() mới lấy được chi
-                // tiết (formattedAddress/location/id) — API mới không trả sẵn như getPlace().
-                const placeAutocomplete = new maps.places.PlaceAutocompleteElement({
-                    includedRegionCodes: ['vn'],
-                });
-                placeAutocomplete.className = 'hotel-place-autocomplete';
-                autocompleteContainerRef.current.appendChild(placeAutocomplete);
-                placeAutocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
-                    const place = placePrediction.toPlace();
-                    await place.fetchFields({ fields: ['formattedAddress', 'location', 'id'] });
-                    if (!place.location) return;
-                    const lat = place.location.lat();
-                    const lng = place.location.lng();
-
-                    map.setCenter({ lat, lng });
-                    map.setZoom(17);
-                    marker.setPosition({ lat, lng });
+                // Chưa addTo(map): ghim chỉ hiện sau khi có vị trí thật (xem placeMarker).
+                marker = new vietmapgl.Marker({ draggable: true });
+                // Kéo ghim là nguồn toạ độ CUỐI CÙNG, ưu tiên hơn toạ độ gợi ý chọn trước
+                // đó — đúng yêu cầu "ưu tiên giá trị này khi lưu".
+                marker.on('dragend', () => {
+                    const { lat, lng } = marker.getLngLat();
                     setPosition({ lat, lng });
-                    setAddress(place.formattedAddress ?? '');
-                    setGooglePlaceId(place.id ?? null);
+                    setSuggestions([]);
+                    setSuggestState('idle');
+                    resolveAddress(lat, lng);
                 });
 
                 mapRef.current = map;
@@ -120,17 +154,24 @@ export default function HotelLocationSettingsPage() {
                 setMapReady(true);
             })
             .catch((err) => {
-                if (!cancelled) setMapsError(err.message);
+                if (!cancelled) setMapsError(describeMapError(err));
             });
 
         return () => {
             cancelled = true;
+            window.clearTimeout(suggestTimerRef.current);
+            window.clearTimeout(loadTimer);
+            marker?.remove();
+            map?.remove();
+            mapRef.current = null;
+            markerRef.current = null;
+            markerOnMapRef.current = false;
         };
-    }, []);
+    }, [resolveAddress]);
 
     // Đưa marker/bản đồ về đúng vị trí đã lưu ngay khi cả bản đồ lẫn dữ liệu config đều
     // sẵn sàng (không cần biết cái nào xong trước — effect này tự chờ đủ cả 2). Phải có
-    // mapReady trong dependency: nếu config tới trước lúc script Maps còn đang tải,
+    // mapReady trong dependency: nếu config tới trước lúc thư viện bản đồ còn đang tải,
     // effect chạy sớm, thấy !mapRef.current rồi return mà KHÔNG set appliedConfigRef —
     // không có mapReady thì effect không bao giờ được kích hoạt lại lần nữa vì config
     // không đổi thêm nữa.
@@ -140,39 +181,83 @@ export default function HotelLocationSettingsPage() {
         const hasSavedLocation = config.latitude !== 0 || config.longitude !== 0;
         if (hasSavedLocation) {
             const center = { lat: config.latitude, lng: config.longitude };
-            mapRef.current.setCenter(center);
-            mapRef.current.setZoom(17);
-            markerRef.current.setPosition(center);
+            mapRef.current.jumpTo({ center: [center.lng, center.lat], zoom: SELECTED_ZOOM });
+            placeMarker(center.lat, center.lng);
             setPosition(center);
         }
         setAddress(config.address ?? '');
-        setGooglePlaceId(config.googlePlaceId ?? null);
         appliedConfigRef.current = true;
-    }, [config, mapReady]);
+    }, [config, mapReady, placeMarker]);
 
-    // Nút/nhấn Enter để tìm theo đúng chữ đang gõ — bổ sung cho Autocomplete (chỉ chọn
-    // được khi bấm vào 1 gợi ý trong dropdown, không có cách "tìm" chủ động bằng phím Enter).
-    const handleSearchAddress = () => {
-        if (!geocoderRef.current || !address.trim()) return;
-        geocoderRef.current.geocode(
-            { address: address.trim(), componentRestrictions: { country: 'vn' } },
-            (results, status) => {
-                if (status !== 'OK' || !results?.[0]) {
-                    toast.error('Không tìm thấy địa chỉ này trên bản đồ');
-                    return;
-                }
-                const result = results[0];
-                const lat = result.geometry.location.lat();
-                const lng = result.geometry.location.lng();
+    // Gõ vào ô địa chỉ -> gọi Autocomplete (debounce). Gọi ở onChange chứ không phải effect
+    // theo `address`, để các lần setAddress do chương trình (chọn gợi ý, kéo ghim) không
+    // kích hoạt lại một lượt tìm kiếm ngoài ý muốn.
+    const handleAddressChange = (event) => {
+        const value = event.target.value;
+        setAddress(value);
+        window.clearTimeout(suggestTimerRef.current);
 
-                mapRef.current?.setCenter({ lat, lng });
-                mapRef.current?.setZoom(17);
-                markerRef.current?.setPosition({ lat, lng });
-                setPosition({ lat, lng });
-                setAddress(result.formatted_address ?? address);
-                setGooglePlaceId(result.place_id ?? null);
-            },
-        );
+        const text = value.trim();
+        if (text.length < MIN_SEARCH_LENGTH) {
+            suggestSeqRef.current += 1;
+            setSuggestions([]);
+            setSuggestState('idle');
+            return;
+        }
+
+        suggestTimerRef.current = window.setTimeout(async () => {
+            const seq = ++suggestSeqRef.current;
+            setSuggestState('loading');
+            try {
+                const list = await searchAddress(text, position ?? DEFAULT_CENTER);
+                if (seq !== suggestSeqRef.current) return;
+                setSuggestions(list);
+                setSuggestState(list.length > 0 ? 'ready' : 'empty');
+            } catch {
+                if (seq !== suggestSeqRef.current) return;
+                setSuggestions([]);
+                setSuggestState('error');
+            }
+        }, SEARCH_DEBOUNCE_MS);
+    };
+
+    // Chọn 1 địa chỉ (từ gợi ý hoặc kết quả đầu của nút Tìm): Autocomplete chỉ cho ref_id nên
+    // phải gọi Place lấy toạ độ chính xác rồi mới di chuyển bản đồ + marker.
+    const applyPlace = async (item) => {
+        window.clearTimeout(suggestTimerRef.current);
+        suggestSeqRef.current += 1;
+        try {
+            const place = await getPlaceDetail(item.refId);
+            placeMarker(place.lat, place.lng);
+            mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: SELECTED_ZOOM });
+            setPosition({ lat: place.lat, lng: place.lng });
+            setAddress(place.display || item.display);
+            setSuggestions([]);
+            setSuggestState('idle');
+        } catch {
+            toast.error('Không lấy được toạ độ của địa chỉ này, thử một gợi ý khác.');
+        }
+    };
+
+    // Nút/nhấn Enter để tìm theo đúng chữ đang gõ — lấy kết quả khớp nhất của Autocomplete
+    // (bổ sung cho danh sách gợi ý, vốn chỉ chọn được bằng cách bấm vào từng dòng).
+    const handleSearchAddress = async () => {
+        const text = address.trim();
+        if (text.length < MIN_SEARCH_LENGTH || searching) return;
+        window.clearTimeout(suggestTimerRef.current);
+        setSearching(true);
+        try {
+            const list = await searchAddress(text, position ?? DEFAULT_CENTER);
+            if (list.length === 0) {
+                toast.error('Không tìm thấy địa chỉ này trên bản đồ');
+                return;
+            }
+            await applyPlace(list[0]);
+        } catch {
+            toast.error('Không tìm được địa chỉ lúc này, vui lòng thử lại.');
+        } finally {
+            setSearching(false);
+        }
     };
 
     const handleSave = async () => {
@@ -189,7 +274,6 @@ export default function HotelLocationSettingsPage() {
                 address: address.trim(),
                 latitude: position.lat,
                 longitude: position.lng,
-                googlePlaceId: googlePlaceId ?? undefined,
             }).unwrap();
             toast.success('Đã lưu vị trí khách sạn');
         } catch (err) {
@@ -202,11 +286,6 @@ export default function HotelLocationSettingsPage() {
             <h1 className="mb-6 text-2xl font-bold text-gray-900">Cài đặt vị trí khách sạn</h1>
 
             <div className="max-w-3xl space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <p className="text-sm text-gray-500">
-                    Vị trí này là tâm để trợ lý AI gợi ý địa điểm ăn uống, vui chơi, tham quan gần
-                    khách sạn cho khách.
-                </p>
-
                 {mapsError && (
                     <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
                         {mapsError}
@@ -224,38 +303,70 @@ export default function HotelLocationSettingsPage() {
                                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                             />
                             <input
-                                ref={addressInputRef}
                                 type="text"
                                 value={address}
-                                onChange={(e) => setAddress(e.target.value)}
+                                maxLength={255}
+                                onChange={handleAddressChange}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
                                         handleSearchAddress();
                                     }
                                 }}
-                                placeholder="Nhập địa chỉ rồi bấm Tìm, hoặc dùng ô gợi ý Google bên dưới..."
-                                className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="Nhập địa chỉ rồi bấm Tìm, hoặc chọn từ gợi ý Vietmap bên dưới..."
+                                className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             />
+                            {resolvingAddress && (
+                                <Loader2
+                                    size={16}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400"
+                                />
+                            )}
                         </div>
                         <button
                             type="button"
                             onClick={handleSearchAddress}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                            disabled={searching}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            <Search size={16} /> Tìm
+                            {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} Tìm
                         </button>
                     </div>
-                    {/* PlaceAutocompleteElement (Google) tự chèn <input> gợi ý riêng của nó vào
-                        đây lúc bản đồ khởi tạo xong — thay cho widget Autocomplete cũ đã bị
-                        Google chặn ở project tạo sau 1/3/2025 (chỉ còn Places API (New)). */}
-                    <p className="mb-1 mt-2 text-xs text-gray-400">Hoặc chọn nhanh từ gợi ý Google:</p>
-                    <div ref={autocompleteContainerRef} className="[&_gmp-place-autocomplete]:w-full" />
+
+                    <p className="mb-1 mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                        Hoặc chọn nhanh từ gợi ý Vietmap:
+                        {suggestState === 'loading' && <Loader2 size={12} className="animate-spin" />}
+                    </p>
+                    {suggestState === 'ready' && (
+                        <ul className="max-h-60 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200 bg-white text-sm shadow-sm">
+                            {suggestions.map((item) => (
+                                <li key={item.refId}>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPlace(item)}
+                                        className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-indigo-50"
+                                    >
+                                        <MapPin size={14} className="mt-0.5 shrink-0 text-gray-400" />
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-medium text-gray-800">{item.name}</span>
+                                            <span className="block truncate text-xs text-gray-500">{item.address}</span>
+                                        </span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {suggestState === 'empty' && (
+                        <p className="text-xs text-gray-400">Không có gợi ý phù hợp — thử gõ cụ thể hơn.</p>
+                    )}
+                    {suggestState === 'error' && (
+                        <p className="text-xs text-red-500">Không lấy được gợi ý lúc này, vui lòng thử lại.</p>
+                    )}
                 </div>
 
                 <div
                     ref={mapContainerRef}
-                    className="h-80 w-full rounded-lg border border-gray-200 bg-gray-50"
+                    className="h-80 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
                 />
                 <p className="text-xs text-gray-400">Kéo ghim trên bản đồ để tinh chỉnh vị trí chính xác.</p>
 

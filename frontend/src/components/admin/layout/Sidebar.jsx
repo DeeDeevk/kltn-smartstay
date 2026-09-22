@@ -82,13 +82,19 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
         mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
       } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
     >
-      {/* Nút thu gọn / mở rộng — nổi trên viền phải của sidebar (chỉ desktop) */}
+      {/* Nút thu gọn / mở rộng (chỉ desktop) — đặt ở hàng logo (top-5, cao đúng bằng h-16),
+          KHÔNG đặt ở top-20 như trước: chỗ đó nằm trong vùng menu cuộn được (nav có
+          overflow-y-auto), khi cửa sổ thấp thanh cuộn của menu hiện ra sát mép phải sidebar
+          và bị nút đè lên. Mở rộng: nằm hẳn bên trong sidebar; thu gọn (sidebar chỉ rộng
+          w-20, logo chiếm giữa): bám viền phải như cũ. */}
       <button
         type="button"
         onClick={onToggle}
         aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
         title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
-        className="press absolute -right-3 top-20 z-30 hidden h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800 lg:flex"
+        className={`press absolute top-5 z-30 hidden h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800 lg:flex ${
+          collapsed ? '-right-3' : 'right-3'
+        }`}
       >
         <ChevronLeft
           size={14}
