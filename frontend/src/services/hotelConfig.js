@@ -45,6 +45,22 @@ export const hotelConfigApi = createApi({
       query: (eventId) => ({ url: `/local-events/${eventId}`, method: 'delete' }),
       invalidatesTags: [{ type: 'LocalEvent', id: 'LIST' }],
     }),
+    // AI-assisted extraction: body is { url } hoặc { text } (đúng 1 trong 2, backend tự
+    // validate). Trả về mảng sự kiện vừa tạo, đều source='ai_suggested' status='pending'.
+    extractLocalEvents: builder.mutation({
+      query: (data) => ({ url: '/local-events/extract', method: 'post', data }),
+      invalidatesTags: [{ type: 'LocalEvent', id: 'LIST' }],
+    }),
+    approveLocalEvent: builder.mutation({
+      query: (eventId) => ({
+        url: `/local-events/${eventId}/approve`,
+        method: 'patch',
+      }),
+      invalidatesTags: (result, error, eventId) => [
+        { type: 'LocalEvent', id: eventId },
+        { type: 'LocalEvent', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -55,4 +71,6 @@ export const {
   useCreateLocalEventMutation,
   useUpdateLocalEventMutation,
   useDeleteLocalEventMutation,
+  useExtractLocalEventsMutation,
+  useApproveLocalEventMutation,
 } = hotelConfigApi;

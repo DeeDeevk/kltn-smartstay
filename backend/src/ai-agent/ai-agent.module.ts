@@ -9,8 +9,7 @@ import { AiAgentToolsService } from './tools/ai-agent-tools.service';
 import { FaqEmbeddingService } from './rag/faq-embedding.service';
 import { FaqController } from './faq/faq.controller';
 import { FaqService } from './faq/faq.service';
-import { LLM_PROVIDER } from './llm/llm-provider.interface';
-import { GeminiProvider } from './llm/gemini.provider';
+import { LlmModule } from './llm/llm.module';
 import { ReservationsModule } from '../reservations/reservations.module';
 import { PromotionModule } from '../promotions/promotion.module';
 import { ServiceModule } from '../services/service.module';
@@ -25,6 +24,11 @@ import { HotelConfigModule } from '../hotel-config/hotel-config.module';
     ServiceModule,
     PaymentModule,
     HotelConfigModule,
+    // Provides LLM_PROVIDER (GeminiProvider) — moved out to its own module so
+    // hotel-config's AI extraction feature can import the same client without a
+    // AiAgentModule <-> HotelConfigModule import cycle. Đổi provider sau này (VD sang
+    // Claude) chỉ cần sửa useClass/useExisting trong llm.module.ts.
+    LlmModule,
   ],
   controllers: [AiAgentController, FaqController],
   providers: [
@@ -32,8 +36,6 @@ import { HotelConfigModule } from '../hotel-config/hotel-config.module';
     AiAgentToolsService,
     FaqEmbeddingService,
     FaqService,
-    // Đổi provider sau này (VD sang Claude) chỉ cần thay useClass ở đây.
-    { provide: LLM_PROVIDER, useClass: GeminiProvider },
   ],
 })
 export class AiAgentModule {}

@@ -9,6 +9,7 @@ import { LocalEvent } from './entities/local-event.entity';
 import { CreateLocalEventDto } from './dto/create-local-event.dto';
 import { UpdateLocalEventDto } from './dto/update-local-event.dto';
 import { EventRecurrence } from 'src/common/enums/event-recurrence.enum';
+import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 
 @Injectable()
 export class LocalEventService {
@@ -100,25 +101,61 @@ export class LocalEventService {
     return { message: 'Đã xoá sự kiện' };
   }
 
+  // Flips an AI-suggested (source = ai_suggested, status = pending) row to approved —
+  // only after this does get_local_events (findForDate below) ever see it. Re-validates
+  // date completeness server-side even though the admin UI already disables the "Duyệt"
+  // button for an incomplete draft — the UI check is a convenience, not the source of
+  // truth, so a stale client or a direct API call can't sneak an incomplete event past
+  // guests. WEEKLY events created via extraction always carry a dayOfWeek anyway (see
+  // LocalEventExtractionService.sanitizeExtractedEvent), but ONCE events may still be
+  // missing specificDate if the source text's date was too ambiguous to extract.
+  async approve(eventId: string): Promise<LocalEvent> {
+    const event = await this.findByIdForAdmin(eventId);
+    const hasCompleteDate =
+      (event.recurrence === EventRecurrence.WEEKLY &&
+        event.dayOfWeek !== null) ||
+      (event.recurrence === EventRecurrence.ONCE &&
+        event.specificDate !== null);
+    if (!hasCompleteDate) {
+      throw new BadRequestException(
+        'Sự kiện chưa đủ thông tin ngày, vui lòng bổ sung trước khi duyệt.',
+      );
+    }
+    event.status = LocalEventStatus.APPROVED;
+    return this.localEventRepo.save(event);
+  }
+
   // Dùng trực tiếp bởi ai-agent (tool get_local_events), không qua HTTP. Chỉ khớp
   // WEEKLY theo dayOfWeek và ONCE theo specificDate đúng ngày truy vấn — MONTHLY chưa
   // có trường "ngày trong tháng" trong entity nên hiện chưa lọc theo ngày được, luôn bị
   // bỏ qua ở đây (không phải bug, entity hiện tại không đủ dữ liệu để so khớp MONTHLY).
+  // status = APPROVED bắt buộc: sự kiện AI đề xuất còn "pending" (chưa admin duyệt)
+  // TUYỆT ĐỐI không được lộ ra cho khách qua trợ lý AI.
   async findForDate(dateStr: string): Promise<LocalEvent[]> {
     const dayOfWeek = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
 
-    return this.localEventRepo
-      .createQueryBuilder('event')
-      .where(
-        '(event.recurrence = :weekly AND event.dayOfWeek = :dayOfWeek) OR (event.recurrence = :once AND event.specificDate = :date)',
-        {
-          weekly: EventRecurrence.WEEKLY,
-          dayOfWeek,
-          once: EventRecurrence.ONCE,
-          date: dateStr,
-        },
-      )
-      .getMany();
+    return (
+      this.localEventRepo
+        .createQueryBuilder('event')
+        .where('event.status = :status', { status: LocalEventStatus.APPROVED })
+        // Outer parens around the whole OR clause are load-bearing, not just style: SQL's
+        // AND binds tighter than OR, so `.andWhere('(A) OR (B)')` after `.where(status)`
+        // would compile to `status AND (A) OR (B)` == `(status AND A) OR B` — silently
+        // dropping the status filter from the ONCE branch and leaking pending AI-suggested
+        // events with a matching specificDate. Caught via live testing (get_local_events
+        // returned a still-pending "Lễ hội Tháp Bà Ponagar" to a guest), not by the type
+        // checker — TypeORM's raw WHERE strings aren't validated for this.
+        .andWhere(
+          '((event.recurrence = :weekly AND event.dayOfWeek = :dayOfWeek) OR (event.recurrence = :once AND event.specificDate = :date))',
+          {
+            weekly: EventRecurrence.WEEKLY,
+            dayOfWeek,
+            once: EventRecurrence.ONCE,
+            date: dateStr,
+          },
+        )
+        .getMany()
+    );
   }
 
   // Mutually exclusive by design: a WEEKLY event is defined by dayOfWeek and must NOT also
