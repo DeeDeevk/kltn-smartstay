@@ -9,17 +9,17 @@ import { LocalEventSource } from 'src/common/enums/local-event-source.enum';
 import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 import { GeminiProvider } from 'src/ai-agent/llm/gemini.provider';
 
-// Out-of-SRS extension (SRS explicitly says "không tự động tổng hợp sự kiện từ nguồn
-// ngoài" — no automatic aggregation from external sources). This is judged to stay within
-// that boundary because it never runs on its own: an admin must actively paste a
-// link/text AND separately click "Duyệt" per event before get_local_events can ever see
-// it (LocalEventService.findForDate filters status = APPROVED) — this is "AI-assisted data
-// entry with human review", not autonomous collection. Flagging this clearly for the PR/
-// code review since it goes beyond what the original SRS scoped.
+// Mở rộng ngoài phạm vi SRS (SRS ghi rõ "không tự động tổng hợp sự kiện từ nguồn ngoài").
+// Được đánh giá là vẫn nằm trong ranh giới đó vì tính năng không bao giờ tự chạy một
+// mình: admin phải chủ động dán link/text VÀ tự bấm "Duyệt" riêng từng sự kiện thì
+// get_local_events mới thấy được (LocalEventService.findForDate lọc theo status =
+// APPROVED) — đây là "AI hỗ trợ nhập liệu, có con người duyệt lại", không phải thu thập
+// tự động. Ghi chú rõ ở đây để review PR/code chú ý, vì đây là phần vượt khỏi phạm vi SRS
+// gốc.
 
-// Sent to Gemini as the system instruction for generateJson() — deliberately strict:
-// extraction-only, no invented events, no outside knowledge, blank date fields (not a
-// guessed date) when the source text itself is ambiguous.
+// Gửi cho Gemini làm system instruction cho generateJson() — cố tình viết chặt chẽ: chỉ
+// trích xuất, không bịa sự kiện, không dùng kiến thức ngoài văn bản, để trống trường ngày
+// (không tự đoán) khi bản thân văn bản nguồn không rõ ràng.
 const EXTRACTION_SYSTEM_PROMPT = `Bạn là công cụ trích xuất sự kiện địa phương từ văn bản. CHỈ trích xuất
 các sự kiện có ngày/thời gian được nêu trong văn bản được cung cấp bên dưới. TUYỆT ĐỐI KHÔNG
 suy đoán, KHÔNG bịa thêm sự kiện không có trong văn bản, KHÔNG dùng kiến thức bên ngoài văn
@@ -43,11 +43,11 @@ Trả về ĐÚNG một mảng JSON, không kèm giải thích hay markdown, đ�
 [{ "title": string, "description": string, "isRecurring": boolean, "dayOfWeek": number | null, "specificDate": string | null }]`;
 
 const FETCH_TIMEOUT_MS = 10_000;
-// Characters of source text actually sent to Gemini — keeps the prompt small/cheap and
-// bounds cost regardless of how long the admin's link/paste is.
+// Số ký tự của text nguồn thực sự gửi cho Gemini — giữ prompt nhỏ/rẻ và giới hạn chi phí
+// bất kể link/đoạn dán của admin dài bao nhiêu.
 const MAX_CONTENT_LENGTH = 20_000;
-// LocalEvent.sourceRef is `text` (unbounded) but there's no reason to store more than
-// admins would ever need to cross-check a suggestion against.
+// LocalEvent.sourceRef là kiểu `text` (không giới hạn) nhưng không có lý do gì để lưu
+// nhiều hơn mức admin cần để đối chiếu lại 1 đề xuất.
 const MAX_SOURCE_REF_LENGTH = 2000;
 const TITLE_MAX_LENGTH = 200;
 
@@ -66,10 +66,10 @@ export class LocalEventExtractionService {
   constructor(
     @InjectRepository(LocalEvent)
     private readonly localEventRepo: Repository<LocalEvent>,
-    // Injected directly (not through the LLM_PROVIDER interface) — see LlmModule's
-    // comment: extraction is a one-shot JSON call, not the agent's tool-calling chat
-    // loop that LlmProvider models, and this feature is explicitly OK being Gemini-
-    // specific for now.
+    // Inject trực tiếp (không qua interface LLM_PROVIDER) — xem chú thích ở LlmModule:
+    // trích xuất là 1 lệnh gọi JSON one-shot, khác hẳn vòng lặp chat gọi-tool của agent
+    // mà LlmProvider mô hình hoá, và tính năng này được chấp nhận gắn cứng với Gemini
+    // cho hiện tại.
     private readonly geminiProvider: GeminiProvider,
   ) {}
 
@@ -132,10 +132,11 @@ export class LocalEventExtractionService {
     return this.localEventRepo.save(events);
   }
 
-  // Never trusts Gemini's JSON shape blindly — every field is type/format-checked here
-  // before it can become a DB row. Returns null (item dropped) only when title is missing/
-  // empty; a missing/ambiguous date is kept (per EXTRACTION_SYSTEM_PROMPT) since that's the
-  // documented "admin fills it in later" path, gated by LocalEventService.approve().
+  // Không bao giờ tin mù quáng vào cấu trúc JSON Gemini trả về — mọi trường đều được
+  // kiểm tra kiểu/định dạng ở đây trước khi trở thành 1 dòng DB. Chỉ trả về null (bỏ
+  // item) khi thiếu/rỗng title; ngày thiếu/mơ hồ vẫn được giữ lại (theo đúng
+  // EXTRACTION_SYSTEM_PROMPT) vì đó là luồng "admin tự bổ sung sau" đã tài liệu hoá, được
+  // chặn lại ở LocalEventService.approve().
   private sanitizeExtractedEvent(
     raw: RawExtractedEvent,
   ): Pick<
@@ -166,11 +167,11 @@ export class LocalEventExtractionService {
         ? raw.specificDate
         : null;
 
-    // isRecurring only takes effect when it's paired with a valid dayOfWeek — an
-    // "isRecurring: true" with no usable dayOfWeek is exactly the "date unclear" case,
-    // stored as ONCE with specificDate left null (see class comment on why recurrence
-    // can't just be left unset: the column is NOT NULL and this feature intentionally
-    // avoids changing that).
+    // isRecurring chỉ có hiệu lực khi đi kèm dayOfWeek hợp lệ — "isRecurring: true" mà
+    // không có dayOfWeek dùng được chính là trường hợp "ngày không rõ", được lưu như
+    // ONCE với specificDate để null (xem chú thích đầu class để hiểu vì sao không thể
+    // để trống hẳn recurrence: cột này NOT NULL và tính năng này cố tình không đổi điều
+    // đó).
     const isRecurring = raw.isRecurring === true && dayOfWeek !== null;
 
     return {
@@ -182,10 +183,11 @@ export class LocalEventExtractionService {
     };
   }
 
-  // Basic SSRF guard: rejects the obvious private/loopback hostname patterns. Not a full
-  // defense (doesn't resolve DNS to catch a public domain that rebinds to an internal IP) —
-  // proportionate to this being an admin-only, manually-triggered endpoint, not public
-  // input, per the task's ask for a "basic" guard.
+  // Chặn SSRF ở mức cơ bản: từ chối các dạng hostname nội bộ/loopback rõ ràng. Không phải
+  // phòng thủ toàn diện (không resolve DNS để bắt trường hợp 1 domain công khai rebind
+  // sang IP nội bộ) — mức độ này phù hợp vì đây là endpoint chỉ admin mới gọi được và
+  // phải chủ động kích hoạt (không phải input công khai), đúng theo yêu cầu ban đầu là
+  // "chặn cơ bản".
   private assertNotPrivateHost(hostname: string): void {
     const lower = hostname.toLowerCase();
     const isPrivate =

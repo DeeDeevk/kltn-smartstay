@@ -24,10 +24,10 @@ import { HotelConfigModule } from '../hotel-config/hotel-config.module';
     ServiceModule,
     PaymentModule,
     HotelConfigModule,
-    // Provides LLM_PROVIDER (GeminiProvider) — moved out to its own module so
-    // hotel-config's AI extraction feature can import the same client without a
-    // AiAgentModule <-> HotelConfigModule import cycle. Đổi provider sau này (VD sang
-    // Claude) chỉ cần sửa useClass/useExisting trong llm.module.ts.
+    // Cung cấp LLM_PROVIDER (GeminiProvider) — tách ra module riêng để tính năng AI
+    // trích xuất của hotel-config import được cùng client mà không tạo vòng lặp import
+    // AiAgentModule <-> HotelConfigModule. Đổi provider sau này (VD sang Claude) chỉ cần
+    // sửa useClass/useExisting trong llm.module.ts.
     LlmModule,
   ],
   controllers: [AiAgentController, FaqController],

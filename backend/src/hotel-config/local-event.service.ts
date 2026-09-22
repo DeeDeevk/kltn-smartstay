@@ -18,10 +18,11 @@ export class LocalEventService {
     private readonly localEventRepo: Repository<LocalEvent>,
   ) {}
 
-  // Rows with a dayOfWeek (WEEKLY, recurs indefinitely) sort before one-time rows (dayOfWeek
-  // IS NULL) simply because non-null values sort before NULL under "NULLS LAST" — no extra
-  // "is this recurring" expression needed. Within each group, ascending order is already
-  // the useful one: dayOfWeek 0..6 (Sun..Sat), specificDate soonest-first.
+  // Dòng có dayOfWeek (WEEKLY, lặp vô hạn) được xếp trước dòng chỉ diễn ra 1 lần
+  // (dayOfWeek IS NULL) đơn giản vì giá trị không NULL luôn xếp trước NULL khi dùng
+  // "NULLS LAST" — không cần viết thêm biểu thức "đây có phải sự kiện lặp lại không".
+  // Trong từng nhóm, thứ tự tăng dần vốn đã hữu ích sẵn: dayOfWeek 0..6 (CN..T7),
+  // specificDate gần nhất lên trước.
   findAll(): Promise<LocalEvent[]> {
     return this.localEventRepo
       .createQueryBuilder('event')
@@ -59,11 +60,10 @@ export class LocalEventService {
     const event = await this.findByIdForAdmin(eventId);
 
     const nextRecurrence = dto.recurrence ?? event.recurrence;
-    // Only inherit the PREVIOUS dayOfWeek/specificDate when recurrence itself isn't
-    // changing. If it IS changing (e.g. WEEKLY -> ONCE sending only the new
-    // specificDate), the old type's field is stale and must be treated as absent —
-    // otherwise assertRecurrenceFields below would wrongly reject a legitimate type
-    // switch for "carrying" a field that belongs to the type being switched AWAY from.
+    // Chỉ kế thừa dayOfWeek/specificDate CŨ khi bản thân recurrence không đổi. Nếu CÓ
+    // đổi (VD WEEKLY -> ONCE chỉ gửi specificDate mới), trường của loại cũ đã lỗi thời và
+    // phải coi như không có — nếu không assertRecurrenceFields bên dưới sẽ từ chối nhầm
+    // 1 lần đổi loại hợp lệ vì "còn giữ" 1 trường thuộc về loại đang bị đổi RA KHỎI.
     const recurrenceUnchanged = nextRecurrence === event.recurrence;
     const nextDayOfWeek =
       dto.dayOfWeek ??
@@ -101,14 +101,14 @@ export class LocalEventService {
     return { message: 'Đã xoá sự kiện' };
   }
 
-  // Flips an AI-suggested (source = ai_suggested, status = pending) row to approved —
-  // only after this does get_local_events (findForDate below) ever see it. Re-validates
-  // date completeness server-side even though the admin UI already disables the "Duyệt"
-  // button for an incomplete draft — the UI check is a convenience, not the source of
-  // truth, so a stale client or a direct API call can't sneak an incomplete event past
-  // guests. WEEKLY events created via extraction always carry a dayOfWeek anyway (see
-  // LocalEventExtractionService.sanitizeExtractedEvent), but ONCE events may still be
-  // missing specificDate if the source text's date was too ambiguous to extract.
+  // Chuyển 1 dòng do AI đề xuất (source = ai_suggested, status = pending) sang approved —
+  // chỉ sau bước này get_local_events (findForDate bên dưới) mới thấy được. Kiểm tra lại
+  // độ đầy đủ của ngày ở phía server dù giao diện admin đã disable nút "Duyệt" cho bản
+  // nháp thiếu thông tin — kiểm tra ở UI chỉ là tiện lợi, không phải nguồn sự thật, nên 1
+  // client cũ hoặc gọi API trực tiếp không thể lọt qua được 1 sự kiện thiếu thông tin ra
+  // trước mặt khách. Sự kiện WEEKLY tạo qua trích xuất luôn có sẵn dayOfWeek (xem
+  // LocalEventExtractionService.sanitizeExtractedEvent), nhưng sự kiện ONCE vẫn có thể
+  // thiếu specificDate nếu ngày trong văn bản nguồn quá mơ hồ để trích xuất được.
   async approve(eventId: string): Promise<LocalEvent> {
     const event = await this.findByIdForAdmin(eventId);
     const hasCompleteDate =
@@ -138,13 +138,14 @@ export class LocalEventService {
       this.localEventRepo
         .createQueryBuilder('event')
         .where('event.status = :status', { status: LocalEventStatus.APPROVED })
-        // Outer parens around the whole OR clause are load-bearing, not just style: SQL's
-        // AND binds tighter than OR, so `.andWhere('(A) OR (B)')` after `.where(status)`
-        // would compile to `status AND (A) OR (B)` == `(status AND A) OR B` — silently
-        // dropping the status filter from the ONCE branch and leaking pending AI-suggested
-        // events with a matching specificDate. Caught via live testing (get_local_events
-        // returned a still-pending "Lễ hội Tháp Bà Ponagar" to a guest), not by the type
-        // checker — TypeORM's raw WHERE strings aren't validated for this.
+        // Cặp ngoặc ngoài bọc cả cụm OR là bắt buộc về mặt logic, không chỉ để đẹp: AND
+        // trong SQL có độ ưu tiên cao hơn OR, nên `.andWhere('(A) OR (B)')` ngay sau
+        // `.where(status)` sẽ biên dịch thành `status AND (A) OR (B)` == `(status AND A)
+        // OR B` — âm thầm loại bỏ điều kiện lọc status khỏi nhánh ONCE, làm lộ ra ngoài
+        // các sự kiện AI đề xuất còn pending nếu trùng specificDate. Phát hiện được nhờ
+        // test trực tiếp (get_local_events trả về sự kiện "Lễ hội Tháp Bà Ponagar" dù nó
+        // vẫn đang pending), không phải nhờ type checker — chuỗi WHERE thô của TypeORM
+        // không được kiểm tra logic kiểu này.
         .andWhere(
           '((event.recurrence = :weekly AND event.dayOfWeek = :dayOfWeek) OR (event.recurrence = :once AND event.specificDate = :date))',
           {
@@ -158,11 +159,11 @@ export class LocalEventService {
     );
   }
 
-  // Mutually exclusive by design: a WEEKLY event is defined by dayOfWeek and must NOT also
-  // carry a specificDate (and vice versa for ONCE) — reject explicitly with a 400 instead
-  // of silently accepting both and discarding one later. update() only reaches here with
-  // whichever field the caller actually sent still attached (see update()'s dto ?? event
-  // merge above), so a request that sends both together always gets caught.
+  // Cố tình loại trừ lẫn nhau: sự kiện WEEKLY được định nghĩa bằng dayOfWeek và KHÔNG
+  // được kèm specificDate (và ngược lại với ONCE) — từ chối rõ ràng bằng lỗi 400 thay vì
+  // âm thầm chấp nhận cả hai rồi bỏ bớt 1 cái về sau. update() chỉ chạy tới đây với đúng
+  // trường mà người gọi thực sự gửi lên (xem chỗ merge dto ?? event ở update() phía
+  // trên), nên request gửi cả 2 trường cùng lúc luôn bị bắt lại.
   private assertRecurrenceFields(
     recurrence: EventRecurrence,
     dayOfWeek?: number,

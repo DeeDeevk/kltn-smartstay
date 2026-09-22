@@ -143,13 +143,13 @@ export class GeminiProvider implements LlmProvider {
     };
   }
 
-  // One-shot structured-JSON generation — no tool calling, no multi-turn history. Reuses
-  // the same client/model as chat() so callers (LocalEventExtractionService) don't need a
-  // second Gemini connection or duplicated API key handling. responseMimeType constrains
-  // Gemini to emit valid JSON, which is far more reliable than regex-extracting JSON out of
-  // a freeform text reply. Returns the parsed value as `unknown` — callers are responsible
-  // for validating the shape matches what their prompt asked for (Gemini can still return
-  // JSON that doesn't match, it just can't return non-JSON).
+  // Sinh JSON có cấu trúc, kiểu one-shot — không gọi tool, không lịch sử nhiều lượt. Tái
+  // dùng đúng client/model như chat() nên nơi gọi (LocalEventExtractionService) không cần
+  // dựng thêm kết nối Gemini thứ hai hay xử lý API key trùng lặp. responseMimeType ép
+  // Gemini phải trả JSON hợp lệ, đáng tin cậy hơn nhiều so với dùng regex bóc JSON ra từ
+  // 1 câu trả lời văn bản tự do. Trả về giá trị đã parse dưới dạng `unknown` — nơi gọi tự
+  // chịu trách nhiệm kiểm tra cấu trúc có đúng như prompt yêu cầu không (Gemini vẫn có thể
+  // trả JSON sai cấu trúc, chỉ là không thể trả về dữ liệu KHÔNG phải JSON).
   async generateJson(
     systemPrompt: string,
     userContent: string,

@@ -15,7 +15,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
   imports: [
     TypeOrmModule.forFeature([HotelConfig, LocalEvent]),
     RedisModule,
-    // For LocalEventExtractionService -> GeminiProvider (AI-assisted event extraction).
+    // Cho LocalEventExtractionService -> GeminiProvider (tính năng AI hỗ trợ trích xuất sự kiện).
     LlmModule,
   ],
   controllers: [HotelConfigController, LocalEventController],
