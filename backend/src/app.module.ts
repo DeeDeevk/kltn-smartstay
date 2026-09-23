@@ -11,7 +11,6 @@ import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { ServiceModule } from './services/service.module';
-import { PromotionModule } from './promotions/promotion.module';
 import { UploadModule } from './uploads/upload.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PaymentModule } from './payments/payment.module';
@@ -50,7 +49,6 @@ import { HotelConfigModule } from './hotel-config/hotel-config.module';
     AuthModule,
     ReservationsModule,
     ServiceModule,
-    PromotionModule,
     DashboardModule,
     UploadModule,
     PaymentModule,

@@ -29,7 +29,7 @@ export default function RoomCard({ room, startDate, endDate }) {
     return t(rule ? rule[1] : CAPACITY_LABEL_KEYS[room.capacity_people] ?? 'search.roomCard.family');
   };
 
-  const handleBookNow = () => {
+  const goToRoomDetail = () => {
     const roomId = room.roomTypeId || room.id;
     let url = `/rooms/${roomId}`;
 
@@ -43,7 +43,23 @@ export default function RoomCard({ room, startDate, endDate }) {
   };
 
   return (
-    <div className="anim-fade-up bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-[transform,box-shadow] duration-300 flex flex-col h-full group">
+    // Bấm vào bất kỳ đâu trên thẻ cũng mở trang chi tiết phòng — trước đây chỉ nút
+    // "Đặt ngay" mới đi được, nên khách muốn xem ảnh/tiện nghi/đánh giá trước khi
+    // quyết định thì không biết bấm vào đâu.
+    // role/tabIndex/onKeyDown: <div> không tự nhận được focus hay phím Enter như
+    // <button>, phải khai báo thì bàn phím và trình đọc màn hình mới dùng được.
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={goToRoomDetail}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          goToRoomDetail();
+        }
+      }}
+      className="anim-fade-up cursor-pointer bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-[transform,box-shadow] duration-300 flex flex-col h-full group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+    >
       {/* ... image section ... */}
       <div className="relative h-48 overflow-hidden">
         <img
@@ -124,7 +140,11 @@ export default function RoomCard({ room, startDate, endDate }) {
             <p className="text-xs text-gray-500">{t('search.roomCard.perNight')}</p>
           </div>
           <button
-            onClick={handleBookNow}
+            onClick={(e) => {
+              // Thẻ cha cũng điều hướng tới đúng trang này — chặn để không chạy 2 lần.
+              e.stopPropagation();
+              goToRoomDetail();
+            }}
             disabled={room.availableCount === 0}
             className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
           >

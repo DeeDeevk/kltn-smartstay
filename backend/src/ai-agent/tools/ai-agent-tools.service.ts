@@ -261,6 +261,9 @@ export class AiAgentToolsService {
       discountValue: p.discountValue,
       startDate: p.startDate,
       endDate: p.endDate,
+      // Kèm điều kiện áp dụng để trợ lý không giới thiệu mã mà khách không dùng
+      // được (vd. mã chỉ cho đơn từ 3 đêm, trong khi khách hỏi đặt 1 đêm).
+      conditions: p.conditions,
     }));
   }
 
@@ -404,10 +407,13 @@ export class AiAgentToolsService {
 
     let discountAmount = 0;
     if (promotionCode) {
-      const result = await this.promotionService.validateCode(
-        promotionCode,
-        roomAmount + serviceAmount,
-      );
+      const result = await this.promotionService.validateCode(promotionCode, {
+        roomTypeId,
+        checkIn,
+        checkOut,
+        roomAmount,
+        serviceAmount,
+      });
       discountAmount = result.discountAmount;
     }
     const netRoomAmount = roomAmount - discountAmount;

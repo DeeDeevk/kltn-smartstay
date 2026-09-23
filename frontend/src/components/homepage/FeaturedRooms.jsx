@@ -15,7 +15,7 @@ export default function FeaturedRooms() {
   const rooms = (roomsResponse?.data || []).slice(0, 3);
   const error = rtkError ? t('home.featured.loadError') : null;
 
-  const handleBookNow = (room) => {
+  const goToRoomDetail = (room) => {
     navigate(`/rooms/${room.id}`);
   };
 
@@ -51,8 +51,24 @@ export default function FeaturedRooms() {
         ) : (
           /* Grid Rooms */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Bấm vào bất kỳ đâu trên thẻ cũng mở trang chi tiết phòng, không riêng nút
+                "Đặt ngay" — khách thường muốn xem ảnh/tiện nghi/đánh giá trước khi quyết
+                định. role/tabIndex/onKeyDown để bàn phím và trình đọc màn hình dùng được. */}
             {rooms.map((room, index) => (
-              <div key={room.id} style={{ animationDelay: `${Math.min(index, 5) * 80}ms` }} className="anim-fade-up bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 group">
+              <div
+                key={room.id}
+                role="link"
+                tabIndex={0}
+                onClick={() => goToRoomDetail(room)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    goToRoomDetail(room);
+                  }
+                }}
+                style={{ animationDelay: `${Math.min(index, 5) * 80}ms` }}
+                className="anim-fade-up cursor-pointer bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
                 {/* Image */}
                 <div className="relative h-64 overflow-hidden">
                   <img
@@ -78,7 +94,11 @@ export default function FeaturedRooms() {
                       </p>
                     </div>
                     <button
-                      onClick={() => handleBookNow(room)}
+                      onClick={(e) => {
+                        // Thẻ cha điều hướng tới cùng trang — chặn để không chạy 2 lần.
+                        e.stopPropagation();
+                        goToRoomDetail(room);
+                      }}
                       className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
                     >
                       {t('home.featured.bookNow')}

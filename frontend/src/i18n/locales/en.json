@@ -260,18 +260,21 @@
       "empty": "No reviews yet for this room type.",
       "collapse": "Show fewer reviews",
       "viewAll": "View all {{count}} reviews",
+      "hotelReply": "Reply from the hotel",
       "defaultGuestName": "Guest",
       "writeReview": "Write a review",
       "reviewSubtitle": "Share your experience staying at {{roomName}}",
       "satisfaction": "Satisfaction level",
-      "ratingExcellent": "Excellent! 😍",
-      "ratingGood": "Very good! 🙂",
-      "ratingAverage": "Average 😐",
-      "ratingPoor": "Not great 😕",
-      "ratingBad": "Terrible 😡",
+      "ratingExcellent": "Excellent",
+      "ratingGood": "Very good",
+      "ratingAverage": "Average",
+      "ratingPoor": "Not great",
+      "ratingBad": "Terrible",
       "commentLabel": "Detailed comment",
       "commentPlaceholder": "Share your experience about the room, service, or amenities...",
       "cancel": "Cancel",
+      "commentTooShort": "Please write at least {{count}} characters",
+      "submitting": "Submitting...",
       "submit": "Submit review",
       "submitSuccess": "Thanks for leaving a review!",
       "submitError": "Could not submit your review. Please try again."
@@ -310,6 +313,14 @@
       "linkError": "Could not create the payment link",
       "waitingHint": "This page will move on automatically once payment is received."
     },
+    "promo": {
+      "title": "Promo code",
+      "placeholder": "Enter a code, e.g. HE2026",
+      "apply": "Apply",
+      "remove": "Remove",
+      "applied": "Applied code {{code}}",
+      "invalid": "This promo code is not valid"
+    },
     "customerInfo": "Guest information",
     "fullName": "Full name",
     "phone": "Phone number",
@@ -323,6 +334,7 @@
       "checkIn": "Check-in",
       "checkOut": "Check-out",
       "priceNights": "{{price}} x {{nights}} nights",
+      "discount": "Discount",
       "vat": "VAT ({{rate}}%)",
       "total": "Total"
     }
@@ -356,6 +368,7 @@
       "cancelError": "Could not cancel the booking",
       "cancelTitle": "Cancel booking",
       "cancelMessage": "Are you sure you want to cancel the booking for \"{{roomName}}\"?",
+      "review": "Write a review",
       "viewDetail": "Details",
       "table": {
         "room": "Room",
@@ -525,7 +538,7 @@
       "floorInvalid": "Invalid floor",
       "cancel": "Cancel",
       "submit": "Add room",
-      "submitting": "Adding...",
+      "submitting": "Submitting...",
       "createSuccess": "Room \"{{roomNumber}}\" has been added",
       "createConflict": "Room number \"{{roomNumber}}\" already exists",
       "createError": "Could not add the room"

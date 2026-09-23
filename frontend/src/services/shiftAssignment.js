@@ -17,6 +17,12 @@ export const shiftAssignmentApi = createApi({
       query: (params) => ({ url: '/shift-assignments/me', method: 'get', params }),
       providesTags: ['ShiftAssignment'],
     }),
+    // Ca kết gần nhất của TOÀN khách sạn (không phải của riêng người đang đăng nhập) —
+    // mốc để người vô ca đối chiếu tiền trong két. Trả null nếu chưa có ca nào kết.
+    getLastClosedShift: builder.query({
+      query: () => ({ url: '/shift-assignments/last-closed', method: 'get' }),
+      providesTags: ['ShiftAssignment'],
+    }),
     createShiftAssignment: builder.mutation({
       query: (payload) => ({ url: '/shift-assignments', method: 'post', data: payload }),
       invalidatesTags: ['ShiftAssignment'],
@@ -68,6 +74,7 @@ export const shiftAssignmentApi = createApi({
 export const {
   useGetShiftAssignmentsQuery,
   useGetMyShiftAssignmentsQuery,
+  useGetLastClosedShiftQuery,
   useCreateShiftAssignmentMutation,
   useCopyShiftWeekMutation,
   useDeleteShiftAssignmentMutation,
