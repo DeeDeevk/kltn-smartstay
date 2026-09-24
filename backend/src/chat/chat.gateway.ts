@@ -16,7 +16,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // RealtimeGateway.handleConnection đã xác thực/gán — không xác thực lại ở đây.
 // Việc bắn sự kiện tới nhóm "lễ tân trực chat" vẫn đi qua RealtimeGateway (xem
 // emitToChatStaff) thay vì ChatModule tự biết tên room — giữ đúng ranh giới module.
-@WebSocketGateway({ cors: true })
+@WebSocketGateway()
 export class ChatGateway {
   @WebSocketServer()
   server!: Server;

@@ -51,11 +51,12 @@ export default function FeaturedRooms() {
         ) : (
           /* Grid Rooms */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {rooms.map(room => (
-              <div key={room.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+            {rooms.map((room, index) => (
+              <div key={room.id} style={{ animationDelay: `${Math.min(index, 5) * 80}ms` }} className="anim-fade-up bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 group">
                 {/* Image */}
                 <div className="relative h-64 overflow-hidden">
                   <img
+                    loading="lazy"
                     src={room.images && room.images.length > 0 ? room.images[0].url : 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2070&auto=format&fit=crop'}
                     alt={room.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"

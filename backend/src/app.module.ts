@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { UserModule } from './users/user.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
@@ -18,11 +19,15 @@ import { ShiftModule } from './shifts/shift.module';
 import { RevenueModule } from './revenue/revenue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ChatModule } from './chat/chat.module';
+import { AiAgentModule } from './ai-agent/ai-agent.module';
+import { HotelConfigModule } from './hotel-config/hotel-config.module';
+import { NotificationModule } from './notifications/notification.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 30 }]),
+    ScheduleModule.forRoot(),
     RedisModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -35,9 +40,11 @@ import { ChatModule } from './chat/chat.module';
         database: config.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
         synchronize: config.get<string>('DB_SYNCHRONIZE') === 'true',
-        ssl: config.get<string>('DB_SSL') === 'true' 
-          ? { rejectUnauthorized: false } 
-          : false,
+        ssl:
+          config.get<string>('DB_SSL') === 'true'
+            ? { rejectUnauthorized: false }
+            : false,
+        extra:{options:`-c timezone=${process.env.TZ}`},
       }),
     }),
     UserModule,
@@ -52,6 +59,9 @@ import { ChatModule } from './chat/chat.module';
     RevenueModule,
     RealtimeModule,
     ChatModule,
+    AiAgentModule,
+    HotelConfigModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -13,7 +13,10 @@ export function normalizeRoomType(roomType) {
     id: roomType.roomTypeId,
     base_price: roomType.basePrice,
     capacity_people: roomType.capacity,
-    availableCount: roomType.roomCount,
+    // Catalog (/room-types) trả về "roomCount", còn tìm kiếm (/rooms/availability) trả
+    // về thẳng "availableCount" — ưu tiên field thật của tìm kiếm, chỉ fallback sang
+    // roomCount cho các trang dùng catalog, tránh ghi đè availableCount thật thành undefined.
+    availableCount: roomType.availableCount ?? roomType.roomCount,
     images: (roomType.images ?? []).map((url) => ({ url })),
   };
 }

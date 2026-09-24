@@ -25,6 +25,8 @@ import { BookingStatus } from 'src/common/enums/booking-status.enum';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
 import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { RoomType } from 'src/room-types/entities/room-type.entity';
+import { QueryRoomTypeDto } from 'src/room-types/dto/query-room-type.dto';
 import { RoomTypeService } from 'src/room-types/room-type.service';
 import { ServiceService } from 'src/services/service.service';
 import { PromotionService } from 'src/promotions/promotion.service';
@@ -33,11 +35,17 @@ import { REDIS_CLIENT } from 'src/redis/redis.module';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ShiftAssignmentService } from '../shifts/shift-assignment.service';
 import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notifications/notification.service';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
 // tính trên dịch vụ đi kèm (đồ ăn, giặt ủi... đã có mức thuế/giá riêng).
-const VAT_RATE = 0.08;
+// Export để module ai-agent tái dùng khi tính giá xem trước (propose_booking) thay vì
+// khai báo lại cùng một con số ở hai nơi.
+export const VAT_RATE = 0.08;
 // Giờ trả phòng tiêu chuẩn: quá 12h trưa ngày check-out thì tính thêm đêm lưu trú.
 const CHECKOUT_DEADLINE_HOUR = 12;
 // Việt Nam không có giờ mùa hè, lệch cố định UTC+7 quanh năm — dùng để quy đổi "12h trưa
@@ -66,6 +74,7 @@ export class BookingService {
     private readonly realtimeGateway: RealtimeGateway,
     private readonly shiftAssignmentService: ShiftAssignmentService,
     private readonly paymentTransactionService: PaymentTransactionService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
@@ -167,6 +176,14 @@ export class BookingService {
 
       const detail = this.toDetailResponse(
         await this.findByIdRaw(saved.bookingId),
+      );
+      void this.notificationService.notifyBooking(
+        userId,
+        NotificationType.BOOKING_CREATED,
+        {
+          bookingId: detail.bookingId,
+          roomTypeName: roomType.name,
+        },
       );
       this.realtimeGateway.emitBookingCreated({
         bookingId: detail.bookingId,
@@ -281,6 +298,71 @@ export class BookingService {
     }
   }
 
+  // Danh sách loại phòng còn trống trong khoảng ngày cho trước, kèm số phòng còn trống
+  // thật sự (đã trừ các booking đang giữ chỗ giao ngày) — dùng bởi ai-agent (search_rooms)
+  // và bất kỳ nơi nào khác cần tìm phòng trống theo ngày thay vì chỉ theo status tĩnh.
+  async findAvailableRoomTypes(
+    checkIn: string,
+    checkOut: string,
+    guests?: number,
+  ): Promise<Array<RoomType & { availableCount: number }>> {
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const query: QueryRoomTypeDto = guests ? { capacity: guests } : {};
+    const roomTypes = await this.roomTypeService.findAllActive(query);
+
+    if (roomTypes.length === 0) return [];
+
+    // 2 query gộp (thay vì 2 query cho mỗi loại phòng) — số query không tăng theo số
+    // loại phòng.
+    const roomTypeIds = roomTypes.map((roomType) => roomType.roomTypeId);
+    const [totalRooms, overlapping] = await Promise.all([
+      this.countRoomsByRoomType(roomTypeIds),
+      this.countOverlappingBookingsByRoomType(roomTypeIds, checkIn, checkOut),
+    ]);
+
+    const available: Array<RoomType & { availableCount: number }> = [];
+    for (const roomType of roomTypes) {
+      const availableCount =
+        (totalRooms.get(roomType.roomTypeId) ?? 0) -
+        (overlapping.get(roomType.roomTypeId) ?? 0);
+      if (availableCount > 0) {
+        available.push({ ...roomType, availableCount });
+      }
+    }
+    return available;
+  }
+
+  // Số phòng còn trống của 1 loại phòng cụ thể trong khoảng ngày — dùng bởi ai-agent
+  // (check_availability, propose_booking) để xác nhận còn chỗ trước khi tư vấn/đặt.
+  async getRoomTypeAvailability(
+    roomTypeId: string,
+    checkIn: string,
+    checkOut: string,
+  ): Promise<{
+    roomType: RoomType;
+    availableCount: number;
+    available: boolean;
+  }> {
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const roomType = await this.roomTypeService.findActiveById(roomTypeId);
+    const totalRooms = await this.roomRepo.count({
+      where: { roomType: { roomTypeId } },
+    });
+    const overlapping = await this.countOverlappingBookings(
+      roomTypeId,
+      checkIn,
+      checkOut,
+    );
+    const availableCount = Math.max(0, totalRooms - overlapping);
+    return { roomType, availableCount, available: availableCount > 0 };
+  }
+
   async findAll(query: QueryBookingDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -382,6 +464,88 @@ export class BookingService {
     return this.toDetailResponse(booking);
   }
 
+  // Tra cứu đơn của MỘT ngày cụ thể, dùng cho trợ lý AI trả lời "hôm nay có bao nhiêu
+  // khách nhận phòng", "ngày 20/9 có đơn nào"...
+  // - arrival: đơn nhận phòng đúng ngày đó
+  // - departure: đơn trả phòng đúng ngày đó
+  // - staying: đơn đang lưu trú qua ngày đó (nhận trước/đúng ngày, trả sau ngày đó)
+  // - created: đơn được tạo trong ngày đó
+  // requesterUserId có giá trị (khách hàng) thì CHỈ trả đơn của chính họ — lễ tân/admin
+  // truyền undefined để xem toàn bộ đơn của khách sạn.
+  async findByDateForAgent(input: {
+    date: string;
+    dateType: 'arrival' | 'departure' | 'staying' | 'created';
+    status?: BookingStatus;
+    requesterUserId?: string;
+    limit: number;
+  }) {
+    const qb = this.baseQuery();
+
+    switch (input.dateType) {
+      case 'departure':
+        qb.where('booking.checkOutDate = :date', { date: input.date });
+        break;
+      case 'staying':
+        qb.where('booking.checkInDate <= :date', { date: input.date }).andWhere(
+          'booking.checkOutDate > :date',
+          { date: input.date },
+        );
+        break;
+      case 'created':
+        // createdAt là timestamp không timezone, session Postgres đã được đặt cùng múi
+        // giờ với Node (xem app.module) nên so theo ngày địa phương là đúng.
+        qb.where('CAST(booking.createdAt AS DATE) = :date', {
+          date: input.date,
+        });
+        break;
+      default:
+        qb.where('booking.checkInDate = :date', { date: input.date });
+    }
+
+    if (input.status) {
+      qb.andWhere('booking.status = :status', { status: input.status });
+    }
+    if (input.requesterUserId) {
+      qb.andWhere('user.userId = :requesterUserId', {
+        requesterUserId: input.requesterUserId,
+      });
+    }
+
+    const total = await qb.clone().getCount();
+    const bookings = await qb
+      .orderBy('booking.checkInDate', 'ASC')
+      .addOrderBy('booking.createdAt', 'ASC')
+      .take(input.limit)
+      .getMany();
+
+    const statusCounts: Record<string, number> = {};
+    for (const booking of bookings) {
+      statusCounts[booking.status] = (statusCounts[booking.status] ?? 0) + 1;
+    }
+
+    return {
+      total,
+      statusCounts,
+      bookings: bookings.map((booking) => {
+        const detail = this.toDetailResponse(booking);
+        return {
+          bookingId: booking.bookingId,
+          guestName: booking.guestInfo?.fullName ?? null,
+          guestPhone: booking.guestInfo?.phone ?? null,
+          roomTypeName: booking.roomType?.name ?? null,
+          roomNumber: booking.room?.roomNumber ?? null,
+          checkInDate: booking.checkInDate,
+          checkOutDate: booking.checkOutDate,
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          paymentMethod: booking.paymentMethod,
+          totalAmount: detail.totalAmount,
+          dueAmount: detail.dueAmount,
+        };
+      }),
+    };
+  }
+
   // Cấp 1 mã orderCode PayOS mới cho booking (ghi đè mã cũ) — dùng khi lễ tân tạo
   // link chuyển khoản thu phần còn lại lúc trả phòng, số tiền khác với lúc đặt.
   async assignFreshPayosOrderCode(bookingId: string): Promise<string> {
@@ -403,6 +567,14 @@ export class BookingService {
       status: booking.status,
       paymentStatus: booking.paymentStatus,
     });
+    void this.notificationService.notifyBooking(
+      booking.user.userId,
+      NotificationType.BOOKING_CONFIRMED,
+      {
+        bookingId: booking.bookingId,
+        roomTypeName: booking.roomType?.name,
+      },
+    );
     return this.toDetailResponse(booking);
   }
 
@@ -470,6 +642,14 @@ export class BookingService {
       status: booking.status,
       paymentStatus: booking.paymentStatus,
     });
+    void this.notificationService.notifyBooking(
+      booking.user.userId,
+      NotificationType.BOOKING_CHECKED_IN,
+      {
+        bookingId: booking.bookingId,
+        roomTypeName: booking.roomType?.name,
+      },
+    );
 
     return this.toDetailResponse(booking);
   }
@@ -480,104 +660,120 @@ export class BookingService {
   // (hoặc ngược lại), sai lệch vĩnh viễn giữa Sơ đồ phòng và trạng thái đơn thật.
   async checkOut(bookingId: string, dto: CheckOutDto, actor: Requester) {
     await this.assertStaffOnDuty(actor);
-    return this.bookingRepo.manager.transaction(async (manager) => {
-      const bookingRepo = manager.getRepository(Booking);
-      const roomRepo = manager.getRepository(Room);
+    const result = await this.bookingRepo.manager.transaction(
+      async (manager) => {
+        const bookingRepo = manager.getRepository(Booking);
+        const roomRepo = manager.getRepository(Room);
 
-      const booking = await bookingRepo.findOne({ where: { bookingId } });
-      if (!booking) {
-        throw new NotFoundException('Không tìm thấy đơn đặt phòng');
-      }
-      if (booking.status !== BookingStatus.CHECKED_IN) {
-        throw new BadRequestException(
-          'Đơn phải ở trạng thái đang lưu trú trước khi check-out',
-        );
-      }
-
-      // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
-      if (dto.extraServices?.length) {
-        const ids = dto.extraServices.map((item) => item.serviceId);
-        const services = await this.serviceService.findActiveByIds(ids);
-        const byId = new Map(services.map((s) => [s.serviceId, s]));
-        if (services.length !== new Set(ids).size) {
+        const booking = await bookingRepo.findOne({ where: { bookingId } });
+        if (!booking) {
+          throw new NotFoundException('Không tìm thấy đơn đặt phòng');
+        }
+        if (booking.status !== BookingStatus.CHECKED_IN) {
           throw new BadRequestException(
-            'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+            'Đơn phải ở trạng thái đang lưu trú trước khi check-out',
           );
         }
-        const serviceItemRepo = manager.getRepository(BookingServiceItem);
-        const newItems = await serviceItemRepo.save(
-          dto.extraServices.map((item) =>
-            serviceItemRepo.create({
-              booking,
-              service: byId.get(item.serviceId),
-              quantity: item.quantity,
-              unitPrice: byId.get(item.serviceId)!.price,
-            }),
-          ),
-        );
-        // Cập nhật thẳng vào bộ nhớ để toDetailResponse() bên dưới tính đúng ngay,
-        // khỏi phải load lại từ DB.
-        booking.serviceItems = [...booking.serviceItems, ...newItems];
-      }
 
-      // Chốt phụ thu trả phòng muộn tại thời điểm này.
-      const late = this.computeLateCheckout(booking);
-      booking.lateNights = late.nights;
-      booking.lateCheckoutFee = late.fee;
-      booking.status = BookingStatus.CHECKED_OUT;
-
-      let collected = 0;
-      if (dto.markPaid) {
-        const totalAmount = this.toDetailResponse(booking).totalAmount;
-        collected = totalAmount - booking.paidAmount;
-        booking.paymentStatus = PaymentStatus.PAID;
-        booking.paidAmount = totalAmount;
-        if (dto.paymentMethod) {
-          booking.paymentMethod = dto.paymentMethod;
+        // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
+        if (dto.extraServices?.length) {
+          const ids = dto.extraServices.map((item) => item.serviceId);
+          const services = await this.serviceService.findActiveByIds(ids);
+          const byId = new Map(services.map((s) => [s.serviceId, s]));
+          if (services.length !== new Set(ids).size) {
+            throw new BadRequestException(
+              'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+            );
+          }
+          const serviceItemRepo = manager.getRepository(BookingServiceItem);
+          const newItems = await serviceItemRepo.save(
+            dto.extraServices.map((item) =>
+              serviceItemRepo.create({
+                booking,
+                service: byId.get(item.serviceId),
+                quantity: item.quantity,
+                unitPrice: byId.get(item.serviceId)!.price,
+              }),
+            ),
+          );
+          // Cập nhật thẳng vào bộ nhớ để toDetailResponse() bên dưới tính đúng ngay,
+          // khỏi phải load lại từ DB.
+          booking.serviceItems = [...booking.serviceItems, ...newItems];
         }
-      }
-      await bookingRepo.save(booking);
-      // Phần còn lại thu lúc trả phòng tính cho lễ tân đang làm check-out.
-      await this.paymentTransactionService.record(
-        {
-          bookingId: booking.bookingId,
-          amount: collected,
-          method: dto.paymentMethod ?? booking.paymentMethod,
-          collectedByUserId: actor.userId,
-        },
-        manager,
-      );
-      this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
-        bookingId: booking.bookingId,
-        status: booking.status,
-        paymentStatus: booking.paymentStatus,
-      });
 
-      if (booking.room) {
-        booking.room.status = RoomStatus.CLEANING;
-        await roomRepo.save(booking.room);
-        this.realtimeGateway.emitRoomStatusChanged({
-          roomId: booking.room.roomId,
-          status: booking.room.status,
-        });
-      }
+        // Chốt phụ thu trả phòng muộn tại thời điểm này.
+        const late = this.computeLateCheckout(booking);
+        booking.lateNights = late.nights;
+        booking.lateCheckoutFee = late.fee;
+        booking.status = BookingStatus.CHECKED_OUT;
 
-      const finalDetail = this.toDetailResponse(booking);
-      return {
-        booking: finalDetail,
-        finalInvoice: {
-          roomAmount: booking.roomAmount,
-          lateNights: late.nights,
-          lateCheckoutFee: late.fee,
-          serviceAmount: finalDetail.serviceAmount,
-          discountAmount: booking.discountAmount,
-          vatAmount: finalDetail.vatAmount,
-          totalAmount: finalDetail.totalAmount,
-          paidAmount: finalDetail.paidAmount,
-          dueAmount: finalDetail.dueAmount,
-        },
-      };
-    });
+        let collected = 0;
+        if (dto.markPaid) {
+          const totalAmount = this.toDetailResponse(booking).totalAmount;
+          collected = totalAmount - booking.paidAmount;
+          booking.paymentStatus = PaymentStatus.PAID;
+          booking.paidAmount = totalAmount;
+          if (dto.paymentMethod) {
+            booking.paymentMethod = dto.paymentMethod;
+          }
+        }
+        await bookingRepo.save(booking);
+        // Phần còn lại thu lúc trả phòng tính cho lễ tân đang làm check-out.
+        await this.paymentTransactionService.record(
+          {
+            bookingId: booking.bookingId,
+            amount: collected,
+            method: dto.paymentMethod ?? booking.paymentMethod,
+            collectedByUserId: actor.userId,
+          },
+          manager,
+        );
+        this.realtimeGateway.emitBookingUpdatedForCustomer(
+          booking.user.userId,
+          {
+            bookingId: booking.bookingId,
+            status: booking.status,
+            paymentStatus: booking.paymentStatus,
+          },
+        );
+
+        if (booking.room) {
+          booking.room.status = RoomStatus.CLEANING;
+          await roomRepo.save(booking.room);
+          this.realtimeGateway.emitRoomStatusChanged({
+            roomId: booking.room.roomId,
+            status: booking.room.status,
+          });
+        }
+
+        const finalDetail = this.toDetailResponse(booking);
+        return {
+          booking: finalDetail,
+          finalInvoice: {
+            roomAmount: booking.roomAmount,
+            lateNights: late.nights,
+            lateCheckoutFee: late.fee,
+            serviceAmount: finalDetail.serviceAmount,
+            discountAmount: booking.discountAmount,
+            vatAmount: finalDetail.vatAmount,
+            totalAmount: finalDetail.totalAmount,
+            paidAmount: finalDetail.paidAmount,
+            dueAmount: finalDetail.dueAmount,
+          },
+        };
+      },
+    );
+
+    // Sau khi transaction commit — tránh tạo thông báo cho lần trả phòng bị rollback.
+    void this.notificationService.notifyBooking(
+      result.booking.user.userId,
+      NotificationType.BOOKING_CHECKED_OUT,
+      {
+        bookingId: result.booking.bookingId,
+        roomTypeName: result.booking.roomType?.name,
+      },
+    );
+    return result;
   }
 
   async addService(bookingId: string, dto: AddServiceDto) {
@@ -619,6 +815,14 @@ export class BookingService {
       status: booking.status,
       paymentStatus: booking.paymentStatus,
     });
+    void this.notificationService.notifyBooking(
+      booking.user.userId,
+      NotificationType.BOOKING_CANCELLED,
+      {
+        bookingId: booking.bookingId,
+        roomTypeName: booking.roomType?.name,
+      },
+    );
 
     if (booking.room) {
       booking.room.status = RoomStatus.AVAILABLE;
@@ -666,6 +870,14 @@ export class BookingService {
       status: saved.status,
       paymentStatus: saved.paymentStatus,
     });
+    void this.notificationService.notifyBooking(
+      saved.user.userId,
+      NotificationType.PAYMENT_SUCCESS,
+      {
+        bookingId: saved.bookingId,
+        roomTypeName: saved.roomType?.name,
+      },
+    );
     return saved;
   }
 
@@ -686,6 +898,14 @@ export class BookingService {
       status: saved.status,
       paymentStatus: saved.paymentStatus,
     });
+    void this.notificationService.notifyBooking(
+      saved.user.userId,
+      NotificationType.PAYMENT_FAILED,
+      {
+        bookingId: saved.bookingId,
+        roomTypeName: saved.roomType?.name,
+      },
+    );
     return saved;
   }
 
@@ -693,19 +913,21 @@ export class BookingService {
   // [from, to] — nguồn dữ liệu thô cho module Revenue tự phân bổ doanh thu theo
   // đêm. Trả về entity kèm quan hệ, module Revenue không đụng repository Booking.
   findStaysOverlapping(from: string, to: string): Promise<Booking[]> {
-    return this.bookingRepo
-      .createQueryBuilder('booking')
-      .leftJoinAndSelect('booking.roomType', 'roomType')
-      .leftJoinAndSelect('booking.staff', 'staff')
-      .leftJoinAndSelect('booking.serviceItems', 'serviceItems')
-      .where('booking.status IN (:...statuses)', {
-        statuses: [BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT],
-      })
-      // Giao nhau giữa [checkInDate, checkOutDate) và [from, to]
-      .andWhere('booking.checkInDate <= :to', { to })
-      .andWhere('booking.checkOutDate > :from', { from })
-      .orderBy('booking.checkInDate', 'ASC')
-      .getMany();
+    return (
+      this.bookingRepo
+        .createQueryBuilder('booking')
+        .leftJoinAndSelect('booking.roomType', 'roomType')
+        .leftJoinAndSelect('booking.staff', 'staff')
+        .leftJoinAndSelect('booking.serviceItems', 'serviceItems')
+        .where('booking.status IN (:...statuses)', {
+          statuses: [BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT],
+        })
+        // Giao nhau giữa [checkInDate, checkOutDate) và [from, to]
+        .andWhere('booking.checkInDate <= :to', { to })
+        .andWhere('booking.checkOutDate > :from', { from })
+        .orderBy('booking.checkInDate', 'ASC')
+        .getMany()
+    );
   }
 
   // Số lượng booking gom theo trạng thái — phục vụ DashboardService (thống kê
@@ -893,16 +1115,13 @@ export class BookingService {
     return { data: rows.map((b) => this.toDetailResponse(b)), total };
   }
 
-  private async countOverlappingBookings(
-    roomTypeId: string,
-    checkIn: string,
-    checkOut: string,
-  ): Promise<number> {
+  // Điều kiện "booking đang giữ chỗ và có đêm nghỉ giao với [checkIn, checkOut)" — dùng
+  // chung cho cả đếm 1 loại phòng lẫn đếm gộp nhiều loại phòng để 2 nơi không lệch nhau.
+  private overlappingBookingsQuery(checkIn: string, checkOut: string) {
     return this.bookingRepo
       .createQueryBuilder('booking')
       .innerJoin('booking.roomType', 'roomType')
-      .where('roomType.roomTypeId = :roomTypeId', { roomTypeId })
-      .andWhere('booking.status IN (:...statuses)', {
+      .where('booking.status IN (:...statuses)', {
         statuses: [
           BookingStatus.PENDING,
           BookingStatus.CONFIRMED,
@@ -910,8 +1129,48 @@ export class BookingService {
         ],
       })
       .andWhere('booking.checkInDate < :checkOut', { checkOut })
-      .andWhere('booking.checkOutDate > :checkIn', { checkIn })
+      .andWhere('booking.checkOutDate > :checkIn', { checkIn });
+  }
+
+  private async countOverlappingBookings(
+    roomTypeId: string,
+    checkIn: string,
+    checkOut: string,
+  ): Promise<number> {
+    return this.overlappingBookingsQuery(checkIn, checkOut)
+      .andWhere('roomType.roomTypeId = :roomTypeId', { roomTypeId })
       .getCount();
+  }
+
+  // Cùng ý nghĩa với countOverlappingBookings nhưng cho nhiều loại phòng trong 1 query
+  // (GROUP BY) — loại phòng không có booking trùng ngày sẽ không xuất hiện trong Map.
+  private async countOverlappingBookingsByRoomType(
+    roomTypeIds: string[],
+    checkIn: string,
+    checkOut: string,
+  ): Promise<Map<string, number>> {
+    const rows = await this.overlappingBookingsQuery(checkIn, checkOut)
+      .andWhere('roomType.roomTypeId IN (:...roomTypeIds)', { roomTypeIds })
+      .select('roomType.roomTypeId', 'roomTypeId')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('roomType.roomTypeId')
+      .getRawMany<{ roomTypeId: string; count: string }>();
+    return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
+  }
+
+  // Tổng số phòng vật lý (mọi trạng thái) của từng loại phòng, 1 query GROUP BY.
+  private async countRoomsByRoomType(
+    roomTypeIds: string[],
+  ): Promise<Map<string, number>> {
+    const rows = await this.roomRepo
+      .createQueryBuilder('room')
+      .innerJoin('room.roomType', 'roomType')
+      .where('roomType.roomTypeId IN (:...roomTypeIds)', { roomTypeIds })
+      .select('roomType.roomTypeId', 'roomTypeId')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('roomType.roomTypeId')
+      .getRawMany<{ roomTypeId: string; count: string }>();
+    return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
   private getStayDates(checkIn: string, checkOut: string): string[] {

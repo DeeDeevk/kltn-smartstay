@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getAccessToken, setAccessToken } from './tokenStore'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1'
 
@@ -9,10 +10,12 @@ const SKIP_REFRESH_URLS = ['/auth/login', '/auth/register', '/auth/refresh', '/a
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
+  // Gửi kèm cookie refresh_token (httpOnly) — cần cho /auth/refresh và /auth/logout.
+  withCredentials: true,
 })
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -20,8 +23,7 @@ apiClient.interceptors.request.use((config) => {
 })
 
 function clearSessionAndNotify() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
+  setAccessToken(null)
   localStorage.removeItem('auth_user')
   // AuthContext lắng nghe sự kiện này để đồng bộ lại state React (user/isAuthenticated)
   // mà không cần apiClient (module thuần) phải import ngược vào React context.
@@ -33,17 +35,24 @@ function clearSessionAndNotify() {
 // rotate (thu hồi) bởi lần gọi đầu khiến lần gọi thứ hai thất bại oan.
 let refreshPromise = null
 
-async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) {
-    throw new Error('Không có refresh token')
+// Export để AuthContext (khôi phục phiên sau F5) và socket dùng chung. Refresh token
+// nằm trong cookie httpOnly nên không cần (và không thể) đọc nó ở đây — trình duyệt
+// tự gửi kèm nhờ withCredentials.
+export function refreshAccessToken() {
+  if (!refreshPromise) {
+    // Dùng axios gốc (không phải apiClient) để không đi qua interceptor này lần nữa
+    // và không tự gắn access token cũ (đã hết hạn) vào request refresh.
+    refreshPromise = axios
+      .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+      .then(({ data }) => {
+        setAccessToken(data.accessToken)
+        return data.accessToken
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
   }
-  // Dùng axios gốc (không phải apiClient) để không đi qua interceptor này lần nữa
-  // và không tự gắn access token cũ (đã hết hạn) vào request refresh.
-  const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken })
-  localStorage.setItem('access_token', data.accessToken)
-  localStorage.setItem('refresh_token', data.refreshToken)
-  return data.accessToken
+  return refreshPromise
 }
 
 apiClient.interceptors.response.use(
@@ -55,22 +64,18 @@ apiClient.interceptors.response.use(
       response?.status === 401 &&
       config &&
       !config._retry &&
-      !SKIP_REFRESH_URLS.some((url) => config.url?.includes(url)) &&
-      Boolean(localStorage.getItem('refresh_token'))
+      !SKIP_REFRESH_URLS.some((url) => config.url?.includes(url))
 
     if (canRetryWithRefresh) {
       config._retry = true
       try {
-        refreshPromise = refreshPromise || refreshAccessToken()
-        const newAccessToken = await refreshPromise
+        const newAccessToken = await refreshAccessToken()
         config.headers.Authorization = `Bearer ${newAccessToken}`
         return apiClient(config)
       } catch {
         clearSessionAndNotify()
         error.message = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại'
         return Promise.reject(error)
-      } finally {
-        refreshPromise = null
       }
     }
 

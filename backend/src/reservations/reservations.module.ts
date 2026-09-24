@@ -21,6 +21,7 @@ import { RedisModule } from '../redis/redis.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { ShiftModule } from '../shifts/shift.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 // Bounded context "Đặt phòng": Room, RoomType, Booking (+ BookingServiceItem) là
 // các aggregate của cùng một nghiệp vụ và tham chiếu vòng lẫn nhau (booking gắn
@@ -37,6 +38,7 @@ import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
     RealtimeModule,
     ShiftModule,
     CashLedgerModule,
+    NotificationModule,
   ],
   controllers: [RoomController, RoomTypeController, BookingController],
   providers: [RoomService, RoomTypeService, BookingService],

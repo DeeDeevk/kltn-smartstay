@@ -60,9 +60,13 @@ export default function BookingHistoryPage() {
   const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation();
   const [payingId, setPayingId] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
-  const [detailBooking, setDetailBooking] = useState(null);
+  const [detailBookingId, setDetailBookingId] = useState(null);
 
   const bookings = data?.data ?? [];
+  // Lấy lại object từ danh sách mới nhất thay vì giữ 1 bản chụp tĩnh — nếu socket
+  // 'booking:updated' làm mới danh sách trong lúc modal đang mở (lễ tân xác nhận/huỷ
+  // đơn này), modal chi tiết đổi trạng thái theo ngay thay vì hiện dữ liệu cũ.
+  const detailBooking = bookings.find((b) => b.bookingId === detailBookingId) ?? null;
 
   // Lễ tân xác nhận/check-in/check-out/huỷ đơn ở phía họ -> đơn của mình đổi trạng
   // thái ngay trên máy khác, tự làm mới danh sách thay vì bắt khách F5 lại trang.
@@ -163,6 +167,7 @@ export default function BookingHistoryPage() {
                               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                                 {booking.roomType?.images?.[0] ? (
                                   <img
+                                    loading="lazy"
                                     src={booking.roomType.images[0]}
                                     alt={booking.roomType?.name}
                                     className="h-full w-full object-cover"
@@ -214,7 +219,7 @@ export default function BookingHistoryPage() {
                               isPaying={isPaying}
                               onPayNow={handlePayNow}
                               onCancel={setCancelTarget}
-                              onViewDetail={setDetailBooking}
+                              onViewDetail={(b) => setDetailBookingId(b.bookingId)}
                               t={t}
                             />
                           </td>
@@ -242,6 +247,7 @@ export default function BookingHistoryPage() {
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
                         {booking.roomType?.images?.[0] ? (
                           <img
+                            loading="lazy"
                             src={booking.roomType.images[0]}
                             alt={booking.roomType?.name}
                             className="h-full w-full object-cover"
@@ -289,7 +295,7 @@ export default function BookingHistoryPage() {
                         isPaying={isPaying}
                         onPayNow={handlePayNow}
                         onCancel={setCancelTarget}
-                        onViewDetail={setDetailBooking}
+                        onViewDetail={(b) => setDetailBookingId(b.bookingId)}
                         t={t}
                       />
                     </div>
@@ -314,7 +320,7 @@ export default function BookingHistoryPage() {
       />
 
       {detailBooking && (
-        <BookingDetailModal booking={detailBooking} onClose={() => setDetailBooking(null)} />
+        <BookingDetailModal booking={detailBooking} onClose={() => setDetailBookingId(null)} />
       )}
     </div>
   );

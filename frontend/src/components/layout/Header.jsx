@@ -60,14 +60,22 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
 
-          {/* LEFT: LOGO */}
-          <div className="flex-shrink-0 flex items-center cursor-pointer group" onClick={() => navigate('/')}>
+          {/* LEFT: LOGO — xếp icon + chữ "VIKA" theo chiều dọc, vẫn gọn trong h-20 của
+              header (icon 36px + chữ nhỏ bên dưới, gộp lại vẫn thấp hơn 80px nhiều). Màu
+              chữ #0C1A30 lấy đúng từ nền navy của icon.png (xem RGB mẫu tại tâm hình tròn)
+              để đồng bộ màu thương hiệu, không phải màu đoán chừng. */}
+          <div
+            className="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer group"
+            onClick={() => navigate('/')}
+          >
             <img
               src={logoIcon}
               alt="Vika Hotel Logo"
-              className="h-25 w-25 object-contain transition-transform group-hover:scale-110"
+              className="h-9 w-9 object-contain transition-transform group-hover:scale-110"
             />
-            {/* <span className="text-xl font-bold text-blue-600 tracking-tight font-poppins">VIKA HOTEL</span> */}
+            <span className="text-[11px] font-bold tracking-[0.25em] text-[#0C1A30] leading-none">
+              VIKA
+            </span>
           </div>
 
           {/* CENTER: NAVIGATION */}
@@ -201,7 +209,8 @@ export default function Header() {
         onConfirm={async () => {
           setConfirmLogout(false);
           await logout();
-          navigate('/');
+          // replace: bấm Back sau khi đăng xuất không quay lại trang cần đăng nhập vừa rời.
+          navigate('/login', { replace: true });
         }}
         onClose={() => setConfirmLogout(false)}
       />

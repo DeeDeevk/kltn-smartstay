@@ -25,7 +25,7 @@ import RoomMapFilterBar from './RoomMapFilterBar';
 import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 import Modal from '../../common/Modal';
-import { todayKey } from '../shifts/dateUtils';
+import { addDays, filterTodayRelevantAssignments, todayKey, toDateKey } from '../shifts/dateUtils';
 import useCheckInAvailability from '../shifts/useCheckInAvailability';
 import {
   ShiftCashSummary,
@@ -89,10 +89,17 @@ export default function RoomMapPage() {
   // Ca làm việc hôm nay của chính người đang đăng nhập — dùng đúng dữ liệu
   // thật từ ShiftAssignment (không còn dữ liệu giả lập).
   const todayKeyValue = todayKey();
-  const { data: todayAssignments = [] } = useGetMyShiftAssignmentsQuery({
-    from: todayKeyValue,
+  // Query kèm hôm qua để không bỏ sót ca đêm (qua nửa đêm) còn đang CHECKEDIN —
+  // xem thêm filterTodayRelevantAssignments ở dateUtils.js.
+  const yesterdayKeyValue = toDateKey(addDays(new Date(), -1));
+  const { data: todayRangeAssignments = [] } = useGetMyShiftAssignmentsQuery({
+    from: yesterdayKeyValue,
     to: todayKeyValue,
   });
+  const todayAssignments = useMemo(
+    () => filterTodayRelevantAssignments(todayRangeAssignments, todayKeyValue),
+    [todayRangeAssignments, todayKeyValue],
+  );
   // Ưu tiên hiện ca đang CHECKEDIN (cần kết ca), rồi tới ca SCHEDULED sớm nhất
   // (cần vô ca); nếu mọi ca hôm nay đã CHECKEDOUT thì lấy ca đầu để hiện trạng thái.
   const activeAssignment =

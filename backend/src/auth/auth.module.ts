@@ -8,6 +8,7 @@ import { AccountModule } from '../accounts/account.module';
 import { RedisModule } from '../redis/redis.module';
 import { MailModule } from '../mail/mail.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { TurnstileService } from './turnstile.service';
 
 @Module({
   imports: [
@@ -19,6 +20,6 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     MailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, TurnstileService],
 })
 export class AuthModule {}

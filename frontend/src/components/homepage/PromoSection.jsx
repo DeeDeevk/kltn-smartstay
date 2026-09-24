@@ -29,6 +29,7 @@ export default function PromoSection() {
           <div className="relative">
              <div className="absolute -inset-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur-lg opacity-50"></div>
              <img
+               loading="lazy"
                src="https://images.unsplash.com/photo-1618773928121-c32242e63f39?q=80&w=2070&auto=format&fit=crop"
                alt="Phòng nghỉ sang trọng tại Vika Hotel"
                className="relative rounded-2xl shadow-2xl w-full object-cover transform rotate-2 hover:rotate-0 transition-all duration-500"

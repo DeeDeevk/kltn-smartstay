@@ -45,6 +45,9 @@ interface RefreshPayload {
 @Injectable()
 export class AuthService {
   private readonly googleClient: OAuth2Client;
+  // GOOGLE_CLIENT_ID có thể chứa nhiều client ID ngăn cách bởi dấu phẩy (web, iOS, Android):
+  // id_token từ app mobile mang aud = client ID của nền tảng đó, không phải client ID web.
+  private readonly googleClientIds: string[];
 
   constructor(
     private readonly userService: UserService,
@@ -55,9 +58,13 @@ export class AuthService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly mailService: MailService,
   ) {
-    this.googleClient = new OAuth2Client(
-      this.configService.get<string>('GOOGLE_CLIENT_ID'),
-    );
+    this.googleClientIds = (
+      this.configService.get<string>('GOOGLE_CLIENT_ID') ?? ''
+    )
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    this.googleClient = new OAuth2Client(this.googleClientIds[0]);
   }
 
   async register(dto: RegisterDTO) {
@@ -173,7 +180,7 @@ export class AuthService {
     return chars.join('');
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: Pick<LoginDto, 'email' | 'password'>) {
     const user = await this.userService.findByEmail(dto.email);
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -354,7 +361,7 @@ export class AuthService {
     try {
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: this.googleClientIds,
       });
       const ticketPayload = ticket.getPayload();
       if (!ticketPayload) {
