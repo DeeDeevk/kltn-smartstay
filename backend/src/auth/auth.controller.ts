@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import { RegisterDTO } from './dto/register.dto';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { MobileLoginDto } from './dto/mobile-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
@@ -87,6 +88,17 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.turnstileService.verify(dto.turnstileToken, 'login');
+    return this.withRefreshCookie(res, await this.authService.login(dto));
+  }
+
+  // Turnstile chỉ áp dụng cho web; app mobile native đăng nhập qua endpoint này,
+  // vẫn giới hạn tần suất như /login để chống brute-force.
+  @Throttle(AUTH_THROTTLE)
+  @Post('mobile/login')
+  async mobileLogin(
+    @Body() dto: MobileLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     return this.withRefreshCookie(res, await this.authService.login(dto));
   }
 

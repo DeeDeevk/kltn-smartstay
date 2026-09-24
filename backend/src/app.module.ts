@@ -21,6 +21,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { ChatModule } from './chat/chat.module';
 import { AiAgentModule } from './ai-agent/ai-agent.module';
 import { HotelConfigModule } from './hotel-config/hotel-config.module';
+import { NotificationModule } from './notifications/notification.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { HotelConfigModule } from './hotel-config/hotel-config.module';
     ChatModule,
     AiAgentModule,
     HotelConfigModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
