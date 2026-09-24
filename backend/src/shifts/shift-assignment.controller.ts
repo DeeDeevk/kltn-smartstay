@@ -43,6 +43,17 @@ export class ShiftAssignmentController {
     return this.shiftAssignmentService.findForStaff(req.user.userId, query);
   }
 
+  // Ca kết gần nhất của toàn khách sạn — nhân viên cần số này lúc vô ca để đối chiếu
+  // tiền trong két với số ca trước bàn giao. Mở cho STAFF (không phải chỉ ADMIN như
+  // @Get() bên dưới) vì đây chính là người phải đối chiếu, và chỉ lộ đúng 1 con số
+  // chốt két của ca liền trước chứ không phải toàn bộ lịch phân ca.
+  @Get('last-closed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  findLastClosed() {
+    return this.shiftAssignmentService.findLastClosed();
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

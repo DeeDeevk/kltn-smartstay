@@ -28,9 +28,11 @@ export class PromotionController {
     return this.promotionService.findAll(query);
   }
 
+  // Khách thử mã ở bước đặt phòng. Không cần đăng nhập vì trang đặt phòng cho phép
+  // khách vãng lai, và endpoint này chỉ đọc — không ghi gì, không tăng usedCount.
   @Get(':code/validate')
   validate(@Param('code') code: string, @Query() query: ValidatePromotionDto) {
-    return this.promotionService.validateCode(code, query.bookingAmount);
+    return this.promotionService.previewCode(code, query);
   }
 
   @Post()

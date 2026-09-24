@@ -126,7 +126,13 @@ export class BookingService {
       if (dto.promotionCode) {
         const result = await this.promotionService.validateCode(
           dto.promotionCode,
-          roomAmount + serviceAmount,
+          {
+            roomTypeId: dto.roomTypeId,
+            checkIn: dto.checkIn,
+            checkOut: dto.checkOut,
+            roomAmount,
+            serviceAmount,
+          },
         );
         promotionId = result.promotion.promotionId;
         discountAmount = result.discountAmount;
