@@ -7,6 +7,7 @@ import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import ConfirmModal from '../common/ConfirmModal';
 import BookingDetailModal from '../booking/BookingDetailModal';
+import ReviewModal from '../room/ReviewModal';
 import StatusPill from '../booking/StatusPill';
 import { BOOKING_STATUS_STYLES, PAYMENT_STATUS_STYLES } from '../../utils/bookingStatusStyles';
 import {
@@ -16,11 +17,12 @@ import {
 } from '../../services/booking';
 import { useSocket } from '../../context/SocketContext';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
+import { useGetMyReviewsQuery } from '../../services/review';
 import formatCurrency from '../../utils/formatCurrency';
 import formatDate from '../../utils/formatDate';
 import getBookingCode from '../../utils/bookingCode';
 
-function BookingActions({ booking, canPayNow, canCancel, isPaying, onPayNow, onCancel, onViewDetail, t }) {
+function BookingActions({ booking, canPayNow, canCancel, canReview, isPaying, onPayNow, onCancel, onReview, onViewDetail, t }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {canPayNow && (
@@ -42,6 +44,15 @@ function BookingActions({ booking, canPayNow, canCancel, isPaying, onPayNow, onC
           {t('booking.history.cancel')}
         </button>
       )}
+      {canReview && (
+        <button
+          type="button"
+          onClick={() => onReview(booking)}
+          className="rounded-lg bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+        >
+          {t('booking.history.review')}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onViewDetail(booking)}
@@ -61,6 +72,12 @@ export default function BookingHistoryPage() {
   const [payingId, setPayingId] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [detailBookingId, setDetailBookingId] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null);
+
+  // Đánh giá khách đã viết — để ẩn nút "Đánh giá" ở những đơn đã đánh giá rồi (backend
+  // cũng chặn, nhưng để nút ở đó rồi báo lỗi khi bấm thì khó chịu).
+  const { data: myReviews = [] } = useGetMyReviewsQuery();
+  const reviewedBookingIds = new Set(myReviews.map((r) => r.bookingId));
 
   const bookings = data?.data ?? [];
   // Lấy lại object từ danh sách mới nhất thay vì giữ 1 bản chụp tĩnh — nếu socket
@@ -158,6 +175,7 @@ export default function BookingHistoryPage() {
                         booking.paymentStatus === 'UNPAID' &&
                         booking.status === 'PENDING';
                       const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
+                      const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                       const isPaying = isRedirecting && payingId === booking.bookingId;
 
                       return (
@@ -216,9 +234,11 @@ export default function BookingHistoryPage() {
                               booking={booking}
                               canPayNow={canPayNow}
                               canCancel={canCancel}
+                              canReview={canReview}
                               isPaying={isPaying}
                               onPayNow={handlePayNow}
                               onCancel={setCancelTarget}
+                              onReview={setReviewTarget}
                               onViewDetail={(b) => setDetailBookingId(b.bookingId)}
                               t={t}
                             />
@@ -239,6 +259,7 @@ export default function BookingHistoryPage() {
                   booking.paymentStatus === 'UNPAID' &&
                   booking.status === 'PENDING';
                 const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
+                const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                 const isPaying = isRedirecting && payingId === booking.bookingId;
 
                 return (
@@ -292,9 +313,11 @@ export default function BookingHistoryPage() {
                         booking={booking}
                         canPayNow={canPayNow}
                         canCancel={canCancel}
+                        canReview={canReview}
                         isPaying={isPaying}
                         onPayNow={handlePayNow}
                         onCancel={setCancelTarget}
+                        onReview={setReviewTarget}
                         onViewDetail={(b) => setDetailBookingId(b.bookingId)}
                         t={t}
                       />
@@ -322,6 +345,13 @@ export default function BookingHistoryPage() {
       {detailBooking && (
         <BookingDetailModal booking={detailBooking} onClose={() => setDetailBookingId(null)} />
       )}
+
+      <ReviewModal
+        isOpen={Boolean(reviewTarget)}
+        bookingId={reviewTarget?.bookingId}
+        roomType={reviewTarget?.roomType}
+        onClose={() => setReviewTarget(null)}
+      />
     </div>
   );
 }

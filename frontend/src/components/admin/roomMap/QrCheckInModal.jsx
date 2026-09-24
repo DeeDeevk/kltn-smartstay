@@ -13,29 +13,12 @@ import Modal from '../../common/Modal';
 import BookingRoomSummary from '../../booking/BookingRoomSummary';
 import BookingGuestInfoCard from '../../booking/BookingGuestInfoCard';
 import BookingPriceSummary from '../../booking/BookingPriceSummary';
+import AvailableRoomPicker from '../../booking/AvailableRoomPicker';
 import {
   useGetBookingByIdQuery,
   useConfirmBookingMutation,
   useCheckInMutation,
 } from '../../../services/booking';
-import { useGetRoomMapQuery } from '../../../services/adminRoom';
-
-function RoomOption({ room, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(room.roomId)}
-      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-        selected
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-gray-200 hover:bg-gray-50'
-      }`}
-    >
-      <span className="font-bold text-gray-900">Phòng {room.roomNumber}</span>
-      <span className="text-xs text-gray-500">Tầng {room.floor}</span>
-    </button>
-  );
-}
 
 // Quét QR ở Sơ đồ phòng -> modal này: xem thông tin đơn + tiền + trạng thái thanh toán,
 // rồi chọn phòng trống và check-in (hoặc xác nhận đơn / check-out) — thay cho trang
@@ -49,9 +32,6 @@ export default function QrCheckInModal({ bookingId, onClose }) {
     isFetching: loadingBooking,
     error: bookingError,
   } = useGetBookingByIdQuery(bookingId, { skip: !bookingId });
-  const { data: rooms = [] } = useGetRoomMapQuery(undefined, {
-    skip: !bookingId,
-  });
   const [confirmBooking, { isLoading: confirming }] = useConfirmBookingMutation();
   const [checkIn, { isLoading: checkingIn }] = useCheckInMutation();
 
@@ -65,12 +45,6 @@ export default function QrCheckInModal({ bookingId, onClose }) {
     close();
     if (rid) navigate(`/admin/rooms/${rid}/checkout/${booking.bookingId}`);
   };
-
-  const matchingRooms = rooms.filter(
-    (r) =>
-      r.status === 'AVAILABLE' &&
-      r.roomType?.roomTypeId === booking?.roomType?.roomTypeId,
-  );
 
   // keepOpen: dùng cho "Xác nhận đơn" — sau khi xác nhận, đơn chuyển sang CONFIRMED và
   // modal tự render tiếp bước chọn phòng trống để check-in (không đóng modal).
@@ -204,23 +178,14 @@ export default function QrCheckInModal({ bookingId, onClose }) {
                   <span className="font-bold">{booking.room.roomNumber}</span> —
                   xác nhận nhận phòng cho khách.
                 </p>
-              ) : matchingRooms.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
-                  <p className="text-sm text-gray-400">
-                    Hiện không còn phòng trống thuộc loại phòng này.
-                  </p>
-                </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {matchingRooms.map((room) => (
-                    <RoomOption
-                      key={room.roomId}
-                      room={room}
-                      selected={selectedRoomId === room.roomId}
-                      onSelect={setSelectedRoomId}
-                    />
-                  ))}
-                </div>
+                <AvailableRoomPicker
+                  roomTypeId={booking.roomType?.roomTypeId}
+                  checkIn={booking.checkInDate}
+                  checkOut={booking.checkOutDate}
+                  selectedRoomId={selectedRoomId}
+                  onSelect={setSelectedRoomId}
+                />
               )}
 
               <button

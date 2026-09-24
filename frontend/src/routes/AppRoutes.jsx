@@ -26,6 +26,8 @@ import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
 import FilterSidebar from '../components/FilterSidebar'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
+import PromoCodeBox from '../components/booking/PromoCodeBox'
+import { calculateVat } from '../utils/vat'
 import { roomTypeApi } from '../services/roomType'
 import { useLazySearchAvailabilityQuery } from '../services/availability'
 import { useCreateBookingMutation } from '../services/booking'
@@ -53,6 +55,7 @@ const RevenueSummaryPage = lazy(() => import('../components/admin/revenue/Revenu
 const HotelLocationSettingsPage = lazy(() => import('../components/admin/settings/HotelLocationSettingsPage'))
 const LocalEventsSettingsPage = lazy(() => import('../components/admin/settings/LocalEventsSettingsPage'))
 const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
+const PromotionManagementPage = lazy(() => import('../components/admin/promotions/PromotionManagementPage'))
 const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
 const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
 const RoomMapPage = lazy(() => import('../components/admin/roomMap/RoomMapPage'))
@@ -566,6 +569,9 @@ function CheckoutPage() {
     email: user?.email || '',
   })
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // Mã khuyến mãi khách đã kiểm tra thành công: { code, discountAmount }. Chỉ để hiện
+  // trước số tiền giảm — backend tính lại khi tạo booking.
+  const [appliedPromotion, setAppliedPromotion] = useState(null)
   const [errors, setErrors] = useState({})
   const [paidBooking, setPaidBooking] = useState(null)
   // Booking online đã tạo, đang chờ thanh toán — giữ lại để nút "Tạo mã mới" gọi lại
@@ -617,6 +623,15 @@ function CheckoutPage() {
   }
 
   const { room, startDate, endDate, nights, totalPrice, vatAmount } = checkoutState
+  const roomTypeId = room.roomTypeId || room.id
+
+  // Tổng tiền sau khuyến mãi. VAT phải tính lại trên tiền phòng đã trừ giảm giá, khớp
+  // công thức `netRoomAmount * VAT_RATE` ở backend — giữ nguyên VAT cũ sẽ làm số tiền
+  // khách phải trả qua PayOS lệch với số tiền thật của đơn.
+  const discountAmount = appliedPromotion?.discountAmount ?? 0
+  const netRoomSubtotal = Math.max(totalPrice - (vatAmount ?? 0) - discountAmount, 0)
+  const payableTotal =
+    discountAmount > 0 ? netRoomSubtotal + calculateVat(netRoomSubtotal) : totalPrice
 
   const handleChange = (field) => (e) => {
     setGuestInfo((prev) => ({ ...prev, [field]: e.target.value }))
@@ -637,7 +652,7 @@ function CheckoutPage() {
 
     try {
       const booking = await createBooking({
-        roomTypeId: room.roomTypeId || room.id,
+        roomTypeId,
         checkIn: startDate,
         checkOut: endDate,
         guestInfo: {
@@ -646,6 +661,7 @@ function CheckoutPage() {
           email: guestInfo.email.trim(),
         },
         paymentMethod: paymentMethod === 'online' ? 'PAYOS' : 'CASH',
+        promotionCode: appliedPromotion?.code,
       }).unwrap()
 
       if (paymentMethod === 'online') {
@@ -670,11 +686,11 @@ function CheckoutPage() {
             room={room}
             startDate={startDate}
             endDate={endDate}
-            totalPrice={totalPrice}
+            totalPrice={payableTotal}
           />
         ) : pendingBooking ? (
           <PayOSPaymentPanel
-            totalPrice={totalPrice}
+            totalPrice={payableTotal}
             paymentLink={paymentLink}
             linkError={linkError}
             isCreatingLink={isCreatingLink}
@@ -755,6 +771,15 @@ function CheckoutPage() {
                   ))}
                 </div>
 
+                <PromoCodeBox
+                  roomTypeId={roomTypeId}
+                  checkIn={startDate}
+                  checkOut={endDate}
+                  applied={appliedPromotion}
+                  onApply={setAppliedPromotion}
+                  onClear={() => setAppliedPromotion(null)}
+                />
+
                 <button
                   type="submit"
                   disabled={isCreating}
@@ -766,7 +791,7 @@ function CheckoutPage() {
               </form>
 
               <aside className="lg:sticky lg:top-24 h-fit">
-                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} />
+                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} discountAmount={discountAmount} />
               </aside>
             </div>
           </>
@@ -951,6 +976,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <FaqManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="promotions"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <PromotionManagementPage />
               </ProtectedRoute>
             }
           />

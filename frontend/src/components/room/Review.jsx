@@ -1,7 +1,7 @@
 import StarIcon from "../../assets/icon/star.png";
 import { useTranslation } from "react-i18next";
 
-export default function Review({ user, rating, comment, created_at }) {
+export default function Review({ authorName, rating, comment, reviewDate, reply }) {
   const { t, i18n } = useTranslation();
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'vi-VN', {
@@ -11,7 +11,7 @@ export default function Review({ user, rating, comment, created_at }) {
     });
   };
 
-  const username = user?.name || t('room.reviews.defaultGuestName');
+  const username = authorName || t('room.reviews.defaultGuestName');
   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random`;
 
   return (
@@ -25,7 +25,7 @@ export default function Review({ user, rating, comment, created_at }) {
           <div className="flex flex-col">
             <span className="text-sm font-bold text-gray-900">{username}</span>
             <span className="text-[11px] text-gray-400 font-medium uppercase tracking-tight">
-              {formatDate(created_at)}
+              {formatDate(reviewDate)}
             </span>
           </div>
         </div>
@@ -40,6 +40,16 @@ export default function Review({ user, rating, comment, created_at }) {
       <div className="text-sm text-gray-600 leading-relaxed italic">
         {comment}
       </div>
+
+      {/* Phản hồi của khách sạn — chỉ hiện khi admin đã trả lời */}
+      {reply && (
+        <div className="rounded-xl border-l-2 border-blue-200 bg-blue-50/60 px-4 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-tight text-blue-600">
+            {t('room.reviews.hotelReply')}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-gray-600">{reply}</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,7 +9,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
   In,
+  IsNull,
   LessThanOrEqual,
+  Not,
   QueryFailedError,
   Repository,
 } from 'typeorm';
@@ -155,6 +157,39 @@ export class ShiftAssignmentService {
       order: { workDate: 'ASC' },
     });
     return assignments.map(withLateInfo);
+  }
+
+  // Ca kết gần nhất của TOÀN khách sạn — để người sắp vô ca đối chiếu tiền đếm được
+  // trong két với số ca trước bàn giao lại.
+  //
+  // Phải tra theo toàn khách sạn chứ không phải theo từng nhân viên: két tiền dùng
+  // chung, ca trước do người khác trực nên lấy lịch sử của chính người đang vô ca sẽ
+  // ra một con số vô nghĩa (và tệ hơn là trông vẫn hợp lệ).
+  //
+  // KHÔNG lọc bỏ ca có closingCash = null. Đó là ca bị hệ thống tự đóng do quên kết ca
+  // (xem closeOverdueShifts) — nhảy lùi lấy ca cũ hơn sẽ đưa ra số bàn giao sai mà
+  // không ai biết. Trả nguyên ca đó ra để tầng UI cảnh báo "ca trước chưa chốt két".
+  async findLastClosed(): Promise<{
+    shiftAssignmentId: string;
+    closingCash: number | null;
+    checkOutAt: Date | null;
+    staffName: string;
+    shiftTypeName: string;
+  } | null> {
+    const assignment = await this.shiftAssignmentRepo.findOne({
+      where: { checkOutAt: Not(IsNull()) },
+      relations: { shiftType: true, staff: true },
+      order: { checkOutAt: 'DESC' },
+    });
+    if (!assignment) return null;
+
+    return {
+      shiftAssignmentId: assignment.shiftAssignmentId,
+      closingCash: assignment.closingCash,
+      checkOutAt: assignment.checkOutAt,
+      staffName: assignment.staff?.fullName ?? 'Không rõ',
+      shiftTypeName: assignment.shiftType?.name ?? 'Không rõ',
+    };
   }
 
   private readonly DUPLICATE_MESSAGE =

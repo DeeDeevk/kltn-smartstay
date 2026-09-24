@@ -260,18 +260,21 @@
       "empty": "Chưa có đánh giá nào cho loại phòng này.",
       "collapse": "Thu gọn đánh giá",
       "viewAll": "Xem tất cả {{count}} đánh giá",
+      "hotelReply": "Phản hồi từ khách sạn",
       "defaultGuestName": "Khách hàng",
       "writeReview": "Viết đánh giá",
       "reviewSubtitle": "Đánh giá trải nghiệm của bạn tại phòng {{roomName}}",
       "satisfaction": "Mức độ hài lòng",
-      "ratingExcellent": "Tuyệt vời! 😍",
-      "ratingGood": "Rất tốt! 🙂",
-      "ratingAverage": "Bình thường 😐",
-      "ratingPoor": "Không tốt lắm 😕",
-      "ratingBad": "Rất tệ 😡",
+      "ratingExcellent": "Tuyệt vời",
+      "ratingGood": "Rất tốt",
+      "ratingAverage": "Bình thường",
+      "ratingPoor": "Không tốt lắm",
+      "ratingBad": "Rất tệ",
       "commentLabel": "Nhận xét chi tiết",
       "commentPlaceholder": "Chia sẻ trải nghiệm của bạn về phòng, dịch vụ, hay tiện nghi...",
       "cancel": "Hủy",
+      "commentTooShort": "Vui lòng viết nhận xét ít nhất {{count}} ký tự",
+      "submitting": "Đang gửi...",
       "submit": "Gửi đánh giá",
       "submitSuccess": "Cảm ơn bạn đã để lại đánh giá!",
       "submitError": "Không thể gửi đánh giá. Vui lòng thử lại."
@@ -310,6 +313,14 @@
       "linkError": "Không thể tạo link thanh toán",
       "waitingHint": "Trang sẽ tự động chuyển tiếp ngay khi hệ thống nhận được thanh toán."
     },
+    "promo": {
+      "title": "Mã khuyến mãi",
+      "placeholder": "Nhập mã, VD: HE2026",
+      "apply": "Áp dụng",
+      "remove": "Bỏ mã",
+      "applied": "Đã áp dụng mã {{code}}",
+      "invalid": "Mã khuyến mãi không hợp lệ"
+    },
     "customerInfo": "Thông tin khách hàng",
     "fullName": "Họ và tên",
     "phone": "Số điện thoại",
@@ -323,6 +334,7 @@
       "checkIn": "Nhận phòng",
       "checkOut": "Trả phòng",
       "priceNights": "{{price}} x {{nights}} đêm",
+      "discount": "Khuyến mãi",
       "vat": "Thuế VAT ({{rate}}%)",
       "total": "Tổng cộng"
     }
@@ -356,6 +368,7 @@
       "cancelError": "Không thể hủy đơn đặt phòng",
       "cancelTitle": "Hủy đơn đặt phòng",
       "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?",
+      "review": "Đánh giá",
       "viewDetail": "Chi tiết",
       "table": {
         "room": "Phòng",
@@ -525,7 +538,7 @@
       "floorInvalid": "Tầng không hợp lệ",
       "cancel": "Hủy",
       "submit": "Thêm phòng",
-      "submitting": "Đang thêm...",
+      "submitting": "Đang gửi...",
       "createSuccess": "Đã thêm phòng \"{{roomNumber}}\"",
       "createConflict": "Số phòng \"{{roomNumber}}\" đã tồn tại",
       "createError": "Không thể thêm phòng"

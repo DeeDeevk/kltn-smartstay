@@ -11,7 +11,6 @@ import { FaqController } from './faq/faq.controller';
 import { FaqService } from './faq/faq.service';
 import { LlmModule } from './llm/llm.module';
 import { ReservationsModule } from '../reservations/reservations.module';
-import { PromotionModule } from '../promotions/promotion.module';
 import { ServiceModule } from '../services/service.module';
 import { PaymentModule } from '../payments/payment.module';
 import { HotelConfigModule } from '../hotel-config/hotel-config.module';
@@ -20,7 +19,6 @@ import { HotelConfigModule } from '../hotel-config/hotel-config.module';
   imports: [
     TypeOrmModule.forFeature([AiConversation, AiMessage, Faq]),
     ReservationsModule,
-    PromotionModule,
     ServiceModule,
     PaymentModule,
     HotelConfigModule,
