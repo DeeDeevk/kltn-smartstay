@@ -6,19 +6,24 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { IsNull, QueryFailedError, Repository } from 'typeorm';
 import { Review } from './entities/review.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
 import { ReplyReviewDto } from './dto/reply-review.dto';
 import { BookingStatus } from '../common/enums/booking-status.enum';
+import { ReviewAnalysisService } from './review-analysis.service';
 
 // Chỉ lấy đánh giá tốt cho khu "Cảm nhận khách hàng" ngoài trang chủ — đó là khu
 // marketing, không phải danh sách đánh giá đầy đủ (danh sách đầy đủ nằm ở trang chi
 // tiết phòng và hiện mọi mức sao).
 const FEATURED_MIN_RATING = 4;
 const FEATURED_DEFAULT_LIMIT = 3;
+
+// Số đánh giá phân tích tối đa trong 1 lần bấm "Phân tích tất cả". Mỗi lượt gọi Gemini
+// mất khoảng 1-3 giây nên để cao hơn sẽ làm request treo tới mức timeout.
+const ANALYZE_BATCH_LIMIT = 20;
 
 @Injectable()
 export class ReviewService {
@@ -29,6 +34,7 @@ export class ReviewService {
     // là trong-cùng-module, không phá ranh giới modular monolith.
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
+    private readonly reviewAnalysisService: ReviewAnalysisService,
   ) {}
 
   async findAll(query: QueryReviewDto) {
@@ -88,9 +94,9 @@ export class ReviewService {
       comment: dto.comment.trim(),
     });
 
+    let saved: Review;
     try {
-      const saved = await this.reviewRepo.save(review);
-      return this.toPublicResponse(saved);
+      saved = await this.reviewRepo.save(review);
     } catch (err) {
       // Bắt vi phạm UNIQUE(bookingId) thay vì kiểm tra trước rồi mới ghi: hai request
       // gửi cùng lúc đều có thể qua được bước kiểm tra, chỉ ràng buộc ở DB mới chắc.
@@ -99,6 +105,59 @@ export class ReviewService {
       }
       throw err;
     }
+
+    // Phân tích SAU khi đã lưu, và lỗi ở bước này không làm hỏng việc gửi đánh giá:
+    // khách không có lỗi gì khi Gemini quá tải. Thất bại thì aiAnalysis để null, admin
+    // chạy bù bằng POST /reviews/:id/analyze.
+    return this.toPublicResponse(await this.runAnalysis(saved));
+  }
+
+
+  // Chạy bù cho các đánh giá chưa có kết quả (tạo trước khi có tính năng, dữ liệu
+  // seed, hoặc lần đầu Gemini lỗi).
+  //
+  // Chạy TUẦN TỰ chứ không Promise.all: bắn đồng thời hàng chục request sẽ dính giới
+  // hạn tần suất của Gemini và hỏng phần lớn, chậm hơn nhưng chắc ăn hơn nhiều.
+  //
+  // Giới hạn mỗi lượt để request không treo quá lâu — còn sót thì admin bấm tiếp, số
+  // còn lại được trả về để giao diện nói rõ.
+  async analyzePending(limit = ANALYZE_BATCH_LIMIT) {
+    const pending = await this.reviewRepo.find({
+      where: { aiAnalysis: IsNull() },
+      order: { reviewDate: 'DESC' },
+      take: limit,
+    });
+
+    let analyzed = 0;
+    for (const review of pending) {
+      const before = review.aiAnalysis;
+      await this.runAnalysis(review);
+      if (review.aiAnalysis !== before) analyzed += 1;
+    }
+
+    const remaining = await this.reviewRepo.count({
+      where: { aiAnalysis: IsNull() },
+    });
+    return {
+      analyzed,
+      failed: pending.length - analyzed,
+      remaining,
+    };
+  }
+
+  private async runAnalysis(review: Review): Promise<Review> {
+    const analysis = await this.reviewAnalysisService.analyze(
+      review.rating,
+      review.comment,
+    );
+    if (!analysis) return review;
+
+    review.aiAnalysis = analysis;
+    await this.reviewRepo.update(
+      { reviewId: review.reviewId },
+      { aiAnalysis: analysis },
+    );
+    return review;
   }
 
   async reply(reviewId: string, dto: ReplyReviewDto) {
@@ -129,6 +188,7 @@ export class ReviewService {
       comment: review.comment,
       reviewDate: review.reviewDate,
       reply: review.reply,
+      aiAnalysis: review.aiAnalysis,
       authorName: review.user?.fullName ?? 'Khách hàng',
       roomTypeId: review.booking?.roomType?.roomTypeId ?? null,
       roomTypeName: review.booking?.roomType?.name ?? null,

@@ -187,8 +187,17 @@ export class PromotionService {
 
   async create(dto: CreatePromotionDto): Promise<PromotionView> {
     this.assertValidDates(dto.startDate, dto.endDate);
+    // Chỉ chặn lúc TẠO: tạo ra một mã đã hết hạn sẵn thì không dùng được vào việc gì.
+    // Lúc SỬA thì không chặn, vì admin vẫn phải sửa được mô tả/điều kiện của mã cũ đã
+    // chạy xong.
+    if (dto.endDate < todayKey()) {
+      throw new BadRequestException(
+        'Ngày kết thúc nhận đặt đã qua — mã sẽ hết hạn ngay khi tạo',
+      );
+    }
     this.assertValidDiscount(dto.discountType, dto.discountValue);
     this.assertValidConditions(dto.conditions);
+    this.assertStayWindowReachable(dto.startDate, dto.conditions);
 
     const code = this.normalizeCode(dto.code);
     const existed = await this.promotionRepo.findOne({ where: { code } });
@@ -223,6 +232,10 @@ export class PromotionService {
     if (dto.conditions !== undefined) {
       this.assertValidConditions(dto.conditions);
     }
+    this.assertStayWindowReachable(
+      dto.startDate ?? promotion.startDate,
+      dto.conditions === undefined ? promotion.conditions : dto.conditions,
+    );
 
     Object.assign(promotion, dto);
     // `conditions: null` từ client nghĩa là xoá hết điều kiện; Object.assign ở trên đã
@@ -355,8 +368,25 @@ export class PromotionService {
   }
 
   private assertValidDates(startDate: string, endDate: string): void {
-    if (new Date(startDate) > new Date(endDate)) {
-      throw new BadRequestException('Ngày bắt đầu phải trước ngày kết thúc');
+    if (startDate > endDate) {
+      throw new BadRequestException(
+        'Ngày kết thúc nhận đặt phải sau ngày bắt đầu',
+      );
+    }
+  }
+
+  // Khách chỉ đặt được từ startDate trở đi, và không ai đặt phòng cho những đêm đã
+  // trôi qua. Nên nếu kỳ lưu trú kết thúc trước ngày mở bán thì mã không bao giờ dùng
+  // được — chặn ngay lúc lưu thay vì để admin phát hiện khi khách báo mã không ăn.
+  private assertStayWindowReachable(
+    startDate: string,
+    conditions?: PromotionConditions | null,
+  ): void {
+    if (!conditions?.stayTo) return;
+    if (conditions.stayTo < startDate) {
+      throw new BadRequestException(
+        'Kỳ lưu trú kết thúc trước ngày bắt đầu nhận đặt — mã sẽ không dùng được',
+      );
     }
   }
 
