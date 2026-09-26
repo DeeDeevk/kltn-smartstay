@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Booking } from '../../bookings/entities/booking.entity';
 import { User } from '../../users/entities/user.entity';
+import { ReviewAnalysis } from '../review-analysis.types';
 
 // Đánh giá của khách sau khi đã ở xong. Gắn vào BOOKING chứ không gắn thẳng vào loại
 // phòng: đó là thứ chứng minh khách thật sự đã lưu trú, nên không ai đánh giá được
@@ -57,4 +58,10 @@ export class Review {
   // Phản hồi của khách sạn, null = chưa phản hồi.
   @Column({ name: 'reply', type: 'text', nullable: true })
   reply!: string | null;
+
+  // Kết quả AI bóc tách khía cạnh được khen/chê, chạy MỘT LẦN lúc khách gửi đánh giá.
+  // null = chưa phân tích (AI lỗi lúc đó, hoặc đánh giá tạo trước khi có tính năng) —
+  // admin bấm "Phân tích lại" để chạy bù, xem POST /reviews/:id/analyze.
+  @Column({ name: 'aiAnalysis', type: 'jsonb', nullable: true })
+  aiAnalysis!: ReviewAnalysis | null;
 }
