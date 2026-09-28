@@ -3,6 +3,12 @@ import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/role.decorator';
 import { UserRole } from '../enums/user-role.enum';
 
+// JwtAuthGuard (chạy trước RolesGuard trên mọi route có @Roles) gắn user đã xác thực vào
+// request theo đúng hình dạng này — xem AuthenticatedRequest ở các controller.
+interface AuthenticatedRequest {
+  user: { userId: string; email: string; role: UserRole };
+}
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -20,7 +26,7 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    const user = context.switchToHttp().getRequest();
-    return requiredRoles.includes(user.user.role);
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    return requiredRoles.includes(request.user.role);
   }
 }

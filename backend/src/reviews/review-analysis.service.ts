@@ -60,7 +60,10 @@ export class ReviewAnalysisService {
 
   // Trả null thay vì ném lỗi khi thất bại: phân tích là phần phụ trợ, không được làm
   // hỏng việc khách gửi đánh giá. Nơi gọi lưu null rồi admin chạy bù sau.
-  async analyze(rating: number, comment: string): Promise<ReviewAnalysis | null> {
+  async analyze(
+    rating: number,
+    comment: string,
+  ): Promise<ReviewAnalysis | null> {
     const content = `Số sao: ${rating}\nNội dung: ${comment.slice(0, MAX_COMMENT_CHARS)}`;
 
     try {

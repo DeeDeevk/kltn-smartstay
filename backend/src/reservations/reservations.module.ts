@@ -27,6 +27,7 @@ import { RedisModule } from '../redis/redis.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { ShiftModule } from '../shifts/shift.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
+import { NotificationModule } from '../notifications/notification.module';
 // Cung cấp GeminiProvider cho ReviewAnalysisService — module riêng nên import được
 // mà không tạo vòng lặp với AiAgentModule (HotelConfigModule cũng dùng cách này).
 import { LlmModule } from '../ai-agent/llm/llm.module';
@@ -56,6 +57,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     RealtimeModule,
     ShiftModule,
     CashLedgerModule,
+    NotificationModule,
     LlmModule,
   ],
   controllers: [
@@ -73,11 +75,6 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     ReviewService,
     ReviewAnalysisService,
   ],
-  exports: [
-    RoomService,
-    RoomTypeService,
-    BookingService,
-    PromotionService,
-  ],
+  exports: [RoomService, RoomTypeService, BookingService, PromotionService],
 })
 export class ReservationsModule {}

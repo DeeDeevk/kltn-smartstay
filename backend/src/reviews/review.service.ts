@@ -82,9 +82,7 @@ export class ReviewService {
       );
     }
     if (booking.status !== BookingStatus.CHECKED_OUT) {
-      throw new BadRequestException(
-        'Chỉ có thể đánh giá sau khi đã trả phòng',
-      );
+      throw new BadRequestException('Chỉ có thể đánh giá sau khi đã trả phòng');
     }
 
     const review = this.reviewRepo.create({
@@ -111,7 +109,6 @@ export class ReviewService {
     // chạy bù bằng POST /reviews/:id/analyze.
     return this.toPublicResponse(await this.runAnalysis(saved));
   }
-
 
   // Chạy bù cho các đánh giá chưa có kết quả (tạo trước khi có tính năng, dữ liệu
   // seed, hoặc lần đầu Gemini lỗi).

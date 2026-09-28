@@ -427,7 +427,7 @@ export class ShiftAssignmentService {
       throw new NotFoundException('Không tìm thấy lịch phân ca');
     }
     if (
-      requester.role !== UserRole.ADMIN &&
+      (requester.role as UserRole) !== UserRole.ADMIN &&
       assignment.staff.userId !== requester.userId
     ) {
       throw new ForbiddenException('Đây không phải ca làm việc của bạn');

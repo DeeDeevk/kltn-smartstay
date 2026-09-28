@@ -302,7 +302,10 @@ export class PromotionService {
     if (bookingDate > promotion.endDate) {
       throw new BadRequestException('Mã khuyến mãi đã hết hạn');
     }
-    if (promotion.maxUsage !== null && promotion.usedCount >= promotion.maxUsage) {
+    if (
+      promotion.maxUsage !== null &&
+      promotion.usedCount >= promotion.maxUsage
+    ) {
       throw new BadRequestException('Mã khuyến mãi đã hết lượt sử dụng');
     }
 
@@ -401,9 +404,7 @@ export class PromotionService {
     }
   }
 
-  private assertValidConditions(
-    conditions?: PromotionConditions | null,
-  ): void {
+  private assertValidConditions(conditions?: PromotionConditions | null): void {
     if (!conditions) return;
 
     const { minAdvanceDays, maxAdvanceDays, stayFrom, stayTo } = conditions;

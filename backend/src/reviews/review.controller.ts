@@ -68,10 +68,7 @@ export class ReviewController {
   @Patch(':id/reply')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  reply(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ReplyReviewDto,
-  ) {
+  reply(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReplyReviewDto) {
     return this.reviewService.reply(id, dto);
   }
 }
