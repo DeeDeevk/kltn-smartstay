@@ -80,7 +80,7 @@ export class BookingService {
   // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
   // được phân ca nên không áp dụng.
   private async assertStaffOnDuty(actor: Requester) {
-    if (actor.role === UserRole.STAFF) {
+    if ((actor.role as UserRole) === UserRole.STAFF) {
       await this.shiftAssignmentService.assertOnDuty(actor.userId);
     }
   }

@@ -43,7 +43,7 @@ import { NotificationModule } from './notifications/notification.module';
           config.get<string>('DB_SSL') === 'true'
             ? { rejectUnauthorized: false }
             : false,
-        extra:{options:`-c timezone=${process.env.TZ}`},
+        extra: { options: `-c timezone=${process.env.TZ}` },
       }),
     }),
     UserModule,

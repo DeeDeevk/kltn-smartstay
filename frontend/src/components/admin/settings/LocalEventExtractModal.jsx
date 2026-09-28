@@ -84,6 +84,12 @@ export default function LocalEventExtractModal({ open, onClose, onExtracted }) {
             onExtracted?.();
             resetAndClose();
         } catch (err) {
+            // 429 do @Throttle (EXTRACT_THROTTLE) không có message tiếng Việt dùng được —
+            // cùng cách xử lý với AiChatbot.jsx cho lỗi giới hạn tần suất.
+            if (err?.status === 429) {
+                toast.error('Bạn thao tác quá nhanh, vui lòng chờ một chút rồi thử lại.');
+                return;
+            }
             toast.error(
                 err?.data?.message || 'Không trích xuất được sự kiện, vui lòng thử lại.',
             );

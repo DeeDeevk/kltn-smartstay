@@ -74,7 +74,8 @@ export class UserService {
     userId: string,
   ): Promise<User & { authProviders: AuthProvider[] }> {
     const user = await this.findById(userId);
-    const authProviders = await this.accountService.listProvidersByUserId(userId);
+    const authProviders =
+      await this.accountService.listProvidersByUserId(userId);
     return { ...user, authProviders };
   }
 

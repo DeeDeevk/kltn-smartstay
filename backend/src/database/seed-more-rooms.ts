@@ -35,12 +35,17 @@ async function run() {
   for (const name of ROOM_TYPE_NAMES_NEEDING_ROOM) {
     const roomType = await roomTypeRepo.findOne({ where: { name } });
     if (!roomType) {
-      console.warn(`Bỏ qua "${name}": chưa có RoomType (chạy seed:room-types trước).`);
+      console.warn(
+        `Bỏ qua "${name}": chưa có RoomType (chạy seed:room-types trước).`,
+      );
       continue;
     }
 
     const hasAvailableRoom = await roomRepo.exists({
-      where: { roomType: { roomTypeId: roomType.roomTypeId }, status: RoomStatus.AVAILABLE },
+      where: {
+        roomType: { roomTypeId: roomType.roomTypeId },
+        status: RoomStatus.AVAILABLE,
+      },
     });
     if (hasAvailableRoom) {
       console.log(`Bỏ qua "${name}": đã có phòng trống.`);

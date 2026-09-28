@@ -6,10 +6,17 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
+// @types/nodemailer khai Transporter<T = any> — không truyền T thì sendMail() trả về
+// `any`. Chỉ cần khai đúng trường thật sự dùng tới ở file này (messageId, để log xác
+// nhận gửi), không cần chép lại toàn bộ SMTPTransport.SentMessageInfo.
+interface SentMessageInfo {
+  messageId: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private readonly transporter: nodemailer.Transporter;
+  private readonly transporter: nodemailer.Transporter<SentMessageInfo>;
 
   constructor(private readonly configService: ConfigService) {
     const port = Number(this.configService.get<string>('MAIL_PORT') || 587);
