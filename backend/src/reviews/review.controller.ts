@@ -57,13 +57,18 @@ export class ReviewController {
     return this.reviewService.create(req.user.userId, dto);
   }
 
+  // Chạy bù cho các đánh giá chưa có kết quả phân tích.
+  @Post('analyze-all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyzeAll() {
+    return this.reviewService.analyzePending();
+  }
+
   @Patch(':id/reply')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  reply(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ReplyReviewDto,
-  ) {
+  reply(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReplyReviewDto) {
     return this.reviewService.reply(id, dto);
   }
 }
