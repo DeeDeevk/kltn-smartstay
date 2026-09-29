@@ -45,6 +45,7 @@ import downloadQrPng from '../utils/downloadQr'
 // phải tải cả recharts, html5-qrcode... của phần quản trị.
 const ProfilePage = lazy(() => import('../components/user/ProfilePage'))
 const BookingHistoryPage = lazy(() => import('../components/user/BookingHistoryPage'))
+const NotificationsPage = lazy(() => import('../components/user/NotificationsPage'))
 const PaymentSuccessPage = lazy(() => import('../components/payment/PaymentSuccessPage'))
 const PaymentCancelPage = lazy(() => import('../components/payment/PaymentCancelPage'))
 const UserManagementPage = lazy(() => import('../components/admin/users/UserManagementPage'))
@@ -847,6 +848,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <BookingHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/user/notifications"
+          element={
+            <ProtectedRoute>
+              <NotificationsPage />
             </ProtectedRoute>
           }
         />

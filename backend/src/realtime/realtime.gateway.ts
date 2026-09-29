@@ -88,6 +88,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   // ChatModule gọi hàm này thay vì tự biết tên room "chat-staff" — RealtimeModule
   // giữ độc quyền quyết định socket nào thuộc nhóm lễ tân trực chat.
+  // Thông báo mới của 1 khách — bắn vào room riêng của chính họ.
+  emitNotification(userId: string, payload: unknown) {
+    this.emit(userRoom(userId), 'notification:new', payload);
+  }
+
   emitToChatStaff(event: string, payload: unknown) {
     this.emit(CHAT_STAFF_ROOM, event, payload);
   }

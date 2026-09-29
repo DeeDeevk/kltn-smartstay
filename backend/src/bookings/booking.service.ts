@@ -30,6 +30,8 @@ import { QueryRoomTypeDto } from 'src/room-types/dto/query-room-type.dto';
 import { RoomTypeService } from 'src/room-types/room-type.service';
 import { ServiceService } from 'src/services/service.service';
 import { PromotionService } from 'src/promotions/promotion.service';
+import { NotificationService } from 'src/notifications/notification.service';
+import { NotificationType } from 'src/common/enums/notification-type.enum';
 import { UserService } from 'src/users/user.service';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -66,6 +68,7 @@ export class BookingService {
     private readonly roomTypeService: RoomTypeService,
     private readonly serviceService: ServiceService,
     private readonly promotionService: PromotionService,
+    private readonly notificationService: NotificationService,
     private readonly userService: UserService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly shiftAssignmentService: ShiftAssignmentService,
@@ -560,6 +563,12 @@ export class BookingService {
       status: booking.status,
       paymentStatus: booking.paymentStatus,
     });
+    this.notifyGuest(
+      booking,
+      NotificationType.BOOKING_CONFIRMED,
+      'Đơn đặt phòng đã được xác nhận',
+      `Đơn ${booking.roomType?.name ?? 'phòng'} ngày ${booking.checkInDate} đã được khách sạn xác nhận. Hẹn gặp bạn!`,
+    );
     return this.toDetailResponse(booking);
   }
 
@@ -622,6 +631,12 @@ export class BookingService {
       method: PaymentMethod.CASH,
       collectedByUserId: staffUserId,
     });
+    this.notifyGuest(
+      booking,
+      NotificationType.CHECKED_IN,
+      'Đã nhận phòng',
+      `Bạn đã nhận phòng ${booking.room?.roomNumber ?? ''}. Chúc bạn có kỳ nghỉ vui vẻ!`,
+    );
     this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
       bookingId: booking.bookingId,
       status: booking.status,
@@ -709,6 +724,12 @@ export class BookingService {
         status: booking.status,
         paymentStatus: booking.paymentStatus,
       });
+      this.notifyGuest(
+        booking,
+        NotificationType.CHECKED_OUT,
+        'Đã trả phòng',
+        'Cảm ơn bạn đã lưu trú tại Vika Hotel. Hãy dành chút thời gian đánh giá kỳ nghỉ của bạn nhé!',
+      );
 
       if (booking.room) {
         booking.room.status = RoomStatus.CLEANING;
@@ -776,6 +797,12 @@ export class BookingService {
       status: booking.status,
       paymentStatus: booking.paymentStatus,
     });
+    this.notifyGuest(
+      booking,
+      NotificationType.BOOKING_CANCELLED,
+      'Đơn đặt phòng đã bị huỷ',
+      `Đơn ngày ${booking.checkInDate} đã được huỷ. Lý do: ${dto.reason}`,
+    );
 
     if (booking.room) {
       booking.room.status = RoomStatus.AVAILABLE;
@@ -818,6 +845,12 @@ export class BookingService {
       bookingId: saved.bookingId,
       guestName: saved.guestInfo?.fullName,
     });
+    this.notifyGuest(
+      saved,
+      NotificationType.PAYMENT_PAID,
+      'Thanh toán thành công',
+      'Khách sạn đã nhận được thanh toán của bạn. Đơn đặt phòng đã được ghi nhận.',
+    );
     this.realtimeGateway.emitBookingUpdatedForCustomer(saved.user.userId, {
       bookingId: saved.bookingId,
       status: saved.status,
@@ -843,6 +876,12 @@ export class BookingService {
       status: saved.status,
       paymentStatus: saved.paymentStatus,
     });
+    this.notifyGuest(
+      saved,
+      NotificationType.PAYMENT_FAILED,
+      'Thanh toán không thành công',
+      'Giao dịch của bạn chưa hoàn tất. Vui lòng thử lại hoặc chọn thanh toán tại quầy.',
+    );
     return saved;
   }
 
@@ -1108,6 +1147,25 @@ export class BookingService {
       .groupBy('roomType.roomTypeId')
       .getRawMany<{ roomTypeId: string; count: string }>();
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
+  }
+
+  // Gửi thông báo cho khách kèm mã đơn rút gọn — khách có nhiều đơn nên thông báo
+  // không nêu đơn nào thì vô dụng. Mã hiển thị khớp với getBookingCode() ở frontend.
+  private notifyGuest(
+    booking: Booking,
+    type: NotificationType,
+    title: string,
+    message: string,
+  ): void {
+    const userId = booking.user?.userId;
+    if (!userId) return;
+    void this.notificationService.notify({
+      userId,
+      type,
+      title,
+      message,
+      booking,
+    });
   }
 
   private getStayDates(checkIn: string, checkOut: string): string[] {

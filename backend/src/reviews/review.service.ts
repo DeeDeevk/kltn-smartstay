@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Logger,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,8 @@ import { QueryReviewDto } from './dto/query-review.dto';
 import { ReplyReviewDto } from './dto/reply-review.dto';
 import { BookingStatus } from '../common/enums/booking-status.enum';
 import { ReviewAnalysisService } from './review-analysis.service';
+import { NotificationService } from '../notifications/notification.service';
+import { NotificationType } from '../common/enums/notification-type.enum';
 
 // Chỉ lấy đánh giá tốt cho khu "Cảm nhận khách hàng" ngoài trang chủ — đó là khu
 // marketing, không phải danh sách đánh giá đầy đủ (danh sách đầy đủ nằm ở trang chi
@@ -25,8 +28,14 @@ const FEATURED_DEFAULT_LIMIT = 3;
 // mất khoảng 1-3 giây nên để cao hơn sẽ làm request treo tới mức timeout.
 const ANALYZE_BATCH_LIMIT = 20;
 
+// Hỏng liên tiếp chừng này lần thì dừng cả mẻ — dấu hiệu nhà cung cấp đang sập chứ
+// không phải vài đánh giá cá biệt có vấn đề.
+const CONSECUTIVE_FAILURE_LIMIT = 3;
+
 @Injectable()
 export class ReviewService {
+  private readonly logger = new Logger(ReviewService.name);
+
   constructor(
     @InjectRepository(Review)
     private readonly reviewRepo: Repository<Review>,
@@ -35,6 +44,7 @@ export class ReviewService {
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
     private readonly reviewAnalysisService: ReviewAnalysisService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async findAll(query: QueryReviewDto) {
@@ -129,10 +139,31 @@ export class ReviewService {
     });
 
     let analyzed = 0;
+    let attempted = 0;
+    let consecutiveFailures = 0;
+
     for (const review of pending) {
+      attempted += 1;
       const before = review.aiAnalysis;
       await this.runAnalysis(review);
-      if (review.aiAnalysis !== before) analyzed += 1;
+
+      if (review.aiAnalysis !== before) {
+        analyzed += 1;
+        consecutiveFailures = 0;
+        continue;
+      }
+
+      // Gemini hay trả 503 "high demand" theo từng đợt. Lúc đó MỌI đánh giá đều hỏng,
+      // mà mỗi cái còn tự thử lại 3 nhịp — chạy hết 20 đánh giá sẽ mất vài phút rồi
+      // thất bại toàn bộ, admin ngồi chờ vô ích. Hỏng liên tiếp mấy cái đầu thì dừng
+      // sớm và báo lại để bấm lại sau.
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
+        this.logger.warn(
+          `Dừng phân tích hàng loạt sau ${consecutiveFailures} lần lỗi liên tiếp — nhiều khả năng Gemini đang quá tải`,
+        );
+        break;
+      }
     }
 
     const remaining = await this.reviewRepo.count({
@@ -140,8 +171,10 @@ export class ReviewService {
     });
     return {
       analyzed,
-      failed: pending.length - analyzed,
+      failed: attempted - analyzed,
       remaining,
+      // true = dừng giữa chừng vì lỗi liên tiếp, không phải vì đã chạy hết.
+      abortedEarly: consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT,
     };
   }
 
@@ -161,12 +194,35 @@ export class ReviewService {
   }
 
   async reply(reviewId: string, dto: ReplyReviewDto) {
-    const review = await this.reviewRepo.findOne({ where: { reviewId } });
+    const review = await this.reviewRepo.findOne({
+      where: { reviewId },
+      relations: { booking: { roomType: true }, user: true },
+    });
     if (!review) {
       throw new NotFoundException('Không tìm thấy đánh giá');
     }
+
+    // Chỉ báo cho khách ở lần phản hồi ĐẦU TIÊN. Admin bấm "Sửa phản hồi" để chữa lỗi
+    // chính tả mà lần nào khách cũng nhận thêm một thông báo thì thành làm phiền.
+    const isFirstReply = !review.reply;
     review.reply = dto.reply.trim();
-    return this.toPublicResponse(await this.reviewRepo.save(review));
+    const saved = await this.reviewRepo.save(review);
+
+    if (isFirstReply && review.user?.userId) {
+      void this.notificationService.notify({
+        userId: review.user.userId,
+        type: NotificationType.REVIEW_REPLIED,
+        title: 'Khách sạn đã phản hồi đánh giá của bạn',
+        message: `Về đánh giá ${review.booking?.roomType?.name ?? 'kỳ nghỉ'} của bạn: "${this.truncate(review.reply, 120)}"`,
+        booking: review.booking,
+      });
+    }
+
+    return this.toPublicResponse(saved);
+  }
+
+  private truncate(text: string, max: number): string {
+    return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
   }
 
   private baseQuery() {
