@@ -215,7 +215,6 @@ export class ReviewService {
     return this.toPublicResponse(saved);
   }
 
-
   private baseQuery() {
     return this.reviewRepo
       .createQueryBuilder('review')
