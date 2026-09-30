@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Calendar, Check, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../../common/ConfirmModal';
@@ -14,12 +14,26 @@ const WEEKDAY_LABEL_BY_VALUE = Object.fromEntries(
     WEEKDAY_OPTIONS.map((day) => [day.value, day.label]),
 );
 
+// Key localStorage cho toggle "Ẩn sự kiện đã qua" — chỉ ảnh hưởng tab "Đã duyệt".
+const HIDE_PAST_STORAGE_KEY = 'vika-local-events-hide-past';
+
 function formatVnDate(isoDate) {
     // specificDate là chuỗi "YYYY-MM-DD" thuần (cột kiểu date, không có giờ/múi giờ) — tách
     // chuỗi trực tiếp thay vì new Date(isoDate) để tránh bị lùi 1 ngày do trình duyệt hiểu
     // "YYYY-MM-DD" là nửa đêm UTC rồi tự quy đổi sang múi giờ local (UTC+7) lúc hiển thị.
     const [year, month, day] = isoDate.split('-');
     return `${day}/${month}/${year}`;
+}
+
+// "Hôm nay" dạng "YYYY-MM-DD" theo ngày của trình duyệt (không phải UTC) — so sánh trực
+// tiếp bằng string với specificDate (cũng "YYYY-MM-DD" thuần) để tránh mọi lệch múi giờ
+// mà new Date() có thể gây ra.
+function todayDateStr() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
 }
 
 // Sự kiện AI trích xuất có thể còn thiếu ngày (nguồn text không đủ rõ ràng) — xem
@@ -32,7 +46,17 @@ function isEventDateComplete(event) {
         : Boolean(event.specificDate);
 }
 
-function EventTypeBadge({ event }) {
+// Chỉ sự kiện "Một lần" mới có khái niệm đã qua — "Lặp lại" diễn ra hàng tuần nên không
+// bao giờ được coi là đã qua, dù dayOfWeek đó "đã trôi qua" trong tuần này đi nữa.
+function isEventPast(event, today) {
+    return (
+        event.recurrence !== 'WEEKLY' &&
+        Boolean(event.specificDate) &&
+        event.specificDate < today
+    );
+}
+
+function EventTypeBadge({ event, isPast = false }) {
     if (!isEventDateComplete(event)) {
         return (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-xs font-semibold text-[#B45309]">
@@ -47,10 +71,67 @@ function EventTypeBadge({ event }) {
             </span>
         );
     }
+    if (isPast) {
+        return (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#E5E7EB] bg-[#F3F4F6] px-2.5 py-1 text-xs font-semibold text-[#6B7280]">
+                Một lần · {formatVnDate(event.specificDate)} · Đã qua
+            </span>
+        );
+    }
     return (
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-xs font-semibold text-[#2563EB]">
             Một lần · {formatVnDate(event.specificDate)}
         </span>
+    );
+}
+
+// Card cho tab "Đã duyệt" — tách riêng khỏi component trang để tự tính isPast dựa trên
+// ngày hiện tại của trình duyệt tại thời điểm render, không cần truyền lại từ ngoài.
+// Nút Sửa/Xoá KHÔNG bị disable dù card đã xám — sự kiện qua rồi vẫn cần sửa lại ngày
+// hoặc xoá được bình thường.
+function EventCard({ event, onEdit, onDelete }) {
+    const isPast = isEventPast(event, todayDateStr());
+    return (
+        <div
+            className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-start sm:justify-between ${
+                isPast ? 'border-[#E5E7EB] bg-[#FAFAFA]' : 'border-[#E7E9F1] bg-white'
+            }`}
+        >
+            <div className="min-w-0 flex-1">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                    <h3 className={`font-bold ${isPast ? 'text-[#6B7280]' : 'text-[#1C1B29]'}`}>
+                        {event.title}
+                    </h3>
+                    {event.source === 'ai_suggested' && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#E7E9F1] bg-[#F7F7FB] px-2 py-0.5 text-[11px] font-semibold text-[#6B7280]">
+                            <Sparkles size={11} /> Do AI đề xuất
+                        </span>
+                    )}
+                </div>
+                <EventTypeBadge event={event} isPast={isPast} />
+                {event.description && (
+                    <p className="mt-2 line-clamp-2 text-sm text-[#6B7280]">{event.description}</p>
+                )}
+            </div>
+            <div className="flex shrink-0 gap-1.5 self-end sm:self-start">
+                <button
+                    type="button"
+                    onClick={onEdit}
+                    aria-label="Sửa sự kiện"
+                    className="rounded-lg p-2 text-[#6B7280] transition-colors hover:bg-[#F7F7FB] hover:text-[#4F46E5]"
+                >
+                    <Pencil size={16} />
+                </button>
+                <button
+                    type="button"
+                    onClick={onDelete}
+                    aria-label="Xoá sự kiện"
+                    className="rounded-lg p-2 text-[#6B7280] transition-colors hover:bg-red-50 hover:text-red-600"
+                >
+                    <Trash2 size={16} />
+                </button>
+            </div>
+        </div>
     );
 }
 
@@ -66,6 +147,17 @@ const TABS = [
     { value: 'pending', label: 'Chờ duyệt' },
 ];
 
+// localStorage có thể bị chặn (chế độ riêng tư...) — lỗi ở đây chỉ làm mất tính năng nhớ
+// lựa chọn ẩn/hiện, không được làm hỏng cả trang (theo đúng cách xử lý localStorage đã
+// dùng ở aiChatHistory.js/AiChatbot.jsx).
+function readStoredHidePast() {
+    try {
+        return localStorage.getItem(HIDE_PAST_STORAGE_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
+
 export default function LocalEventsSettingsPage() {
     const { data: events, isLoading } = useGetLocalEventsQuery();
     const [deleteLocalEvent, { isLoading: deleting }] = useDeleteLocalEventMutation();
@@ -75,19 +167,62 @@ export default function LocalEventsSettingsPage() {
     const [formState, setFormState] = useState({ open: false, event: null });
     const [extractOpen, setExtractOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [hidePast, setHidePast] = useState(readStoredHidePast);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(HIDE_PAST_STORAGE_KEY, String(hidePast));
+        } catch {
+            // bỏ qua — chỉ mất tính năng nhớ lựa chọn, không ảnh hưởng phần còn lại
+        }
+    }, [hidePast]);
 
     // events ?? [] không đưa vào useMemo deps được: mỗi render mà events vẫn undefined (đang
     // loading) sẽ tạo 1 mảng rỗng mới, khiến deps đổi liên tục — dùng thẳng `events` (tham
     // chiếu ổn định từ RTK Query khi có dữ liệu, và y hệt `undefined` khi chưa có) làm dep.
-    const approvedList = useMemo(
-        () => (events ?? []).filter((e) => e.status !== 'pending'),
-        [events],
-    );
+    //
+    // Sắp xếp: sự kiện lặp lại + sự kiện một lần CHƯA qua lên trước (một lần sắp theo ngày
+    // gần nhất trước), sự kiện một lần ĐÃ qua xuống cuối (mới qua gần đây hiện trước — tức
+    // ngày giảm dần). Không dùng lại thứ tự "dayOfWeek NULLS LAST" của backend vì ở đây cần
+    // thêm hẳn 1 nhóm "đã qua" mà backend không có khái niệm.
+    const approvedList = useMemo(() => {
+        const today = todayDateStr();
+        const list = (events ?? []).filter((e) => e.status !== 'pending');
+        return [...list].sort((a, b) => {
+            const aPast = isEventPast(a, today);
+            const bPast = isEventPast(b, today);
+            if (aPast !== bPast) return aPast ? 1 : -1;
+
+            const aIsWeekly = a.recurrence === 'WEEKLY';
+            const bIsWeekly = b.recurrence === 'WEEKLY';
+            if (aIsWeekly !== bIsWeekly) return aIsWeekly ? -1 : 1;
+            if (aIsWeekly && bIsWeekly) return (a.dayOfWeek ?? 99) - (b.dayOfWeek ?? 99);
+
+            // Cả 2 đều là "Một lần": nhóm chưa qua sắp ngày gần nhất trước (tăng dần),
+            // nhóm đã qua sắp mới-qua-gần-đây trước (giảm dần).
+            const aDate = a.specificDate ?? '';
+            const bDate = b.specificDate ?? '';
+            return aPast ? bDate.localeCompare(aDate) : aDate.localeCompare(bDate);
+        });
+    }, [events]);
+
+    const visibleApprovedList = useMemo(() => {
+        if (!hidePast) return approvedList;
+        const today = todayDateStr();
+        return approvedList.filter((e) => !isEventPast(e, today));
+    }, [approvedList, hidePast]);
+
     const pendingList = useMemo(
         () => (events ?? []).filter((e) => e.status === 'pending'),
         [events],
     );
-    const visibleList = activeTab === 'pending' ? pendingList : approvedList;
+    const visibleList = activeTab === 'pending' ? pendingList : visibleApprovedList;
+    // Riêng cho thông báo trống "đã lọc hết" — phân biệt với "vốn dĩ chưa có sự kiện nào".
+    const hidingAllPast =
+        activeTab === 'approved' &&
+        hidePast &&
+        approvedList.length > 0 &&
+        visibleApprovedList.length === 0;
 
     const handleConfirmDelete = async () => {
         if (!deleteTarget) return;
@@ -159,6 +294,18 @@ export default function LocalEventsSettingsPage() {
                 ))}
             </div>
 
+            {activeTab === 'approved' && (
+                <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-[#6B7280]">
+                    <input
+                        type="checkbox"
+                        checked={hidePast}
+                        onChange={(e) => setHidePast(e.target.checked)}
+                        className="h-4 w-4 rounded border-[#D1D5DB] text-[#4F46E5] focus:ring-[#4F46E5]"
+                    />
+                    Ẩn sự kiện đã qua
+                </label>
+            )}
+
             {isLoading ? (
                 <div className="space-y-3">
                     {[0, 1, 2].map((i) => (
@@ -175,6 +322,19 @@ export default function LocalEventsSettingsPage() {
                             Chưa có sự kiện nào chờ duyệt. Dùng nút "Trích xuất từ nguồn" để AI hỗ trợ
                             bạn thêm sự kiện nhanh hơn.
                         </p>
+                    ) : hidingAllPast ? (
+                        <>
+                            <p className="text-sm font-bold text-[#1C1B29]">
+                                Toàn bộ sự kiện hiện có đều đã qua và đang bị ẩn.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setHidePast(false)}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#E7E9F1] bg-white px-4 py-2.5 text-sm font-semibold text-[#4F46E5] transition-colors hover:bg-[#F7F7FB]"
+                            >
+                                Tắt "Ẩn sự kiện đã qua"
+                            </button>
+                        </>
                     ) : (
                         <>
                             <p className="text-sm font-bold text-[#1C1B29]">Chưa có sự kiện nào được thiết lập</p>
@@ -244,43 +404,12 @@ export default function LocalEventsSettingsPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div
+                            <EventCard
                                 key={event.eventId}
-                                className="flex flex-col gap-3 rounded-2xl border border-[#E7E9F1] bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                                        <h3 className="font-bold text-[#1C1B29]">{event.title}</h3>
-                                        {event.source === 'ai_suggested' && (
-                                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#E7E9F1] bg-[#F7F7FB] px-2 py-0.5 text-[11px] font-semibold text-[#6B7280]">
-                                                <Sparkles size={11} /> Do AI đề xuất
-                                            </span>
-                                        )}
-                                    </div>
-                                    <EventTypeBadge event={event} />
-                                    {event.description && (
-                                        <p className="mt-2 line-clamp-2 text-sm text-[#6B7280]">{event.description}</p>
-                                    )}
-                                </div>
-                                <div className="flex shrink-0 gap-1.5 self-end sm:self-start">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormState({ open: true, event })}
-                                        aria-label="Sửa sự kiện"
-                                        className="rounded-lg p-2 text-[#6B7280] transition-colors hover:bg-[#F7F7FB] hover:text-[#4F46E5]"
-                                    >
-                                        <Pencil size={16} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDeleteTarget(event)}
-                                        aria-label="Xoá sự kiện"
-                                        className="rounded-lg p-2 text-[#6B7280] transition-colors hover:bg-red-50 hover:text-red-600"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
+                                event={event}
+                                onEdit={() => setFormState({ open: true, event })}
+                                onDelete={() => setDeleteTarget(event)}
+                            />
                         ),
                     )}
                 </div>
