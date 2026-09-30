@@ -1179,6 +1179,7 @@ export class BookingService {
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
+
   private getStayDates(checkIn: string, checkOut: string): string[] {
     const dates: string[] = [];
     const cursor = new Date(checkIn);

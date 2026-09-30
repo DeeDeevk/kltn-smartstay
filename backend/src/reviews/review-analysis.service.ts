@@ -11,7 +11,9 @@ import {
 // Gemini quá tải/giới hạn tần suất là chuyện thường gặp — thử lại vài nhịp trước khi
 // bỏ cuộc, giống cách LocalEventExtractionService đang làm.
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const RETRY_DELAYS_MS = [800, 2000];
+// Đợt "high demand" của Gemini thường kéo dài hơn vài giây, nên giãn nhịp thử lại
+// rộng hơn thay vì thử dồn rồi bỏ cuộc sớm.
+const RETRY_DELAYS_MS = [1000, 3000, 8000];
 
 // Cắt bớt nội dung quá dài trước khi gửi đi: giữ prompt nhỏ, chặn trần chi phí, và
 // một đánh giá khách sạn có ích thì hiếm khi dài hơn chừng này.

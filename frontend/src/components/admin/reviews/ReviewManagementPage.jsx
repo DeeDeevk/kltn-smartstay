@@ -276,6 +276,16 @@ export default function ReviewManagementPage() {
   const handleAnalyzeAll = async () => {
     try {
       const result = await analyzeAll().unwrap();
+
+      // Dừng sớm vì lỗi liên tiếp = dịch vụ AI đang quá tải, không phải dữ liệu hỏng.
+      // Nói đúng nguyên nhân để admin đợi rồi bấm lại, thay vì tưởng mất dữ liệu.
+      if (result.abortedEarly) {
+        toast.error(
+          'Dịch vụ AI đang quá tải, đã tạm dừng. Vui lòng thử lại sau vài phút.',
+        );
+        return;
+      }
+
       toast.success(
         result.remaining > 0
           ? `Đã phân tích ${result.analyzed} đánh giá, còn ${result.remaining} — bấm tiếp để chạy nốt`

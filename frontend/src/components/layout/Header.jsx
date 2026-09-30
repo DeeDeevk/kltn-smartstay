@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import logoIcon from '../../assets/icon/icon.png';
 import UserMenu from './UserMenu';
 import LanguageSwitcher from './LanguageSwitcher';
+import NotificationBell from './NotificationBell';
 import ConfirmModal from '../common/ConfirmModal';
 
 const NAV_LABEL_KEYS = {
@@ -103,7 +104,10 @@ export default function Header() {
           {/* RIGHT: AUTH BUTTONS */}
           <div className="hidden md:flex items-center gap-3 flex-shrink-0">
             {isAuthenticated ? (
-              <UserMenu />
+              <>
+                <NotificationBell />
+                <UserMenu />
+              </>
             ) : (
               <>
                 <button

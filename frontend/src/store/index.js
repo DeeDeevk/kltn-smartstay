@@ -17,6 +17,7 @@ import { revenueApi } from '../services/revenue';
 import { hotelConfigApi } from '../services/hotelConfig';
 import { faqApi } from '../services/faq';
 import { promotionApi } from '../services/promotion';
+import { notificationApi } from '../services/notification';
 
 export const store = configureStore({
     reducer: {
@@ -38,6 +39,7 @@ export const store = configureStore({
         [hotelConfigApi.reducerPath]: hotelConfigApi.reducer,
         [faqApi.reducerPath]: faqApi.reducer,
         [promotionApi.reducerPath]: promotionApi.reducer,
+        [notificationApi.reducerPath]: notificationApi.reducer,
     },
     // Adding the api middleware enables caching, invalidation, polling,
     // and other useful features of `rtk-query`.
@@ -59,7 +61,8 @@ export const store = configureStore({
             revenueApi.middleware,
             hotelConfigApi.middleware,
             faqApi.middleware,
-            promotionApi.middleware
+            promotionApi.middleware,
+            notificationApi.middleware
         ),
 });
 
@@ -85,6 +88,7 @@ const API_SLICES = [
     hotelConfigApi,
     faqApi,
     promotionApi,
+    notificationApi,
 ];
 
 // Cache key của RTK Query chỉ gồm tham số query (vd. {from, to} của "ca của tôi"),

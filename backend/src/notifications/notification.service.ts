@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export enum NotificationType {
   BOOKING_CREATED = 'BOOKING_CREATED',
@@ -11,13 +12,22 @@ export enum NotificationType {
   BOOKING_CANCELLED = 'BOOKING_CANCELLED',
   PAYMENT_SUCCESS = 'PAYMENT_SUCCESS',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
+  REVIEW_REPLIED = 'REVIEW_REPLIED',
 }
+
+// Các loại phát sinh từ vòng đời đơn đặt phòng — nội dung soạn sẵn theo tên loại phòng.
+// REVIEW_REPLIED không nằm ở đây vì nội dung của nó là câu trả lời của khách sạn, phải
+// truyền vào lúc gọi (xem notifyReviewReplied).
+type BookingNotificationType = Exclude<
+  NotificationType,
+  NotificationType.REVIEW_REPLIED
+>;
 
 const PAGE_SIZE = 20;
 
 // Nội dung thông báo theo từng sự kiện của đơn đặt phòng.
 const BOOKING_MESSAGES: Record<
-  NotificationType,
+  BookingNotificationType,
   (roomTypeName: string) => { title: string; body: string }
 > = {
   [NotificationType.BOOKING_CREATED]: (room) => ({
@@ -57,31 +67,59 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
+    // Đẩy thông báo mới tới khách ngay khi đang mở web/app, không phải chờ F5.
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   // Gọi từ các nghiệp vụ đặt phòng — đây là tác vụ phụ, giống realtime emit: lỗi ghi
   // thông báo không được làm hỏng nghiệp vụ chính (xác nhận/huỷ/thanh toán...).
   async notifyBooking(
     userId: string,
-    type: NotificationType,
+    type: BookingNotificationType,
     booking: { bookingId: string; roomTypeName?: string | null },
   ): Promise<void> {
+    const { title, body } = BOOKING_MESSAGES[type](
+      booking.roomTypeName ?? 'của bạn',
+    );
+    await this.create(userId, type, title, body, booking.bookingId);
+  }
+
+  // Khách sạn trả lời đánh giá của khách. Gắn bookingId của đơn được đánh giá để phía
+  // client bấm vào mở được đúng phòng đó.
+  async notifyReviewReplied(
+    userId: string,
+    review: { bookingId: string; roomTypeName?: string | null; reply: string },
+  ): Promise<void> {
+    const reply =
+      review.reply.length > 120
+        ? `${review.reply.slice(0, 120).trimEnd()}…`
+        : review.reply;
+    await this.create(
+      userId,
+      NotificationType.REVIEW_REPLIED,
+      'Khách sạn đã phản hồi đánh giá của bạn',
+      `Về đánh giá ${review.roomTypeName ?? 'kỳ nghỉ'} của bạn: "${reply}"`,
+      review.bookingId,
+    );
+  }
+
+  // Lưu rồi đẩy real-time. Không ném lỗi ra ngoài: lỗi ghi thông báo không được làm
+  // hỏng nghiệp vụ chính gọi nó (xác nhận/huỷ/thanh toán/trả lời đánh giá...).
+  private async create(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+    bookingId: string | null,
+  ): Promise<void> {
     try {
-      const { title, body } = BOOKING_MESSAGES[type](
-        booking.roomTypeName ?? 'của bạn',
+      const saved = await this.notificationRepo.save(
+        this.notificationRepo.create({ userId, type, title, body, bookingId }),
       );
-      await this.notificationRepo.save(
-        this.notificationRepo.create({
-          userId,
-          type,
-          title,
-          body,
-          bookingId: booking.bookingId,
-        }),
-      );
+      this.realtimeGateway.emitNotification(userId, this.toResponse(saved));
     } catch (error) {
       this.logger.warn(
-        `Không tạo được thông báo ${type} cho booking ${booking.bookingId}: ${(error as Error).message}`,
+        `Không tạo được thông báo ${type}${bookingId ? ` cho booking ${bookingId}` : ''}: ${(error as Error).message}`,
       );
     }
   }
