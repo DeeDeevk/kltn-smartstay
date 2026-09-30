@@ -43,10 +43,15 @@ export default function AuthHero() {
       <div className="auth-hero-orb auth-hero-orb--two" />
 
       <div className="relative z-10 flex h-full w-full flex-col justify-between p-12">
+        {/* Quay lại bố cục ngang (icon trái, chữ phải) — khách chỉ muốn bỏ khung nền
+            trắng quanh icon, không muốn đổi hướng xếp. Icon.png tự nó đã là 1 huy hiệu
+            tròn viền vàng hoàn chỉnh nên không cần thêm khung/nền trắng bao ngoài nữa. */}
         <button onClick={() => navigate('/')} className="flex items-center gap-4 text-left group">
-          <div className="flex h-14 w-14 items-center justify-center rounded-[1.1rem] bg-white shadow-2xl ring-1 ring-white/20 p-1.5 transition-transform group-hover:scale-105">
-            <img src={vikaLogo} alt="Vika Hotel" className="h-full w-full object-contain" />
-          </div>
+          <img
+            src={vikaLogo}
+            alt="Vika Hotel"
+            className="h-14 w-14 object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition-transform group-hover:scale-105"
+          />
           <div>
             <span className="block text-xs uppercase tracking-[0.45em] text-white/65">{t('auth.hero.welcomeTo')}</span>
             <span className="block text-2xl font-bold tracking-tight text-white drop-shadow-[0_8px_20px_rgba(0,0,0,0.28)]">VIKA HOTEL</span>

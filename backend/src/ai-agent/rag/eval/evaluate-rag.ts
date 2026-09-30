@@ -21,7 +21,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // ── 1. Embed câu hỏi thử (có cache + retry) ─────────────────────────────
 async function embedQueries(queries: string[]): Promise<Map<string, number[]>> {
   const cache: Record<string, number[]> = fs.existsSync(CACHE_FILE)
-    ? JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'))
+    ? (JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) as Record<
+        string,
+        number[]
+      >)
     : {};
   const model = new GoogleGenerativeAI(
     process.env.GEMINI_API_KEY!,

@@ -3,11 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { UserRole } from '../common/enums/user-role.enum';
 
 export interface WsUser {
   userId: string;
   email: string;
-  role: string;
+  role: UserRole;
 }
 
 interface JwtPayload {
@@ -28,7 +29,7 @@ export class WsAuthService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
-  async verifyToken(token: string): Promise<WsUser> {
+  async verifyToken(token: string | undefined): Promise<WsUser> {
     if (!token) {
       throw new UnauthorizedException('Thiếu token xác thực');
     }
@@ -46,10 +47,16 @@ export class WsAuthService {
     if (payload.jti) {
       const isBlacklisted = await this.redis.get(`blacklist:${payload.jti}`);
       if (isBlacklisted) {
-        throw new UnauthorizedException('Token đã bị thu hồi, vui lòng đăng nhập lại');
+        throw new UnauthorizedException(
+          'Token đã bị thu hồi, vui lòng đăng nhập lại',
+        );
       }
     }
 
-    return { userId: payload.sub, email: payload.email, role: payload.role };
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.role as UserRole,
+    };
   }
 }

@@ -6,15 +6,17 @@ import { useSocket } from '../../context/SocketContext';
 import {
   notificationApi,
   useGetMyNotificationsQuery,
+  useGetUnreadNotificationCountQuery,
   useMarkAllNotificationsReadMutation,
-  useMarkNotificationReadMutation,
 } from '../../services/notification';
 import {
   TYPE_DOT_CLASSES,
-  getNotificationTarget,
   timeAgo,
+  useOpenNotification,
 } from '../notification/notificationUtils';
 
+// Chuông chỉ xem nhanh vài thông báo mới nhất, đầy đủ thì bấm "Xem tất cả".
+const PREVIEW_COUNT = 8;
 
 export default function NotificationBell() {
   const navigate = useNavigate();
@@ -23,12 +25,13 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
 
-  const { data, isFetching } = useGetMyNotificationsQuery();
-  const [markRead] = useMarkNotificationReadMutation();
+  const { data, isFetching } = useGetMyNotificationsQuery({ page: 1 });
+  const { data: unread } = useGetUnreadNotificationCountQuery();
   const [markAllRead, { isLoading: markingAll }] = useMarkAllNotificationsReadMutation();
+  const openNotification = useOpenNotification(() => setOpen(false));
 
-  const items = data?.items ?? [];
-  const unreadCount = data?.unreadCount ?? 0;
+  const items = (data?.data ?? []).slice(0, PREVIEW_COUNT);
+  const unreadCount = unread?.count ?? 0;
 
   // Lễ tân xác nhận/huỷ đơn ở phía họ -> khách thấy thông báo ngay, không phải F5.
   useEffect(() => {
@@ -51,14 +54,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [open]);
 
-  const handleItemClick = async (item) => {
-    setOpen(false);
-    if (!item.isRead) {
-      // Đánh dấu đã đọc là việc phụ — lỗi thì vẫn cho khách đi tới đơn.
-      markRead(item.notificationId);
-    }
-    navigate(getNotificationTarget(item));
-  };
+
 
   return (
     <div className="relative" ref={panelRef}>
@@ -107,9 +103,9 @@ export default function NotificationBell() {
 
             {items.map((item) => (
               <button
-                key={item.notificationId}
+                key={item.id}
                 type="button"
-                onClick={() => handleItemClick(item)}
+                onClick={() => openNotification(item)}
                 className={`flex w-full gap-3 border-b border-gray-50 px-4 py-3 text-left transition-colors hover:bg-gray-50 ${
                   item.isRead ? '' : 'bg-blue-50/40'
                 }`}
@@ -128,7 +124,7 @@ export default function NotificationBell() {
                     {item.title}
                   </span>
                   <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">
-                    {item.message}
+                    {item.body}
                   </span>
                   <span className="mt-1 block text-[11px] text-gray-400">
                     {timeAgo(item.createdAt)}

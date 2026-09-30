@@ -7,7 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { UserRole } from '../common/enums/user-role.enum';
-import { WsAuthService } from './ws-auth.service';
+import { WsAuthService, WsUser } from './ws-auth.service';
+
+// socket.io không tham số hoá `Socket.data` ở đây (không truyền generic cho `Socket`) nên
+// mặc định là `any` — khai lại đúng hình dạng thật sự được gán ở handleConnection bên dưới
+// để không phải rải `any` qua ChatGateway (đọc lại client.data.user) và các nơi khác.
+interface SocketData {
+  user?: WsUser;
+}
 
 // Tên room là chi tiết triển khai nội bộ của RealtimeGateway — các module khác
 // (Reservations, Chat) không import trực tiếp các hằng số này, chỉ gọi qua các
@@ -30,7 +37,9 @@ const userRoom = (userId: string) => `user:${userId}`;
 // chung 1 kết nối socket phía FE và chung client.data.user do handleConnection ở
 // đây gán — không cần xác thực lại trong ChatGateway.
 @WebSocketGateway()
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
@@ -40,13 +49,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   async handleConnection(client: Socket) {
     try {
-      const token =
-        client.handshake.auth?.token ||
+      // client.handshake.auth là `{ [key: string]: any }` theo kiểu của socket.io — ép
+      // kiểu tường minh ngay khi đọc ra thay vì để `any` len vào token/verifyToken().
+      const token = (client.handshake.auth?.token ||
         (client.handshake.headers.authorization?.startsWith('Bearer ')
           ? client.handshake.headers.authorization.slice(7)
-          : undefined);
+          : undefined)) as string | undefined;
       const user = await this.wsAuth.verifyToken(token);
-      client.data.user = user;
+      (client.data as SocketData).user = user;
 
       if (user.role === UserRole.ADMIN || user.role === UserRole.STAFF) {
         await client.join(STAFF_ROOM);
@@ -59,7 +69,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // bắt khách F5 lại trang Lịch sử đặt phòng mới thấy.
       await client.join(userRoom(user.userId));
     } catch (error) {
-      this.logger.warn(`Socket ${client.id} bị từ chối: ${(error as Error).message}`);
+      this.logger.warn(
+        `Socket ${client.id} bị từ chối: ${(error as Error).message}`,
+      );
       client.disconnect(true);
     }
   }

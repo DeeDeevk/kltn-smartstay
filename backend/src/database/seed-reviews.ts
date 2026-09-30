@@ -114,7 +114,9 @@ async function run() {
   const reviewedBookingIds = new Set(
     existing.map((review) => review.booking?.bookingId),
   );
-  const available = bookings.filter((b) => !reviewedBookingIds.has(b.bookingId));
+  const available = bookings.filter(
+    (b) => !reviewedBookingIds.has(b.bookingId),
+  );
 
   if (available.length === 0) {
     console.log('Mọi đơn đã hoàn thành đều đã có đánh giá — không thêm gì.');

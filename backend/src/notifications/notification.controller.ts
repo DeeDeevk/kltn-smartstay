@@ -1,25 +1,23 @@
 import {
   Controller,
-  DefaultValuePipe,
   Get,
-  ParseIntPipe,
-  Query,
   Param,
   ParseUUIDPipe,
   Patch,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { QueryNotificationDto } from './dto/query-notification.dto';
+import { NotificationService } from './notification.service';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; email: string; role: string };
 }
 
-// Thông báo luôn là "của chính tôi" — không có endpoint nào xem được thông báo của
-// người khác, userId lấy từ token chứ không nhận từ client.
+// Mọi endpoint chỉ thao tác trên thông báo của chính user đang đăng nhập.
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationController {
@@ -28,13 +26,21 @@ export class NotificationController {
   @Get()
   findMine(
     @Req() req: AuthenticatedRequest,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query() query: QueryNotificationDto,
   ) {
-    return this.notificationService.findMine(req.user.userId, page, limit);
+    return this.notificationService.findMine(
+      req.user.userId,
+      query.isRead,
+      query.page,
+    );
   }
 
-  // Đặt trước route động bên dưới để 'read-all' không bị hiểu thành một id.
+  @Get('unread-count')
+  unreadCount(@Req() req: AuthenticatedRequest) {
+    return this.notificationService.unreadCount(req.user.userId);
+  }
+
+  // Khai báo trước ':id/read' để "read-all" không bị hiểu nhầm là một id.
   @Patch('read-all')
   markAllRead(@Req() req: AuthenticatedRequest) {
     return this.notificationService.markAllRead(req.user.userId);

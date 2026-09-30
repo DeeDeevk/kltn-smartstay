@@ -1,18 +1,22 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
 import axiosBaseQuery from './axiosBaseQuery';
 
-// Thông báo của chính khách đang đăng nhập. Backend lấy userId từ token nên không có
-// tham số nào ở đây — không ai xem được thông báo của người khác.
+// Thông báo của chính khách đang đăng nhập (NotificationModule ở backend). Backend lấy
+// userId từ token nên không ai xem được thông báo của người khác.
 export const notificationApi = createApi({
   reducerPath: 'notificationApi',
   baseQuery: axiosBaseQuery(),
   tagTypes: ['Notification'],
   endpoints: (builder) => ({
-    // Trả về { unreadCount, total, page, limit, items } — gộp trong một request để chuông
-    // không phải gọi thêm một lượt chỉ để lấy số chưa đọc. Chuông gọi không tham số
-    // (trang đầu), trang "Thông báo" truyền { page } để phân trang.
+    // Trả về { data, total } — mỗi trang 20 dòng cố định ở backend. Truyền { page }
+    // (mặc định 1) và tuỳ chọn { isRead: true|false } để lọc.
     getMyNotifications: builder.query({
       query: (params) => ({ url: '/notifications', method: 'get', params }),
+      providesTags: ['Notification'],
+    }),
+    // Trả về { count } — tách riêng để badge trên chuông không phải tải cả danh sách.
+    getUnreadNotificationCount: builder.query({
+      query: () => ({ url: '/notifications/unread-count', method: 'get' }),
       providesTags: ['Notification'],
     }),
     markNotificationRead: builder.mutation({
@@ -31,6 +35,7 @@ export const notificationApi = createApi({
 
 export const {
   useGetMyNotificationsQuery,
+  useGetUnreadNotificationCountQuery,
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,
 } = notificationApi;

@@ -17,13 +17,9 @@ export class TurnstileService {
   private readonly allowedHostnames: Set<string>;
 
   constructor(config: ConfigService) {
-    const secretKey = config
-      .get<string>('TURNSTILE_SECRET_KEY')
-      ?.trim();
+    const secretKey = config.get<string>('TURNSTILE_SECRET_KEY')?.trim();
 
-    const hostnames = (
-      config.get<string>('TURNSTILE_ALLOWED_HOSTNAMES') ?? ''
-    )
+    const hostnames = (config.get<string>('TURNSTILE_ALLOWED_HOSTNAMES') ?? '')
       .split(',')
       .map((hostname) => hostname.trim())
       .filter(Boolean);
@@ -40,11 +36,7 @@ export class TurnstileService {
     token: string,
     expectedAction: 'login' | 'register',
   ): Promise<void> {
-    if (
-      typeof token !== 'string' ||
-      !token.trim() ||
-      token.length > 2048
-    ) {
+    if (typeof token !== 'string' || !token.trim() || token.length > 2048) {
       throw new BadRequestException('Token xác minh không hợp lệ.');
     }
 

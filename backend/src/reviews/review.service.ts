@@ -16,7 +16,6 @@ import { ReplyReviewDto } from './dto/reply-review.dto';
 import { BookingStatus } from '../common/enums/booking-status.enum';
 import { ReviewAnalysisService } from './review-analysis.service';
 import { NotificationService } from '../notifications/notification.service';
-import { NotificationType } from '../common/enums/notification-type.enum';
 
 // Chỉ lấy đánh giá tốt cho khu "Cảm nhận khách hàng" ngoài trang chủ — đó là khu
 // marketing, không phải danh sách đánh giá đầy đủ (danh sách đầy đủ nằm ở trang chi
@@ -92,9 +91,7 @@ export class ReviewService {
       );
     }
     if (booking.status !== BookingStatus.CHECKED_OUT) {
-      throw new BadRequestException(
-        'Chỉ có thể đánh giá sau khi đã trả phòng',
-      );
+      throw new BadRequestException('Chỉ có thể đánh giá sau khi đã trả phòng');
     }
 
     const review = this.reviewRepo.create({
@@ -121,7 +118,6 @@ export class ReviewService {
     // chạy bù bằng POST /reviews/:id/analyze.
     return this.toPublicResponse(await this.runAnalysis(saved));
   }
-
 
   // Chạy bù cho các đánh giá chưa có kết quả (tạo trước khi có tính năng, dữ liệu
   // seed, hoặc lần đầu Gemini lỗi).
@@ -208,22 +204,17 @@ export class ReviewService {
     review.reply = dto.reply.trim();
     const saved = await this.reviewRepo.save(review);
 
-    if (isFirstReply && review.user?.userId) {
-      void this.notificationService.notify({
-        userId: review.user.userId,
-        type: NotificationType.REVIEW_REPLIED,
-        title: 'Khách sạn đã phản hồi đánh giá của bạn',
-        message: `Về đánh giá ${review.booking?.roomType?.name ?? 'kỳ nghỉ'} của bạn: "${this.truncate(review.reply, 120)}"`,
-        booking: review.booking,
+    if (isFirstReply && review.user?.userId && review.booking) {
+      void this.notificationService.notifyReviewReplied(review.user.userId, {
+        bookingId: review.booking.bookingId,
+        roomTypeName: review.booking.roomType?.name,
+        reply: review.reply,
       });
     }
 
     return this.toPublicResponse(saved);
   }
 
-  private truncate(text: string, max: number): string {
-    return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
-  }
 
   private baseQuery() {
     return this.reviewRepo

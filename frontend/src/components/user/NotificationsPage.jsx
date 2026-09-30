@@ -1,34 +1,34 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CheckCheck, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import {
   useGetMyNotificationsQuery,
+  useGetUnreadNotificationCountQuery,
   useMarkAllNotificationsReadMutation,
-  useMarkNotificationReadMutation,
 } from '../../services/notification';
 import {
   TYPE_DOT_CLASSES,
-  getNotificationTarget,
   timeAgo,
+  useOpenNotification,
 } from '../notification/notificationUtils';
 
+// Phải khớp PAGE_SIZE cố định ở NotificationService (backend) — dùng để tính số trang.
 const PAGE_SIZE = 20;
 
 // Toàn bộ thông báo của khách, có phân trang. Chuông trên header chỉ hiện trang đầu;
 // đây là nơi xem lại lịch sử cũ hơn.
 export default function NotificationsPage() {
-  const navigate = useNavigate();
   const [page, setPage] = useState(1);
 
-  const { data, isFetching, error } = useGetMyNotificationsQuery({ page, limit: PAGE_SIZE });
-  const [markRead] = useMarkNotificationReadMutation();
+  const { data, isFetching, error } = useGetMyNotificationsQuery({ page });
+  const { data: unread } = useGetUnreadNotificationCountQuery();
   const [markAllRead, { isLoading: markingAll }] = useMarkAllNotificationsReadMutation();
+  const openNotification = useOpenNotification();
 
-  const items = data?.items ?? [];
-  const unreadCount = data?.unreadCount ?? 0;
+  const items = data?.data ?? [];
+  const unreadCount = unread?.count ?? 0;
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -41,11 +41,6 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleItemClick = (item) => {
-    // Đánh dấu đã đọc là việc phụ — lỗi thì vẫn cho khách đi tiếp.
-    if (!item.isRead) markRead(item.notificationId);
-    navigate(getNotificationTarget(item));
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -90,10 +85,10 @@ export default function NotificationsPage() {
         {items.length > 0 && (
           <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             {items.map((item) => (
-              <li key={item.notificationId}>
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => handleItemClick(item)}
+                  onClick={() => openNotification(item)}
                   className={`flex w-full gap-3 px-5 py-4 text-left transition-colors hover:bg-gray-50 ${
                     item.isRead ? '' : 'bg-blue-50/40'
                   }`}
@@ -117,7 +112,7 @@ export default function NotificationsPage() {
                       </span>
                     </span>
                     <span className="mt-1 block text-sm leading-relaxed text-gray-500 wrap-anywhere">
-                      {item.message}
+                      {item.body}
                     </span>
                   </span>
                 </button>

@@ -10,6 +10,7 @@ import { EventRecurrence } from 'src/common/enums/event-recurrence.enum';
 import { LocalEventSource } from 'src/common/enums/local-event-source.enum';
 import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 import { GeminiProvider } from 'src/ai-agent/llm/gemini.provider';
+import { assertSafeUrl } from './ssrf-guard';
 
 // Mở rộng ngoài phạm vi SRS (SRS ghi rõ "không tự động tổng hợp sự kiện từ nguồn ngoài").
 // Được đánh giá là vẫn nằm trong ranh giới đó vì tính năng không bao giờ tự chạy một
@@ -52,6 +53,12 @@ const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const RETRY_DELAYS_MS = [1000, 3000];
 
 const FETCH_TIMEOUT_MS = 10_000;
+// Số lần chuyển hướng tối đa được đi theo khi tải link — đủ cho các trang rút gọn URL/CMS
+// redirect vài bước, chặn vòng lặp redirect vô hạn hoặc chuỗi quá dài.
+const MAX_REDIRECTS = 3;
+// Đọc theo stream và huỷ ngay khi vượt ngưỡng thay vì tải hết về rồi mới cắt — tránh 1 link
+// trỏ tới file khổng lồ chiếm hết bộ nhớ trước khi kịp kiểm tra dung lượng.
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 // Số ký tự của text nguồn thực sự gửi cho Gemini — giữ prompt nhỏ/rẻ và giới hạn chi phí
 // bất kể link/đoạn dán của admin dài bao nhiêu.
 const MAX_CONTENT_LENGTH = 20_000;
@@ -292,56 +299,57 @@ export class LocalEventExtractionService {
     };
   }
 
-  // Chặn SSRF ở mức cơ bản: từ chối các dạng hostname nội bộ/loopback rõ ràng. Không phải
-  // phòng thủ toàn diện (không resolve DNS để bắt trường hợp 1 domain công khai rebind
-  // sang IP nội bộ) — mức độ này phù hợp vì đây là endpoint chỉ admin mới gọi được và
-  // phải chủ động kích hoạt (không phải input công khai), đúng theo yêu cầu ban đầu là
-  // "chặn cơ bản".
-  private assertNotPrivateHost(hostname: string): void {
-    const lower = hostname.toLowerCase();
-    const isPrivate =
-      lower === 'localhost' ||
-      lower === '0.0.0.0' ||
-      lower === '::1' ||
-      lower.endsWith('.local') ||
-      /^127\./.test(lower) ||
-      /^10\./.test(lower) ||
-      /^192\.168\./.test(lower) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(lower);
-    if (isPrivate) {
-      throw new BadRequestException(
-        'Không được phép trích xuất từ địa chỉ nội bộ.',
-      );
-    }
-  }
-
+  // Chặn SSRF: xem chú thích chi tiết ở ssrf-guard.ts (giao thức, phân giải DNS, kiểm tra
+  // MỌI địa chỉ IP trả về, và ghi chú về giới hạn DNS rebinding còn lại).
+  //
+  // Chạy lại assertSafeUrl() cho MỖI lần chuyển hướng (redirect: 'manual' + tự đi theo ở
+  // đây) chứ không chỉ kiểm tra URL ban đầu: một link công khai hoàn toàn hợp lệ vẫn có
+  // thể 302 sang địa chỉ nội bộ, và bước kiểm tra ở URL gốc không bắt được việc đó.
   private async fetchUrlText(urlStr: string): Promise<string> {
-    const parsed = new URL(urlStr);
-    this.assertNotPrivateHost(parsed.hostname);
+    let currentUrl = urlStr;
+    let html = '';
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let html: string;
-    try {
-      const res = await fetch(parsed.toString(), {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: { 'User-Agent': 'VikaHotel-LocalEventBot/1.0' },
-      });
-      if (!res.ok) {
-        throw new BadRequestException(
-          `Không tải được nội dung từ link (HTTP ${res.status}).`,
+    for (let hop = 0; ; hop += 1) {
+      const target = await assertSafeUrl(currentUrl);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(target.toString(), {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: { 'User-Agent': 'VikaHotel-LocalEventBot/1.0' },
+        });
+
+        const location = res.headers.get('location');
+        if (res.status >= 300 && res.status < 400 && location) {
+          if (hop >= MAX_REDIRECTS) {
+            throw new BadRequestException(
+              'Link chuyển hướng quá nhiều lần, không thể tải.',
+            );
+          }
+          // new URL(location, target) để tự phân giải redirect dạng đường dẫn tương đối.
+          currentUrl = new URL(location, target).toString();
+          continue;
+        }
+
+        if (!res.ok) {
+          throw new BadRequestException(
+            `Không tải được nội dung từ link (HTTP ${res.status}).`,
+          );
+        }
+
+        html = await this.readBodyWithLimit(res, MAX_RESPONSE_BYTES);
+        break;
+      } catch (err) {
+        if (err instanceof BadRequestException) throw err;
+        this.logger.warn(
+          `Failed to fetch URL for local event extraction: ${err instanceof Error ? err.message : String(err)}`,
         );
+        throw new BadRequestException('Không tải được nội dung từ link này.');
+      } finally {
+        clearTimeout(timeout);
       }
-      html = await res.text();
-    } catch (err) {
-      if (err instanceof BadRequestException) throw err;
-      this.logger.warn(
-        `Failed to fetch URL for local event extraction: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      throw new BadRequestException('Không tải được nội dung từ link này.');
-    } finally {
-      clearTimeout(timeout);
     }
 
     const $ = cheerio.load(html);
@@ -351,5 +359,37 @@ export class LocalEventExtractionService {
       throw new BadRequestException('Không đọc được nội dung từ link này.');
     }
     return text;
+  }
+
+  // Đọc response theo stream, huỷ ngay khi vượt maxBytes thay vì await res.text() đọc hết
+  // rồi mới cắt ở MAX_CONTENT_LENGTH — không để 1 link trỏ tới file khổng lồ chiếm hết
+  // bộ nhớ trước khi kịp giới hạn.
+  private async readBodyWithLimit(
+    res: Response,
+    maxBytes: number,
+  ): Promise<string> {
+    if (!res.body) return '';
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let received = 0;
+    let text = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maxBytes) {
+          await reader.cancel();
+          throw new BadRequestException(
+            'Nội dung từ link vượt quá dung lượng cho phép.',
+          );
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      return text;
+    } finally {
+      reader.releaseLock();
+    }
   }
 }

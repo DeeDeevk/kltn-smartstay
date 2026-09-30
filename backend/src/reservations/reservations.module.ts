@@ -7,7 +7,6 @@ import { Booking } from '../bookings/entities/booking.entity';
 import { BookingServiceItem } from '../bookings/entities/booking-service-item.entity';
 import { Promotion } from '../promotions/entities/promotion.entity';
 import { Review } from '../reviews/entities/review.entity';
-import { Notification } from '../notifications/entities/notification.entity';
 
 import { RoomService } from '../rooms/room.service';
 import { RoomTypeService } from '../room-types/room-type.service';
@@ -15,14 +14,12 @@ import { BookingService } from '../bookings/booking.service';
 import { PromotionService } from '../promotions/promotion.service';
 import { ReviewService } from '../reviews/review.service';
 import { ReviewAnalysisService } from '../reviews/review-analysis.service';
-import { NotificationService } from '../notifications/notification.service';
 
 import { RoomController } from '../rooms/room.controller';
 import { RoomTypeController } from '../room-types/room-type.controller';
 import { BookingController } from '../bookings/booking.controller';
 import { PromotionController } from '../promotions/promotion.controller';
 import { ReviewController } from '../reviews/review.controller';
-import { NotificationController } from '../notifications/notification.controller';
 
 import { ServiceModule } from '../services/service.module';
 import { UserModule } from '../users/user.module';
@@ -30,6 +27,7 @@ import { RedisModule } from '../redis/redis.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { ShiftModule } from '../shifts/shift.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
+import { NotificationModule } from '../notifications/notification.module';
 // Cung cấp GeminiProvider cho ReviewAnalysisService — module riêng nên import được
 // mà không tạo vòng lặp với AiAgentModule (HotelConfigModule cũng dùng cách này).
 import { LlmModule } from '../ai-agent/llm/llm.module';
@@ -52,7 +50,6 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
       BookingServiceItem,
       Promotion,
       Review,
-      Notification,
     ]),
     ServiceModule,
     UserModule,
@@ -60,6 +57,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     RealtimeModule,
     ShiftModule,
     CashLedgerModule,
+    NotificationModule,
     LlmModule,
   ],
   controllers: [
@@ -68,7 +66,6 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     BookingController,
     PromotionController,
     ReviewController,
-    NotificationController,
   ],
   providers: [
     RoomService,
@@ -77,13 +74,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     PromotionService,
     ReviewService,
     ReviewAnalysisService,
-    NotificationService,
   ],
-  exports: [
-    RoomService,
-    RoomTypeService,
-    BookingService,
-    PromotionService,
-  ],
+  exports: [RoomService, RoomTypeService, BookingService, PromotionService],
 })
 export class ReservationsModule {}

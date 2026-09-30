@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Conversation, ConversationStatus } from './entities/conversation.entity';
+import {
+  Conversation,
+  ConversationStatus,
+} from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { UserService } from '../users/user.service';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -38,7 +41,10 @@ export class ChatService {
 
     const customer = await this.userService.findById(userId);
     return this.conversationRepo.save(
-      this.conversationRepo.create({ customer, status: ConversationStatus.OPEN }),
+      this.conversationRepo.create({
+        customer,
+        status: ConversationStatus.OPEN,
+      }),
     );
   }
 
@@ -63,7 +69,7 @@ export class ChatService {
   // thoại. Admin không tham gia chat với khách nên không có ngoại lệ ở đây.
   assertCanAccess(conversation: Conversation, requester: Requester) {
     const isOwner = conversation.customer.userId === requester.userId;
-    const isStaff = requester.role === UserRole.STAFF;
+    const isStaff = (requester.role as UserRole) === UserRole.STAFF;
     if (!isOwner && !isStaff) {
       throw new ForbiddenException('Bạn không có quyền xem hội thoại này');
     }

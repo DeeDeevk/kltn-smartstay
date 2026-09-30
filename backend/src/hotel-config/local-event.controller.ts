@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { LocalEventService } from './local-event.service';
 import { LocalEventExtractionService } from './local-event-extraction.service';
@@ -24,6 +25,12 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
+// 2 endpoint trích xuất đều gọi Gemini (tốn quota free tier) và extract() còn kéo theo 1
+// lượt fetch mạng ngoài — chặt hơn mức mặc định toàn cục để 1 admin bấm liên tục không
+// vô tình đốt hết quota chung của cả hệ thống. Cùng mức với AI_CHAT_THROTTLE
+// (ai-agent.controller.ts) vì bản chất là cùng loại chi phí (1 request = 1 lượt gọi LLM).
+const EXTRACT_THROTTLE = { default: { limit: 5, ttl: 60000 } };
+
 @Controller('local-events')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
@@ -34,6 +41,7 @@ export class LocalEventController {
   ) {}
 
   @Post('extract')
+  @Throttle(EXTRACT_THROTTLE)
   extract(@Body() dto: ExtractLocalEventsDto) {
     return this.localEventExtractionService.extract(dto);
   }
@@ -42,6 +50,7 @@ export class LocalEventController {
   // đuôi file/nội dung để LocalEventExtractionService tự kiểm tra tiếp (mimetype trình
   // duyệt gửi lên không đáng tin cho .docx).
   @Post('extract-file')
+  @Throttle(EXTRACT_THROTTLE)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   extractFromFile(
     @UploadedFile(
