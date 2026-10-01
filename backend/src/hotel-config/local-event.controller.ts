@@ -8,27 +8,39 @@ import {
   ParseFilePipeBuilder,
   Patch,
   Post,
+  Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { LocalEventService } from './local-event.service';
 import { LocalEventExtractionService } from './local-event-extraction.service';
+import { LocalEventAutoScanService } from './local-event-auto-scan.service';
 import { CreateLocalEventDto } from './dto/create-local-event.dto';
 import { UpdateLocalEventDto } from './dto/update-local-event.dto';
 import { ExtractLocalEventsDto } from './dto/extract-local-events.dto';
+import { TriggerAutoScanDto } from './dto/trigger-auto-scan.dto';
+import { QueryScanRunsDto } from './dto/query-scan-runs.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { EventScanTriggeredBy } from '../common/enums/event-scan-triggered-by.enum';
 
-// 2 endpoint trích xuất đều gọi Gemini (tốn quota free tier) và extract() còn kéo theo 1
-// lượt fetch mạng ngoài — chặt hơn mức mặc định toàn cục để 1 admin bấm liên tục không
-// vô tình đốt hết quota chung của cả hệ thống. Cùng mức với AI_CHAT_THROTTLE
-// (ai-agent.controller.ts) vì bản chất là cùng loại chi phí (1 request = 1 lượt gọi LLM).
+interface AuthenticatedRequest extends Request {
+  user: { userId: string; email: string; role: string };
+}
+
+// 3 endpoint gọi Gemini đều tốn quota free tier, extract()/autoScan() còn kéo theo lưu
+// lượng mạng ngoài (fetch link / search-grounding) — chặt hơn mức mặc định toàn cục để 1
+// admin bấm liên tục không vô tình đốt hết quota chung của cả hệ thống. Cùng mức với
+// AI_CHAT_THROTTLE (ai-agent.controller.ts) vì bản chất là cùng loại chi phí (1 request =
+// 1 lượt gọi LLM).
 const EXTRACT_THROTTLE = { default: { limit: 5, ttl: 60000 } };
 
 @Controller('local-events')
@@ -38,12 +50,37 @@ export class LocalEventController {
   constructor(
     private readonly localEventService: LocalEventService,
     private readonly localEventExtractionService: LocalEventExtractionService,
+    private readonly localEventAutoScanService: LocalEventAutoScanService,
   ) {}
 
   @Post('extract')
   @Throttle(EXTRACT_THROTTLE)
   extract(@Body() dto: ExtractLocalEventsDto) {
     return this.localEventExtractionService.extract(dto);
+  }
+
+  @Post('auto-scan')
+  @Throttle(EXTRACT_THROTTLE)
+  autoScan(@Req() req: AuthenticatedRequest, @Body() dto: TriggerAutoScanDto) {
+    return this.localEventAutoScanService.scan(
+      dto.fromDate,
+      dto.toDate,
+      EventScanTriggeredBy.MANUAL,
+      req.user.userId,
+    );
+  }
+
+  // Đặt TRƯỚC @Get(':id') — nếu không, "/local-events/scan-runs" sẽ bị NestJS hiểu nhầm
+  // thành @Get(':id') với id = "scan-runs" vì route động 1 đoạn khớp trước route tĩnh khai
+  // sau nó.
+  @Get('scan-runs')
+  findScanRuns(@Query() query: QueryScanRunsDto) {
+    return this.localEventService.findScanRuns(query);
+  }
+
+  @Get('scan-runs/:id')
+  findScanRunById(@Param('id') id: string) {
+    return this.localEventService.findScanRunById(id);
   }
 
   // Kiểm tra dung lượng ở đây (ParseFilePipeBuilder) trước khi file chạm tới service —

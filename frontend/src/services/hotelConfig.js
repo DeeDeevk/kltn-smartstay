@@ -6,7 +6,7 @@ import axiosBaseQuery from './axiosBaseQuery';
 export const hotelConfigApi = createApi({
   reducerPath: 'hotelConfigApi',
   baseQuery: axiosBaseQuery(),
-  tagTypes: ['HotelConfig', 'LocalEvent'],
+  tagTypes: ['HotelConfig', 'LocalEvent', 'ScanRun'],
   endpoints: (builder) => ({
     getHotelConfig: builder.query({
       query: () => ({ url: '/hotel-config', method: 'get' }),
@@ -71,6 +71,35 @@ export const hotelConfigApi = createApi({
       },
       invalidatesTags: [{ type: 'LocalEvent', id: 'LIST' }],
     }),
+    // Gemini tự tìm kiếm trên web (search-grounding) sự kiện quanh khách sạn trong
+    // [fromDate, toDate] — khác extractLocalEvents() ở trên vì admin không cần tự tìm link,
+    // nhưng kết quả vẫn luôn là status='pending', không khác gì về độ an toàn. Trả về
+    // EventScanRun vừa tạo (kể cả khi status='failed').
+    triggerAutoScan: builder.mutation({
+      query: (data) => ({ url: '/local-events/auto-scan', method: 'post', data }),
+      invalidatesTags: [
+        { type: 'LocalEvent', id: 'LIST' },
+        { type: 'ScanRun', id: 'LIST' },
+      ],
+    }),
+    getScanRuns: builder.query({
+      query: ({ page = 1, limit = 20 } = {}) => ({
+        url: '/local-events/scan-runs',
+        method: 'get',
+        params: { page, limit },
+      }),
+      providesTags: (result) =>
+        result?.items
+          ? [
+              ...result.items.map(({ scanRunId }) => ({ type: 'ScanRun', id: scanRunId })),
+              { type: 'ScanRun', id: 'LIST' },
+            ]
+          : [{ type: 'ScanRun', id: 'LIST' }],
+    }),
+    getScanRunById: builder.query({
+      query: (scanRunId) => ({ url: `/local-events/scan-runs/${scanRunId}`, method: 'get' }),
+      providesTags: (result, error, scanRunId) => [{ type: 'ScanRun', id: scanRunId }],
+    }),
   }),
 });
 
@@ -84,4 +113,7 @@ export const {
   useExtractLocalEventsMutation,
   useApproveLocalEventMutation,
   useExtractLocalEventsFromFileMutation,
+  useTriggerAutoScanMutation,
+  useGetScanRunsQuery,
+  useGetScanRunByIdQuery,
 } = hotelConfigApi;

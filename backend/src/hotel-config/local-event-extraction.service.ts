@@ -213,9 +213,34 @@ export class LocalEventExtractionService {
     rawContent: string,
     sourceRefInput: string,
   ): Promise<LocalEvent[]> {
-    const content = rawContent.slice(0, MAX_CONTENT_LENGTH);
+    const drafts = await this.extractDraftsFromContent(rawContent);
     const sourceRef = sourceRefInput.slice(0, MAX_SOURCE_REF_LENGTH);
 
+    const events = drafts.map((draft) =>
+      this.localEventRepo.create({
+        ...draft,
+        source: LocalEventSource.AI_SUGGESTED,
+        status: LocalEventStatus.PENDING,
+        sourceRef,
+      }),
+    );
+    return this.localEventRepo.save(events);
+  }
+
+  // Public để LocalEventAutoScanService tái dùng ĐÚNG pipeline "text -> Gemini -> sanitize"
+  // (cắt nội dung, EXTRACTION_SYSTEM_PROMPT, retry, lọc kết quả) thay vì chép lại logic —
+  // khác với extractFromContent() ở trên, hàm này KHÔNG lưu DB: auto-scan cần tự kiểm tra
+  // trùng lặp với toàn bộ LocalEvent hiện có trước khi lưu, extractFromContent() không có
+  // bước đó (luồng trích xuất thủ công vốn luôn do admin tự xem lại từng cái).
+  async extractDraftsFromContent(
+    rawContent: string,
+  ): Promise<
+    Pick<
+      LocalEvent,
+      'title' | 'description' | 'recurrence' | 'dayOfWeek' | 'specificDate'
+    >[]
+  > {
+    const content = rawContent.slice(0, MAX_CONTENT_LENGTH);
     const parsed = await this.generateJsonWithRetry(content);
 
     if (!Array.isArray(parsed)) {
@@ -236,16 +261,7 @@ export class LocalEventExtractionService {
         'Không tìm thấy sự kiện nào trong nguồn này.',
       );
     }
-
-    const events = drafts.map((draft) =>
-      this.localEventRepo.create({
-        ...draft,
-        source: LocalEventSource.AI_SUGGESTED,
-        status: LocalEventStatus.PENDING,
-        sourceRef,
-      }),
-    );
-    return this.localEventRepo.save(events);
+    return drafts;
   }
 
   // Không bao giờ tin mù quáng vào cấu trúc JSON Gemini trả về — mọi trường đều được

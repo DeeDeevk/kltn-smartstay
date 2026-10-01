@@ -6,8 +6,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LocalEvent } from './entities/local-event.entity';
+import { EventScanRun } from './entities/event-scan-run.entity';
 import { CreateLocalEventDto } from './dto/create-local-event.dto';
 import { UpdateLocalEventDto } from './dto/update-local-event.dto';
+import { QueryScanRunsDto } from './dto/query-scan-runs.dto';
 import { EventRecurrence } from 'src/common/enums/event-recurrence.enum';
 import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 
@@ -16,6 +18,8 @@ export class LocalEventService {
   constructor(
     @InjectRepository(LocalEvent)
     private readonly localEventRepo: Repository<LocalEvent>,
+    @InjectRepository(EventScanRun)
+    private readonly scanRunRepo: Repository<EventScanRun>,
   ) {}
 
   // Dòng có dayOfWeek (WEEKLY, lặp vô hạn) được xếp trước dòng chỉ diễn ra 1 lần
@@ -193,5 +197,32 @@ export class LocalEventService {
         );
       }
     }
+  }
+
+  // Lịch sử các lần quét tự động (LocalEventAutoScanService) — mới nhất trước, phân trang
+  // vì danh sách sẽ dài dần theo thời gian (cron chạy mỗi tuần, cộng thêm các lần admin
+  // bấm thủ công).
+  async findScanRuns(query: QueryScanRunsDto): Promise<{
+    items: EventScanRun[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const [items, total] = await this.scanRunRepo.findAndCount({
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { items, total, page, limit };
+  }
+
+  async findScanRunById(scanRunId: string): Promise<EventScanRun> {
+    const run = await this.scanRunRepo.findOne({ where: { scanRunId } });
+    if (!run) {
+      throw new NotFoundException('Không tìm thấy lượt quét');
+    }
+    return run;
   }
 }

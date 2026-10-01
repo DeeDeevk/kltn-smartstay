@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Calendar, Check, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Pencil, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../../common/ConfirmModal';
 import LocalEventFormModal, { WEEKDAY_OPTIONS } from './LocalEventFormModal';
 import LocalEventExtractModal from './LocalEventExtractModal';
+import LocalEventScanModal from './LocalEventScanModal';
+import LocalEventScanHistorySection from './LocalEventScanHistorySection';
 import {
     useApproveLocalEventMutation,
     useDeleteLocalEventMutation,
@@ -145,6 +147,7 @@ function truncateSourceRef(sourceRef, max = 100) {
 const TABS = [
     { value: 'approved', label: 'Đã duyệt' },
     { value: 'pending', label: 'Chờ duyệt' },
+    { value: 'scan-history', label: 'Lịch sử quét' },
 ];
 
 // localStorage có thể bị chặn (chế độ riêng tư...) — lỗi ở đây chỉ làm mất tính năng nhớ
@@ -166,6 +169,7 @@ export default function LocalEventsSettingsPage() {
     const [activeTab, setActiveTab] = useState('approved');
     const [formState, setFormState] = useState({ open: false, event: null });
     const [extractOpen, setExtractOpen] = useState(false);
+    const [scanOpen, setScanOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [hidePast, setHidePast] = useState(readStoredHidePast);
 
@@ -254,7 +258,14 @@ export default function LocalEventsSettingsPage() {
                         trong khu vực.
                     </p>
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setScanOpen(true)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-4 py-2.5 text-sm font-semibold text-[#4F46E5] transition-colors hover:bg-[#E0E7FF]"
+                    >
+                        <Search size={16} /> Quét sự kiện gần đây
+                    </button>
                     <button
                         type="button"
                         onClick={() => setExtractOpen(true)}
@@ -306,7 +317,9 @@ export default function LocalEventsSettingsPage() {
                 </label>
             )}
 
-            {isLoading ? (
+            {activeTab === 'scan-history' ? (
+                <LocalEventScanHistorySection />
+            ) : isLoading ? (
                 <div className="space-y-3">
                     {[0, 1, 2].map((i) => (
                         <div key={i} className="h-24 animate-pulse rounded-2xl bg-[#F7F7FB]" />
@@ -425,6 +438,14 @@ export default function LocalEventsSettingsPage() {
                 open={extractOpen}
                 onClose={() => setExtractOpen(false)}
                 onExtracted={() => setActiveTab('pending')}
+            />
+
+            <LocalEventScanModal
+                open={scanOpen}
+                onClose={() => setScanOpen(false)}
+                onScanned={(run) =>
+                    setActiveTab(run.status === 'SUCCESS' && run.createdEventsCount > 0 ? 'pending' : 'scan-history')
+                }
             />
 
             <ConfirmModal
