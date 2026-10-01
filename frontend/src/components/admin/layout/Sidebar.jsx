@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CalendarDays,
   PartyPopper,
+  Landmark,
   Users,
   IdCard,
   Wallet,
@@ -76,6 +77,7 @@ const MENU_ITEMS = [
     children: [
       { icon: MapPin, label: 'Vị trí khách sạn', path: '/admin/settings/location', roles: ['ADMIN'] },
       { icon: PartyPopper, label: 'Sự kiện địa phương', path: '/admin/settings/local-events', roles: ['ADMIN'] },
+      { icon: Landmark, label: 'Địa điểm nổi bật', path: '/admin/settings/local-places', roles: ['ADMIN'] },
       { icon: CircleHelp, label: 'FAQ trợ lý AI', path: '/admin/faqs', roles: ['ADMIN'] },
     ],
   },

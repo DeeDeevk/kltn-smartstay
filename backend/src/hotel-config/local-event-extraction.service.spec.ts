@@ -2,6 +2,7 @@ import { Repository } from 'typeorm';
 import { LocalEventExtractionService } from './local-event-extraction.service';
 import { LocalEvent } from './entities/local-event.entity';
 import { GeminiProvider } from '../ai-agent/llm/gemini.provider';
+import { SourceContentService } from './source-content.service';
 
 // Chỉ test hành vi fetch/redirect của fetchUrlText() — phần kiểm tra host (IP riêng, IPv4-
 // mapped, DNS...) đã được test độc lập và đầy đủ ở ssrf-guard.spec.ts. Ở đây quan tâm tới
@@ -55,7 +56,11 @@ function buildService(generateJson: jest.Mock) {
     save: jest.fn((x: unknown) => Promise.resolve(x)),
   } as unknown as Repository<LocalEvent>;
   const gemini = { generateJson } as unknown as GeminiProvider;
-  return new LocalEventExtractionService(repo, gemini);
+  // SourceContentService không có dependency nào tự thân (chỉ gọi global.fetch/assertSafeUrl)
+  // nên dùng instance thật trực tiếp, không cần mock — các test bên dưới vẫn mock
+  // global.fetch như trước, giờ chỉ đi qua thêm 1 lớp gọi lại giống hệt hành vi cũ.
+  const sourceContentService = new SourceContentService();
+  return new LocalEventExtractionService(repo, gemini, sourceContentService);
 }
 
 describe('LocalEventExtractionService — fetchUrlText redirect handling', () => {

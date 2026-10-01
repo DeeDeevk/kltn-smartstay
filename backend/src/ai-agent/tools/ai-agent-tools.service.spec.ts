@@ -20,6 +20,7 @@ describe('AiAgentToolsService', () => {
   let faqEmbeddingService: { search: jest.Mock };
   let placesService: { getNearbyPlaces: jest.Mock };
   let localEventService: { findForDate: jest.Mock };
+  let localPlaceService: { findApproved: jest.Mock };
   let tools: AiAgentToolsService;
 
   const roomType = { roomTypeId: 'rt-1', name: 'Deluxe', basePrice: 1000000 };
@@ -82,6 +83,7 @@ describe('AiAgentToolsService', () => {
     faqEmbeddingService = { search: jest.fn() };
     placesService = { getNearbyPlaces: jest.fn() };
     localEventService = { findForDate: jest.fn() };
+    localPlaceService = { findApproved: jest.fn() };
 
     tools = new AiAgentToolsService(
       conversationRepo as unknown as never,
@@ -93,6 +95,7 @@ describe('AiAgentToolsService', () => {
       faqEmbeddingService as unknown as never,
       placesService as unknown as never,
       localEventService as unknown as never,
+      localPlaceService as unknown as never,
     );
   });
 
@@ -635,6 +638,50 @@ describe('AiAgentToolsService', () => {
         },
       ],
     });
+  });
+
+  // Nguồn RIÊNG với get_nearby_places (Google Places) — chỉ đọc LocalPlace đã APPROVED và
+  // chỉ trả về field cần cho agent trả lời khách (không lộ sourceRef/addressHint nội bộ).
+  it('get_local_highlights reads approved LocalPlace rows and strips internal fields', async () => {
+    localPlaceService.findApproved.mockResolvedValue([
+      {
+        placeId: 'pl-1',
+        name: 'Chợ đêm Bến Thành',
+        description: 'Khu chợ đêm sầm uất ngay trung tâm',
+        address: '123 Lê Lợi, Quận 1',
+        latitude: 10.772,
+        longitude: 106.698,
+        addressHint: null,
+        source: 'AI_SUGGESTED',
+        status: 'APPROVED',
+        sourceRef: 'https://example.com/bai-viet',
+      },
+    ]);
+
+    const result = await tools.execute(
+      'get_local_highlights',
+      {},
+      {
+        userId: null,
+        role: 'CUSTOMER',
+        conversation: makeConversation(),
+        currentUserMessage: {
+          text: 'gần đây có chỗ nào tham quan không',
+          createdAt: new Date(),
+        },
+      },
+    );
+
+    expect(localPlaceService.findApproved).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data).toEqual([
+      {
+        name: 'Chợ đêm Bến Thành',
+        description: 'Khu chợ đêm sầm uất ngay trung tâm',
+        address: '123 Lê Lợi, Quận 1',
+      },
+    ]);
   });
 
   // Phạm vi dữ liệu đơn đặt phòng do VAI TRÒ quyết định ở server, không phải do model

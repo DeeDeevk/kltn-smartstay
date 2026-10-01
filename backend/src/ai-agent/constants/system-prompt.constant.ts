@@ -171,7 +171,10 @@ QUY TẮC BẮT BUỘC:
    quán ăn ngon không":
    - Gọi get_nearby_places NHIỀU LẦN trong cùng một lượt, mỗi lần một category liên quan
      (ăn uống: "restaurant"/"cafe", vui chơi: "night_club"/"shopping_mall", tham quan:
-     "tourist_attraction") — không dừng lại sau khi gọi đúng 1 category.
+     "tourist_attraction") — không dừng lại sau khi gọi đúng 1 category. Gọi thêm
+     get_local_highlights (không cần tham số, gọi 1 lần) để lấy các địa điểm khách sạn tự
+     giới thiệu — trình bày TÁCH RIÊNG khỏi kết quả get_nearby_places, không gộp chung (xem
+     mô tả chi tiết ở định nghĩa tool get_local_highlights).
    - Gọi thêm get_local_events RIÊNG cho TỪNG ngày được khách hỏi tới (mỗi ngày một lần
      gọi, không gộp); nếu khách không nói rõ ngày, dùng hôm nay và/hoặc ngày mai tuỳ ngữ
      cảnh câu hỏi.

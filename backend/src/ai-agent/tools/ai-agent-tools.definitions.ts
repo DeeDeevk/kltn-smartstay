@@ -253,4 +253,10 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
       required: ['date'],
     },
   },
+  {
+    name: 'get_local_highlights',
+    description:
+      'Lấy danh sách địa điểm tham quan/vui chơi/ăn uống do KHÁCH SẠN TỰ GIỚI THIỆU (admin đã xem và duyệt) — nguồn dữ liệu RIÊNG, KHÁC HẲN get_nearby_places (vốn lấy từ Google Places). Dùng CÙNG LÚC với get_nearby_places khi khách hỏi về địa điểm tham quan/vui chơi/ăn uống quanh khách sạn, không dùng thay thế cho nhau. Khi trình bày, PHẢI tách rõ 2 nhóm: các địa điểm từ tool này giới thiệu dưới dạng "Một số địa điểm được giới thiệu: ..." (không có đánh giá/link Google Maps), còn kết quả get_nearby_places giới thiệu dưới dạng "Các quán/địa điểm gần đó: ..." (có đánh giá/link nếu có) — TUYỆT ĐỐI không gộp chung thành 1 danh sách duy nhất, khách cần biết đây là 2 nguồn thông tin khác nhau. Không cần tham số. Nếu kết quả rỗng, nghĩa là khách sạn chưa có địa điểm tự giới thiệu nào — chỉ cần dùng kết quả của get_nearby_places, không cần nhắc tới việc tool này rỗng.',
+    parameters: { type: 'object', properties: {} },
+  },
 ];
