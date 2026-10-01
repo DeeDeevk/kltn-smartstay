@@ -15,6 +15,7 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { PlaceCategory } from 'src/common/enums/place-category.enum';
 import { PlacesService } from 'src/hotel-config/places.service';
 import { LocalEventService } from 'src/hotel-config/local-event.service';
+import { LocalPlaceService } from 'src/hotel-config/local-place.service';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
 import { LOGIN_REQUIRED_TOOLS } from './ai-agent-tools.definitions';
 import { WEEKDAY_NAMES_VI } from '../constants/system-prompt.constant';
@@ -123,6 +124,7 @@ export class AiAgentToolsService {
     private readonly faqEmbeddingService: FaqEmbeddingService,
     private readonly placesService: PlacesService,
     private readonly localEventService: LocalEventService,
+    private readonly localPlaceService: LocalPlaceService,
   ) {}
 
   async execute(
@@ -181,6 +183,8 @@ export class AiAgentToolsService {
         return this.getNearbyPlaces(args);
       case 'get_local_events':
         return this.getLocalEvents(args);
+      case 'get_local_highlights':
+        return this.getLocalHighlights();
       default:
         throw new BadRequestException(`Tool không tồn tại: ${name}`);
     }
@@ -583,5 +587,18 @@ export class AiAgentToolsService {
         recurrence: event.recurrence,
       })),
     };
+  }
+
+  // Nguồn RIÊNG biệt với getNearbyPlaces (Google Places) — xem chú thích ở
+  // get_local_highlights trong ai-agent-tools.definitions.ts. Chỉ trả về field cần thiết
+  // để trả lời khách (không trả address thô dạng addressHint/sourceRef — đó là dữ liệu nội
+  // bộ cho admin, không phải để agent đọc cho khách).
+  private async getLocalHighlights() {
+    const places = await this.localPlaceService.findApproved();
+    return places.map((place) => ({
+      name: place.name,
+      description: place.description,
+      address: place.address,
+    }));
   }
 }

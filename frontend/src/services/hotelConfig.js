@@ -6,7 +6,7 @@ import axiosBaseQuery from './axiosBaseQuery';
 export const hotelConfigApi = createApi({
   reducerPath: 'hotelConfigApi',
   baseQuery: axiosBaseQuery(),
-  tagTypes: ['HotelConfig', 'LocalEvent'],
+  tagTypes: ['HotelConfig', 'LocalEvent', 'ScanRun', 'LocalPlace'],
   endpoints: (builder) => ({
     getHotelConfig: builder.query({
       query: () => ({ url: '/hotel-config', method: 'get' }),
@@ -71,6 +71,83 @@ export const hotelConfigApi = createApi({
       },
       invalidatesTags: [{ type: 'LocalEvent', id: 'LIST' }],
     }),
+    // Gemini tự tìm kiếm trên web (search-grounding) sự kiện quanh khách sạn trong
+    // [fromDate, toDate] — khác extractLocalEvents() ở trên vì admin không cần tự tìm link,
+    // nhưng kết quả vẫn luôn là status='pending', không khác gì về độ an toàn. Trả về
+    // EventScanRun vừa tạo (kể cả khi status='failed').
+    triggerAutoScan: builder.mutation({
+      query: (data) => ({ url: '/local-events/auto-scan', method: 'post', data }),
+      invalidatesTags: [
+        { type: 'LocalEvent', id: 'LIST' },
+        { type: 'ScanRun', id: 'LIST' },
+      ],
+    }),
+    getScanRuns: builder.query({
+      query: ({ page = 1, limit = 20 } = {}) => ({
+        url: '/local-events/scan-runs',
+        method: 'get',
+        params: { page, limit },
+      }),
+      providesTags: (result) =>
+        result?.items
+          ? [
+              ...result.items.map(({ scanRunId }) => ({ type: 'ScanRun', id: scanRunId })),
+              { type: 'ScanRun', id: 'LIST' },
+            ]
+          : [{ type: 'ScanRun', id: 'LIST' }],
+    }),
+    getScanRunById: builder.query({
+      query: (scanRunId) => ({ url: `/local-events/scan-runs/${scanRunId}`, method: 'get' }),
+      providesTags: (result, error, scanRunId) => [{ type: 'ScanRun', id: scanRunId }],
+    }),
+    // Địa điểm tham quan/vui chơi/ăn uống — nguồn dữ liệu RIÊNG với LocalEvent, phục vụ
+    // trang /admin/settings/local-places. Cùng pattern status='pending'/'approved' và
+    // source='manual'/'ai_suggested' như local-events.
+    getLocalPlaces: builder.query({
+      query: () => ({ url: '/local-places', method: 'get' }),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ placeId }) => ({ type: 'LocalPlace', id: placeId })),
+              { type: 'LocalPlace', id: 'LIST' },
+            ]
+          : [{ type: 'LocalPlace', id: 'LIST' }],
+    }),
+    createLocalPlace: builder.mutation({
+      query: (data) => ({ url: '/local-places', method: 'post', data }),
+      invalidatesTags: [{ type: 'LocalPlace', id: 'LIST' }],
+    }),
+    updateLocalPlace: builder.mutation({
+      query: ({ placeId, ...data }) => ({
+        url: `/local-places/${placeId}`,
+        method: 'patch',
+        data,
+      }),
+      invalidatesTags: (result, error, { placeId }) => [
+        { type: 'LocalPlace', id: placeId },
+        { type: 'LocalPlace', id: 'LIST' },
+      ],
+    }),
+    deleteLocalPlace: builder.mutation({
+      query: (placeId) => ({ url: `/local-places/${placeId}`, method: 'delete' }),
+      invalidatesTags: [{ type: 'LocalPlace', id: 'LIST' }],
+    }),
+    approveLocalPlace: builder.mutation({
+      query: (placeId) => ({
+        url: `/local-places/${placeId}/approve`,
+        method: 'patch',
+      }),
+      invalidatesTags: (result, error, placeId) => [
+        { type: 'LocalPlace', id: placeId },
+        { type: 'LocalPlace', id: 'LIST' },
+      ],
+    }),
+    // AI-assisted extraction: body là { url } hoặc { text } (đúng 1 trong 2). Trả về mảng
+    // địa điểm vừa tạo, đều source='AI_SUGGESTED' status='PENDING', address=null.
+    extractLocalPlaces: builder.mutation({
+      query: (data) => ({ url: '/local-places/extract', method: 'post', data }),
+      invalidatesTags: [{ type: 'LocalPlace', id: 'LIST' }],
+    }),
   }),
 });
 
@@ -84,4 +161,13 @@ export const {
   useExtractLocalEventsMutation,
   useApproveLocalEventMutation,
   useExtractLocalEventsFromFileMutation,
+  useTriggerAutoScanMutation,
+  useGetScanRunsQuery,
+  useGetScanRunByIdQuery,
+  useGetLocalPlacesQuery,
+  useCreateLocalPlaceMutation,
+  useUpdateLocalPlaceMutation,
+  useDeleteLocalPlaceMutation,
+  useApproveLocalPlaceMutation,
+  useExtractLocalPlacesMutation,
 } = hotelConfigApi;

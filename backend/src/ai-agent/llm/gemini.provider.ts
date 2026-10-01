@@ -11,6 +11,7 @@ import {
   GoogleGenerativeAI,
   Part,
   SchemaType,
+  Tool,
 } from '@google/generative-ai';
 import {
   LlmChatResult,
@@ -169,6 +170,47 @@ export class GeminiProvider implements LlmProvider {
       );
       throw new InternalServerErrorException('Không đọc được phản hồi từ AI');
     }
+  }
+
+  // Sinh văn bản có "chấm đất" bằng Google Search (search grounding) — Gemini tự tìm kiếm
+  // trên web thật trước khi trả lời, kèm theo danh sách nguồn trích dẫn đã dùng. Dùng cho
+  // LocalEventAutoScanService: tìm sự kiện/lễ hội thật đang diễn ra quanh khách sạn, không
+  // dựa vào kiến thức huấn luyện cũ (có thể đã lỗi thời) của model.
+  //
+  // Gói tool { googleSearch: {} } là cú pháp CHO MODEL HỌ GEMINI 2.x (vd.
+  // gemini-flash-lite-latest đang dùng) — khác với { googleSearchRetrieval: {...} } dành
+  // cho họ Gemini 1.5 cũ. Bản SDK @google/generative-ai hiện cài (0.24.1) chưa cập nhật
+  // kiểu TypeScript cho field "googleSearch" (chỉ khai googleSearchRetrieval) nên phải ép
+  // kiểu qua `unknown as Tool` — đã xác minh cả 2 cú pháp đều được REST API CHẤP NHẬN về
+  // mặt định dạng (request đi qua được bước validate, không bị 400 Bad Request); request
+  // thật tại thời điểm viết code này bị chặn ở bước quota (429) do gói API key dùng để
+  // phát triển chưa bật billing cho search grounding — không phải lỗi cú pháp.
+  //
+  // Không có logic retry ở đây — cùng nguyên tắc với generateJson() phía trên: nơi gọi
+  // (LocalEventAutoScanService) tự quyết định retry, provider chỉ là lớp gọi API mỏng.
+  async generateWithSearch(
+    prompt: string,
+  ): Promise<{ text: string; citations: { url: string; title: string }[] }> {
+    const googleSearchTool = { googleSearch: {} } as unknown as Tool;
+    const model = this.client.getGenerativeModel({
+      model: this.modelName,
+      tools: [googleSearchTool],
+    });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const groundingChunks =
+      result.response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+
+    // web?.uri/title có thể thiếu tuỳ chunk (SDK khai optional) — bỏ qua chunk nào không
+    // có đủ cả URL lẫn tiêu đề thay vì tạo ra citation rỗng/nửa vời cho admin xem.
+    const citations = groundingChunks
+      .map((chunk) => ({
+        url: chunk.web?.uri ?? '',
+        title: chunk.web?.title ?? '',
+      }))
+      .filter((c) => c.url && c.title);
+
+    return { text, citations };
   }
 
   private toGeminiSchema(schema: LlmToolParameterSchema): unknown {
