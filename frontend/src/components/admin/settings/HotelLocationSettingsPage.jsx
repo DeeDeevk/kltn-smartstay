@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Crosshair, Info, Loader2, MapPin, MapPinOff, Save, Search } from 'lucide-react';
 import { toast } from 'react-toastify';
-import {
-    getPlaceDetail,
-    getVietmapStyleUrl,
-    loadVietmapGL,
-    reverseGeocode,
-    searchAddress,
-} from '../../../utils/vietmap';
+import { getPlaceDetail, getVietmapStyleUrl, loadVietmapGL, reverseGeocode, searchAddress } from '../../../utils/vietmap';
+import useAddressAutocomplete from '../../../hooks/useAddressAutocomplete';
 import {
     useGetHotelConfigQuery,
     useUpdateHotelLocationMutation,
@@ -20,8 +15,9 @@ const DEFAULT_CENTER = { lat: 10.78, lng: 106.7 };
 const DEFAULT_ZOOM = 11;
 const SELECTED_ZOOM = 16;
 const MAP_LOAD_TIMEOUT_MS = 10000;
-const MIN_SEARCH_LENGTH = 2; // Vietmap Autocomplete yêu cầu tối thiểu 2 ký tự
-const SEARCH_DEBOUNCE_MS = 300;
+// Dùng riêng cho nút/Enter "Tìm" (tìm ngay theo đúng chữ đang gõ, không qua debounce) —
+// khác với useAddressAutocomplete (gợi ý tự động khi gõ), nên giữ hằng số riêng ở đây.
+const MIN_SEARCH_LENGTH = 2;
 const MARKER_COLOR = '#0EA5B5';
 // Sai số cho phép khi so sánh toạ độ đang chỉnh với toạ độ đã lưu (quyết định nút Lưu/Huỷ
 // có bật hay không) — tránh việc lệch vài phần triệu độ do làm tròn khiến nút cứ bật mãi.
@@ -80,9 +76,8 @@ export default function HotelLocationSettingsPage() {
     // đúng lúc thư viện bản đồ tải xong sau khi config đã có sẵn.
     const [mapReady, setMapReady] = useState(false);
 
-    const [suggestions, setSuggestions] = useState([]);
-    // 'idle' | 'loading' | 'ready' | 'empty' | 'error'
-    const [suggestState, setSuggestState] = useState('idle');
+    const { suggestions, state: suggestState, search: searchSuggestions, reset: resetSuggestions } =
+        useAddressAutocomplete();
     const [searching, setSearching] = useState(false);
     const [resolvingAddress, setResolvingAddress] = useState(false);
 
@@ -93,9 +88,6 @@ export default function HotelLocationSettingsPage() {
     // Marker chỉ được addTo(map) khi đã có vị trí thật (chọn địa chỉ / vị trí đã lưu) —
     // false lúc mới vào trang mà khách sạn chưa từng cấu hình vị trí.
     const markerOnMapRef = useRef(false);
-    const suggestTimerRef = useRef(null);
-    // Chống kết quả trả về lệch thứ tự: chỉ nhận response của request MỚI NHẤT.
-    const suggestSeqRef = useRef(0);
     const reverseSeqRef = useRef(0);
     // Đánh dấu đã đưa marker/bản đồ về đúng vị trí đã lưu 1 lần — nếu không có cờ này,
     // mỗi lần query refetch (VD sau khi lưu xong, tag HotelConfig bị invalidate) sẽ kéo
@@ -189,8 +181,7 @@ export default function HotelLocationSettingsPage() {
                 marker.on('dragend', () => {
                     const { lat, lng } = marker.getLngLat();
                     setPosition({ lat, lng });
-                    setSuggestions([]);
-                    setSuggestState('idle');
+                    resetSuggestions();
                     resolveAddress(lat, lng);
                 });
 
@@ -204,7 +195,6 @@ export default function HotelLocationSettingsPage() {
 
         return () => {
             cancelled = true;
-            window.clearTimeout(suggestTimerRef.current);
             window.clearTimeout(loadTimer);
             marker?.remove();
             map?.remove();
@@ -212,7 +202,7 @@ export default function HotelLocationSettingsPage() {
             markerRef.current = null;
             markerOnMapRef.current = false;
         };
-    }, [resolveAddress]);
+    }, [resolveAddress, resetSuggestions]);
 
     // Đưa marker/bản đồ về đúng vị trí đã lưu ngay khi cả bản đồ lẫn dữ liệu config đều
     // sẵn sàng (không cần biết cái nào xong trước — effect này tự chờ đủ cả 2). Phải có
@@ -234,51 +224,25 @@ export default function HotelLocationSettingsPage() {
         appliedConfigRef.current = true;
     }, [config, mapReady, placeMarker]);
 
-    // Gõ vào ô địa chỉ -> gọi Autocomplete (debounce). Gọi ở onChange chứ không phải effect
-    // theo `address`, để các lần setAddress do chương trình (chọn gợi ý, kéo ghim) không
-    // kích hoạt lại một lượt tìm kiếm ngoài ý muốn.
+    // Gõ vào ô địa chỉ -> gọi Autocomplete (debounce, qua hook dùng chung). Gọi ở onChange
+    // chứ không phải effect theo `address`, để các lần setAddress do chương trình (chọn gợi
+    // ý, kéo ghim) không kích hoạt lại một lượt tìm kiếm ngoài ý muốn.
     const handleAddressChange = (event) => {
         const value = event.target.value;
         setAddress(value);
-        window.clearTimeout(suggestTimerRef.current);
-
-        const text = value.trim();
-        if (text.length < MIN_SEARCH_LENGTH) {
-            suggestSeqRef.current += 1;
-            setSuggestions([]);
-            setSuggestState('idle');
-            return;
-        }
-
-        suggestTimerRef.current = window.setTimeout(async () => {
-            const seq = ++suggestSeqRef.current;
-            setSuggestState('loading');
-            try {
-                const list = await searchAddress(text, position ?? DEFAULT_CENTER);
-                if (seq !== suggestSeqRef.current) return;
-                setSuggestions(list);
-                setSuggestState(list.length > 0 ? 'ready' : 'empty');
-            } catch {
-                if (seq !== suggestSeqRef.current) return;
-                setSuggestions([]);
-                setSuggestState('error');
-            }
-        }, SEARCH_DEBOUNCE_MS);
+        searchSuggestions(value, position ?? DEFAULT_CENTER);
     };
 
     // Chọn 1 địa chỉ (từ gợi ý hoặc kết quả đầu của nút Tìm): Autocomplete chỉ cho ref_id nên
     // phải gọi Place lấy toạ độ chính xác rồi mới di chuyển bản đồ + marker.
     const applyPlace = async (item) => {
-        window.clearTimeout(suggestTimerRef.current);
-        suggestSeqRef.current += 1;
+        resetSuggestions();
         try {
             const place = await getPlaceDetail(item.refId);
             placeMarker(place.lat, place.lng);
             mapRef.current?.flyTo({ center: [place.lng, place.lat], zoom: SELECTED_ZOOM });
             setPosition({ lat: place.lat, lng: place.lng });
             setAddress(place.display || item.display);
-            setSuggestions([]);
-            setSuggestState('idle');
         } catch {
             toast.error('Không lấy được toạ độ của địa chỉ này, thử một gợi ý khác.');
         }
@@ -289,7 +253,7 @@ export default function HotelLocationSettingsPage() {
     const handleSearchAddress = async () => {
         const text = address.trim();
         if (text.length < MIN_SEARCH_LENGTH || searching) return;
-        window.clearTimeout(suggestTimerRef.current);
+        resetSuggestions();
         setSearching(true);
         try {
             const list = await searchAddress(text, position ?? DEFAULT_CENTER);
@@ -330,10 +294,7 @@ export default function HotelLocationSettingsPage() {
     // Bỏ hết thay đổi đang chỉnh dở, quay về đúng dữ liệu đã lưu (hoặc về trạng thái trống
     // nếu khách sạn chưa từng lưu vị trí nào) — chỉ đổi state cục bộ, không gọi API.
     const handleCancel = () => {
-        window.clearTimeout(suggestTimerRef.current);
-        suggestSeqRef.current += 1;
-        setSuggestions([]);
-        setSuggestState('idle');
+        resetSuggestions();
 
         if (hasSavedLocation) {
             const center = { lat: config.latitude, lng: config.longitude };

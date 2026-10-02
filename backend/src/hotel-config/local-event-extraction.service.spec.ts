@@ -150,3 +150,54 @@ describe('LocalEventExtractionService — fetchUrlText redirect handling', () =>
     expect(calledUrls[1]).toBe('https://203.0.113.20/moved');
   });
 });
+
+// Bug đã sửa ở LocalEventAutoScanService: trước đây extractDraftsFromContent() ném CÙNG 1
+// exception cho cả "Gemini trả sai định dạng" (lỗi thật) lẫn "mảng rỗng sau sanitize"
+// (hợp lệ) — khiến auto-scan không phân biệt được lỗi thật với "không có gì" và báo SUCCESS
+// nhầm cho cả lỗi thật. 2 khối dưới đây khoá lại đúng hợp đồng mới: extractDraftsFromContent
+// chỉ ném lỗi cho trường hợp sai định dạng thật, còn extractFromContent (luồng admin thủ
+// công qua extract()/extractFromFile()) vẫn phải báo lỗi "không tìm thấy sự kiện nào" y hệt
+// hành vi cũ khi không trích được gì.
+describe('LocalEventExtractionService — extractDraftsFromContent trả [] thay vì ném lỗi khi hợp lệ nhưng rỗng', () => {
+  it('Gemini trả mảng rỗng hợp lệ -> trả về [] thay vì ném lỗi', async () => {
+    const generateJson = jest.fn().mockResolvedValue([]);
+    const service = buildService(generateJson);
+
+    const drafts = await service.extractDraftsFromContent(
+      'nội dung không có sự kiện nào',
+    );
+
+    expect(drafts).toEqual([]);
+  });
+
+  it('Gemini trả mảng toàn item không có title -> sau sanitize còn [] (không ném lỗi)', async () => {
+    const generateJson = jest
+      .fn()
+      .mockResolvedValue([{ title: '', description: 'thiếu tên' }]);
+    const service = buildService(generateJson);
+
+    const drafts = await service.extractDraftsFromContent('nội dung mơ hồ');
+
+    expect(drafts).toEqual([]);
+  });
+
+  it('Gemini trả sai định dạng (không phải mảng) -> VẪN ném lỗi (lỗi thật, không phải "rỗng")', async () => {
+    const generateJson = jest.fn().mockResolvedValue({ not: 'an array' });
+    const service = buildService(generateJson);
+
+    await expect(
+      service.extractDraftsFromContent('nội dung bất kỳ'),
+    ).rejects.toThrow('Không đọc được phản hồi từ AI.');
+  });
+});
+
+describe('LocalEventExtractionService — extractFromContent (luồng admin thủ công) vẫn báo lỗi khi rỗng', () => {
+  it('extract({text}) vẫn ném "Không tìm thấy sự kiện nào" khi Gemini trả mảng rỗng', async () => {
+    const generateJson = jest.fn().mockResolvedValue([]);
+    const service = buildService(generateJson);
+
+    await expect(
+      service.extract({ text: 'đoạn văn bản không có sự kiện nào' }),
+    ).rejects.toThrow('Không tìm thấy sự kiện nào trong nguồn này.');
+  });
+});

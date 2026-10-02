@@ -1,56 +1,26 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Loader2, MapPin, Search } from 'lucide-react';
-import { getPlaceDetail, searchAddress } from '../../../utils/vietmap';
+import { getPlaceDetail } from '../../../utils/vietmap';
+import useAddressAutocomplete from '../../../hooks/useAddressAutocomplete';
 
-const MIN_SEARCH_LENGTH = 2; // Vietmap Autocomplete yêu cầu tối thiểu 2 ký tự
-const SEARCH_DEBOUNCE_MS = 300;
-
-// Ô tìm địa chỉ NHỎ, không kèm bản đồ — tái dùng ĐÚNG 2 hàm gọi Vietmap đã viết cho trang
-// Cài đặt vị trí khách sạn (searchAddress/getPlaceDetail ở utils/vietmap.js), không viết
-// lại logic gọi API. Khác HotelLocationSettingsPage ở chỗ không cần vẽ bản đồ/marker — chỉ
-// cần chọn đúng 1 địa chỉ rồi trả toạ độ ra ngoài qua onSelect, dùng cho card "Chờ duyệt"
-// của LocalPlace (admin xác nhận địa chỉ cho 1 địa điểm AI đề xuất) và form thêm/sửa thủ công.
+// Ô tìm địa chỉ NHỎ, không kèm bản đồ — tái dùng ĐÚNG hook debounce/autocomplete dùng
+// chung với HotelLocationSettingsPage (useAddressAutocomplete) và hàm getPlaceDetail đã có
+// ở utils/vietmap.js, không viết lại logic gọi API. Khác HotelLocationSettingsPage ở chỗ
+// không cần vẽ bản đồ/marker — chỉ cần chọn đúng 1 địa chỉ rồi trả toạ độ ra ngoài qua
+// onSelect, dùng cho card "Chờ duyệt" của LocalPlace (admin xác nhận địa chỉ cho 1 địa điểm
+// AI đề xuất) và form thêm/sửa thủ công.
 export default function AddressAutocompleteField({ value, placeholder, onSelect }) {
   const [text, setText] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  // 'idle' | 'loading' | 'ready' | 'empty' | 'error'
-  const [state, setState] = useState('idle');
   const [resolving, setResolving] = useState(null); // refId đang resolve, null nếu không có
-  const timerRef = useRef(null);
-  const seqRef = useRef(0);
+  const { suggestions, state, search, reset, setError } = useAddressAutocomplete();
 
   const handleChange = (e) => {
     const next = e.target.value;
     setText(next);
-    window.clearTimeout(timerRef.current);
-
-    const trimmed = next.trim();
-    if (trimmed.length < MIN_SEARCH_LENGTH) {
-      seqRef.current += 1;
-      setSuggestions([]);
-      setState('idle');
-      return;
-    }
-
-    timerRef.current = window.setTimeout(async () => {
-      const seq = ++seqRef.current;
-      setState('loading');
-      try {
-        const list = await searchAddress(trimmed);
-        if (seq !== seqRef.current) return;
-        setSuggestions(list);
-        setState(list.length > 0 ? 'ready' : 'empty');
-      } catch {
-        if (seq !== seqRef.current) return;
-        setSuggestions([]);
-        setState('error');
-      }
-    }, SEARCH_DEBOUNCE_MS);
+    search(next);
   };
 
   const handleSelect = async (item) => {
-    window.clearTimeout(timerRef.current);
-    seqRef.current += 1;
     setResolving(item.refId);
     try {
       const place = await getPlaceDetail(item.refId);
@@ -60,10 +30,9 @@ export default function AddressAutocompleteField({ value, placeholder, onSelect 
         longitude: place.lng,
       });
       setText('');
-      setSuggestions([]);
-      setState('idle');
+      reset();
     } catch {
-      setState('error');
+      setError();
     } finally {
       setResolving(null);
     }
