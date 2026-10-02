@@ -1,6 +1,7 @@
 import { useState } from "react";
 import StarIcon from "../../assets/icon/star.png";
 import Review from "./Review";
+import RoomReviewAiSummary from "./RoomReviewAiSummary";
 import { useGetReviewsByRoomTypeQuery } from "../../services/review";
 import { useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
@@ -43,6 +44,8 @@ export default function RoomReviews({ averageRating, totalReviews }) {
           {t('room.reviews.count', { count: reviewsCount })}
         </span>
       </div>
+
+      <RoomReviewAiSummary roomTypeId={id} />
 
       {/* Reviews grid */}
       {reviews.length > 0 ? (

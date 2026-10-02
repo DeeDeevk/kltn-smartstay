@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ReviewService } from './review.service';
+import { RoomTypeReviewSummaryService } from '../room-types/room-type-review-summary.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
 import { ReplyReviewDto } from './dto/reply-review.dto';
@@ -28,12 +29,23 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('reviews')
 export class ReviewController {
-  constructor(private readonly reviewService: ReviewService) {}
+  constructor(
+    private readonly reviewService: ReviewService,
+    private readonly roomTypeReviewSummaryService: RoomTypeReviewSummaryService,
+  ) {}
 
   // Công khai: trang chi tiết phòng hiện đánh giá cho cả khách chưa đăng nhập.
   @Get()
   findAll(@Query() query: QueryReviewDto) {
     return this.reviewService.findAll(query);
+  }
+
+  // Công khai: khối "AI tóm tắt đánh giá" trên trang chi tiết phòng. Đặt TRƯỚC 'me'/':id/reply'
+  // không cần thiết ở đây vì tiền tố "room-type/" không trùng với route nào khác, nhưng vẫn
+  // đặt gần đầu cho rõ ràng, theo đúng quy ước route tĩnh trước route động của file này.
+  @Get('room-type/:roomTypeId/summary')
+  getRoomTypeSummary(@Param('roomTypeId', ParseUUIDPipe) roomTypeId: string) {
+    return this.roomTypeReviewSummaryService.getSummary(roomTypeId);
   }
 
   // Công khai: khu "Cảm nhận khách hàng" ngoài trang chủ.

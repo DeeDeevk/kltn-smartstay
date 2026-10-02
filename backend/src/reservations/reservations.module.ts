@@ -14,6 +14,7 @@ import { BookingService } from '../bookings/booking.service';
 import { PromotionService } from '../promotions/promotion.service';
 import { ReviewService } from '../reviews/review.service';
 import { ReviewAnalysisService } from '../reviews/review-analysis.service';
+import { RoomTypeReviewSummaryService } from '../room-types/room-type-review-summary.service';
 
 import { RoomController } from '../rooms/room.controller';
 import { RoomTypeController } from '../room-types/room-type.controller';
@@ -74,6 +75,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     PromotionService,
     ReviewService,
     ReviewAnalysisService,
+    RoomTypeReviewSummaryService,
   ],
   exports: [RoomService, RoomTypeService, BookingService, PromotionService],
 })
