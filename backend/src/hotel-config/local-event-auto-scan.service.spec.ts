@@ -39,8 +39,17 @@ function buildService(overrides?: {
   const extractDraftsFromContent =
     overrides?.extractDrafts ?? jest.fn().mockResolvedValue([]);
 
+  // loadExistingForDedup() dùng createQueryBuilder (không còn .find()) để chỉ tải những
+  // dòng CÓ THỂ trùng (WEEKLY + ONCE trong khoảng ngày quét) thay vì toàn bộ bảng — mock
+  // lại đúng chuỗi gọi .select().where().getMany(), trả cố định overrides?.existingEvents.
+  const getMany = jest.fn().mockResolvedValue(overrides?.existingEvents ?? []);
+  const queryBuilder = {
+    select: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    getMany,
+  };
   const localEventRepo = {
-    find: jest.fn().mockResolvedValue(overrides?.existingEvents ?? []),
+    createQueryBuilder: jest.fn(() => queryBuilder),
     create: jest.fn((x: unknown) => x),
     save: localEventSave,
   } as unknown as Repository<LocalEvent>;
@@ -359,16 +368,14 @@ describe('LocalEventAutoScanService — chống trùng', () => {
     expect(scanRunSave).toHaveBeenCalledTimes(1);
   });
 
-  it('Gemini không tìm thấy sự kiện nào trong khoảng ngày -> vẫn SUCCESS (0 kết quả), không phải FAILED', async () => {
+  it('Gemini không tìm thấy sự kiện nào trong khoảng ngày (mảng rỗng, KHÔNG ném lỗi) -> vẫn SUCCESS (0 kết quả), không phải FAILED', async () => {
     const citations = [{ url: 'https://example.com/b', title: 'Báo B' }];
     const generateWithSearch = jest
       .fn()
       .mockResolvedValue({ text: 'không có sự kiện nào', citations });
-    const extractDrafts = jest
-      .fn()
-      .mockRejectedValue(
-        new Error('Không tìm thấy sự kiện nào trong nguồn này.'),
-      );
+    // extractDraftsFromContent() giờ trả [] cho trường hợp hợp lệ "không có gì", không còn
+    // ném lỗi cho trường hợp này — xem local-event-extraction.service.ts.
+    const extractDrafts = jest.fn().mockResolvedValue([]);
     const { service } = buildService({ generateWithSearch, extractDrafts });
 
     const run = await service.scan(
@@ -381,5 +388,64 @@ describe('LocalEventAutoScanService — chống trùng', () => {
     expect(run.status).toBe(EventScanStatus.SUCCESS);
     expect(run.createdEventsCount).toBe(0);
     expect(run.citations).toEqual(citations);
+  });
+});
+
+describe('LocalEventAutoScanService — lỗi THẬT sau khi search-grounding đã thành công (sửa bug)', () => {
+  // Bug đã sửa: trước đây mọi lỗi ở bước trích xuất/lưu (kể cả lỗi hệ thống thật, VD DB
+  // mất kết nối) đều bị catch-all coi là "không tìm thấy sự kiện" rồi báo SUCCESS nhầm.
+  // Giờ chỉ có mảng rỗng hợp lệ (test ở trên) mới là SUCCESS — mọi exception thật ở bước
+  // này đều phải thành FAILED.
+  it('extractDraftsFromContent ném lỗi thật (Gemini trả sai định dạng) -> ghi FAILED, không phải SUCCESS', async () => {
+    const citations = [{ url: 'https://example.com/c', title: 'Báo C' }];
+    const generateWithSearch = jest
+      .fn()
+      .mockResolvedValue({ text: 'nội dung lạ', citations });
+    const extractDrafts = jest
+      .fn()
+      .mockRejectedValue(new Error('Không đọc được phản hồi từ AI.'));
+    const { service, scanRunSave } = buildService({
+      generateWithSearch,
+      extractDrafts,
+    });
+
+    const run = await service.scan(
+      '2026-10-01',
+      '2026-10-20',
+      EventScanTriggeredBy.CRON,
+      null,
+    );
+
+    expect(run.status).toBe(EventScanStatus.FAILED);
+    expect(run.createdEventsCount).toBe(0);
+    // Vẫn giữ citations dù lỗi — Gemini ĐÃ tìm kiếm thành công, chỉ lỗi ở bước xử lý sau.
+    expect(run.citations).toEqual(citations);
+    expect(scanRunSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('lưu DB thất bại sau khi trích xuất thành công -> ghi FAILED, không phải SUCCESS', async () => {
+    const extractDrafts = jest.fn().mockResolvedValue([
+      {
+        title: 'Sự kiện mới',
+        description: null,
+        recurrence: EventRecurrence.ONCE,
+        dayOfWeek: null,
+        specificDate: '2026-10-12',
+      },
+    ]);
+    const { service, localEventSave } = buildService({ extractDrafts });
+    localEventSave.mockRejectedValueOnce(
+      new Error('connection pool exhausted'),
+    );
+
+    const run = await service.scan(
+      '2026-10-01',
+      '2026-10-20',
+      EventScanTriggeredBy.MANUAL,
+      'u1',
+    );
+
+    expect(run.status).toBe(EventScanStatus.FAILED);
+    expect(run.createdEventsCount).toBe(0);
   });
 });

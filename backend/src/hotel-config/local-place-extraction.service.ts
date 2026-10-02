@@ -7,6 +7,7 @@ import { LocalPlaceSource } from 'src/common/enums/local-place-source.enum';
 import { LocalPlaceStatus } from 'src/common/enums/local-place-status.enum';
 import { GeminiProvider } from 'src/ai-agent/llm/gemini.provider';
 import { SourceContentService } from './source-content.service';
+import { retryWithBackoff } from 'src/common/utils/retry-with-backoff';
 
 // Cùng tinh thần "AI hỗ trợ nhập liệu, có con người duyệt lại" như
 // LocalEventExtractionService (xem chú thích đầu file đó): AI chỉ tạo bản nháp
@@ -87,9 +88,7 @@ export class LocalPlaceExtractionService {
       this.logger.warn(
         `Gemini returned non-array for local place extraction: ${JSON.stringify(parsed).slice(0, 200)}`,
       );
-      throw new BadRequestException(
-        'Không tìm thấy địa điểm nào trong nguồn này.',
-      );
+      throw new BadRequestException('Không đọc được phản hồi từ AI.');
     }
 
     const drafts = (parsed as RawExtractedPlace[])
@@ -121,32 +120,36 @@ export class LocalPlaceExtractionService {
     return this.localPlaceRepo.save(places);
   }
 
-  // Cùng cơ chế thử lại như LocalEventExtractionService.generateJsonWithRetry — xem chú
-  // thích ở đó để biết lý do (lỗi tạm thời 503 "high demand" đã gặp khi test trực tiếp).
+  // Cơ chế retry dùng chung (retry-with-backoff.ts) với LocalEventExtractionService/
+  // LocalEventAutoScanService — xem chú thích ở retry-with-backoff.ts để biết lý do cần
+  // retry (lỗi tạm thời 503 "high demand" đã gặp khi test trực tiếp).
   private async generateJsonWithRetry(content: string): Promise<unknown> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await this.geminiProvider.generateJson(
-          EXTRACTION_PLACE_SYSTEM_PROMPT,
-          content,
-        );
-      } catch (err) {
-        const status = (err as { status?: number })?.status;
-        const retryable = status === undefined || RETRYABLE_STATUS.has(status);
-        const message = err instanceof Error ? err.message : String(err);
-        if (!retryable || attempt >= RETRY_DELAYS_MS.length) {
-          this.logger.error(
-            `Local place extraction failed${status ? ` (status ${status})` : ''}: ${message}`,
-          );
-          throw new BadRequestException('Không đọc được nội dung nguồn này.');
-        }
-        this.logger.warn(
-          `Local place extraction call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${RETRY_DELAYS_MS.length}): ${message}`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_DELAYS_MS[attempt]),
-        );
-      }
+    try {
+      return await retryWithBackoff(
+        () =>
+          this.geminiProvider.generateJson(
+            EXTRACTION_PLACE_SYSTEM_PROMPT,
+            content,
+          ),
+        {
+          retryableStatus: RETRYABLE_STATUS,
+          delaysMs: RETRY_DELAYS_MS,
+          onRetry: (attempt, err) => {
+            const status = (err as { status?: number })?.status;
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              `Local place extraction call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${RETRY_DELAYS_MS.length}): ${message}`,
+            );
+          },
+        },
+      );
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Local place extraction failed${status ? ` (status ${status})` : ''}: ${message}`,
+      );
+      throw new BadRequestException('Không đọc được nội dung nguồn này.');
     }
   }
 

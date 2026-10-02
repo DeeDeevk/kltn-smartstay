@@ -8,6 +8,7 @@ import { LocalEventSource } from 'src/common/enums/local-event-source.enum';
 import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 import { GeminiProvider } from 'src/ai-agent/llm/gemini.provider';
 import { SourceContentService } from './source-content.service';
+import { retryWithBackoff } from 'src/common/utils/retry-with-backoff';
 
 // Mở rộng ngoài phạm vi SRS (SRS ghi rõ "không tự động tổng hợp sự kiện từ nguồn ngoài").
 // Được đánh giá là vẫn nằm trong ranh giới đó vì tính năng không bao giờ tự chạy một
@@ -108,41 +109,55 @@ export class LocalEventExtractionService {
   // Thử lại khi Gemini lỗi tạm thời (quá tải/giới hạn tần suất) trước khi báo lỗi cho
   // admin — không có bước này thì 1 lần Gemini nghẽn thoáng qua (thực tế đã gặp: lỗi 503
   // "currently experiencing high demand" khi test trực tiếp) sẽ làm cả lượt trích xuất
-  // thất bại ngay, admin phải tự bấm lại từ đầu dù chỉ cần đợi vài giây là qua.
+  // thất bại ngay, admin phải tự bấm lại từ đầu dù chỉ cần đợi vài giây là qua. Cơ chế
+  // retry dùng chung (retry-with-backoff.ts) với LocalPlaceExtractionService/
+  // LocalEventAutoScanService — chỉ phần log/wrap lỗi cuối cùng là riêng của từng domain.
   private async generateJsonWithRetry(content: string): Promise<unknown> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await this.geminiProvider.generateJson(
-          EXTRACTION_SYSTEM_PROMPT,
-          content,
-        );
-      } catch (err) {
-        const status = (err as { status?: number })?.status;
-        const retryable = status === undefined || RETRYABLE_STATUS.has(status);
-        const message = err instanceof Error ? err.message : String(err);
-        if (!retryable || attempt >= RETRY_DELAYS_MS.length) {
-          this.logger.error(
-            `Local event extraction failed${status ? ` (status ${status})` : ''}: ${message}`,
-          );
-          throw new BadRequestException('Không đọc được nội dung nguồn này.');
-        }
-        this.logger.warn(
-          `Local event extraction call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${RETRY_DELAYS_MS.length}): ${message}`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_DELAYS_MS[attempt]),
-        );
-      }
+    try {
+      return await retryWithBackoff(
+        () =>
+          this.geminiProvider.generateJson(EXTRACTION_SYSTEM_PROMPT, content),
+        {
+          retryableStatus: RETRYABLE_STATUS,
+          delaysMs: RETRY_DELAYS_MS,
+          onRetry: (attempt, err) => {
+            const status = (err as { status?: number })?.status;
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              `Local event extraction call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${RETRY_DELAYS_MS.length}): ${message}`,
+            );
+          },
+        },
+      );
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Local event extraction failed${status ? ` (status ${status})` : ''}: ${message}`,
+      );
+      throw new BadRequestException('Không đọc được nội dung nguồn này.');
     }
   }
 
   // Dùng chung cho cả 3 nguồn (link, text dán tay, file tải lên): cắt bớt nội dung, gọi
   // Gemini, kiểm tra/lọc kết quả rồi lưu thành các dòng LocalEvent status=pending.
+  //
+  // "Không tìm thấy sự kiện nào" CHỈ được coi là lỗi (ném exception) Ở ĐÂY — luồng trích
+  // xuất thủ công cần báo ngay cho admin biết link/text này không có gì để trích. Ngược
+  // lại, extractDraftsFromContent() (dùng chung với LocalEventAutoScanService) trả mảng
+  // rỗng bình thường cho trường hợp này, KHÔNG ném lỗi — bên auto-scan cần phân biệt rõ
+  // "quét xong, không có sự kiện nào" (hợp lệ) với "quét bị lỗi thật" (phải ném lỗi), nếu
+  // dùng chung 1 exception cho cả 2 trường hợp thì nơi gọi không thể phân biệt được nữa.
   private async extractFromContent(
     rawContent: string,
     sourceRefInput: string,
   ): Promise<LocalEvent[]> {
     const drafts = await this.extractDraftsFromContent(rawContent);
+    if (drafts.length === 0) {
+      throw new BadRequestException(
+        'Không tìm thấy sự kiện nào trong nguồn này.',
+      );
+    }
     const sourceRef = sourceRefInput.slice(0, MAX_SOURCE_REF_LENGTH);
 
     const events = drafts.map((draft) =>
@@ -161,6 +176,15 @@ export class LocalEventExtractionService {
   // khác với extractFromContent() ở trên, hàm này KHÔNG lưu DB: auto-scan cần tự kiểm tra
   // trùng lặp với toàn bộ LocalEvent hiện có trước khi lưu, extractFromContent() không có
   // bước đó (luồng trích xuất thủ công vốn luôn do admin tự xem lại từng cái).
+  //
+  // CHỈ ném lỗi khi Gemini trả về cấu trúc sai định dạng (not an array) — đó là dấu hiệu
+  // có sự cố thật (API đổi hành vi, prompt bị vi phạm...), KHÔNG được âm thầm coi là "0 kết
+  // quả". Ngược lại, mảng rỗng SAU KHI sanitize (Gemini trả đúng định dạng nhưng không tìm
+  // thấy sự kiện nào trong văn bản) là kết quả HỢP LỆ — trả về [] bình thường, không ném
+  // lỗi, để LocalEventAutoScanService phân biệt được "quét xong, không có gì" (vẫn SUCCESS)
+  // với "quét bị lỗi thật" (phải là FAILED). Trước đây cả 2 trường hợp dùng chung 1
+  // exception khiến auto-scan không thể tách biệt được, dẫn tới lỗi thật bị báo nhầm thành
+  // SUCCESS — xem LocalEventAutoScanService.runScan().
   async extractDraftsFromContent(
     rawContent: string,
   ): Promise<
@@ -176,21 +200,12 @@ export class LocalEventExtractionService {
       this.logger.warn(
         `Gemini returned non-array for local event extraction: ${JSON.stringify(parsed).slice(0, 200)}`,
       );
-      throw new BadRequestException(
-        'Không tìm thấy sự kiện nào trong nguồn này.',
-      );
+      throw new BadRequestException('Không đọc được phản hồi từ AI.');
     }
 
-    const drafts = (parsed as RawExtractedEvent[])
+    return (parsed as RawExtractedEvent[])
       .map((raw) => this.sanitizeExtractedEvent(raw))
       .filter((draft): draft is NonNullable<typeof draft> => draft !== null);
-
-    if (drafts.length === 0) {
-      throw new BadRequestException(
-        'Không tìm thấy sự kiện nào trong nguồn này.',
-      );
-    }
-    return drafts;
   }
 
   // Không bao giờ tin mù quáng vào cấu trúc JSON Gemini trả về — mọi trường đều được
