@@ -30,10 +30,7 @@ export class ChatController {
   }
 
   @Get('conversations/:id/messages')
-  async getMessages(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  async getMessages(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     const conversation = await this.chatService.findConversationById(id);
     this.chatService.assertCanAccess(conversation, req.user);
     return this.chatService.getMessages(id);

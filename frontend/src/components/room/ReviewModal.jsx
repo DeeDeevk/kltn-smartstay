@@ -1,124 +1,117 @@
-import React, { useState } from 'react';
-import { X, Star, Loader2, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCreateReviewMutation } from '../../services/review';
 import { toast } from 'react-toastify';
+import Modal from '../common/Modal';
+import StarRating from '../common/StarRating';
+import { useCreateReviewMutation } from '../../services/review';
 
-const ReviewModal = ({ isOpen, onClose, bookingId, roomType, roomTypeId }) => {
+// Khớp với CreateReviewDto ở backend (@Length(5, 1000)).
+const COMMENT_MIN = 5;
+const COMMENT_MAX = 1000;
+
+const RATING_LABEL_KEYS = {
+  5: 'room.reviews.ratingExcellent',
+  4: 'room.reviews.ratingGood',
+  3: 'room.reviews.ratingAverage',
+  2: 'room.reviews.ratingPoor',
+  1: 'room.reviews.ratingBad',
+};
+
+export default function ReviewModal({ isOpen, onClose, bookingId, roomType }) {
   const { t } = useTranslation();
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [hover, setHover] = useState(0);
-
   const [createReview, { isLoading }] = useCreateReviewMutation();
 
-  if (!isOpen) return null;
+  // Modal được mount sẵn ở trang cha, đóng lại không tự xoá state — không reset thì
+  // lần đánh giá đơn tiếp theo sẽ thấy nguyên nội dung vừa gõ cho đơn trước.
+  useEffect(() => {
+    if (!isOpen) return;
+    setRating(5);
+    setComment('');
+  }, [isOpen, bookingId]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    const trimmed = comment.trim();
+    if (trimmed.length < COMMENT_MIN) {
+      toast.error(t('room.reviews.commentTooShort', { count: COMMENT_MIN }));
+      return;
+    }
     try {
-      await createReview({
-        booking_id: bookingId,
-        room_type_id: roomTypeId,
-        rating,
-        comment
-      }).unwrap();
-
+      // Chỉ gửi bookingId — backend tự suy ra loại phòng từ đơn, và cũng tự kiểm tra
+      // đơn có đúng của người đang đăng nhập và đã trả phòng hay chưa.
+      await createReview({ bookingId, rating, comment: trimmed }).unwrap();
       toast.success(t('room.reviews.submitSuccess'));
       onClose();
     } catch (err) {
-      toast.error(err.data?.message || t('room.reviews.submitError'));
+      toast.error(err?.data?.message || t('room.reviews.submitError'));
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 ">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-
-        {/* Header */}
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{t('room.reviews.writeReview')}</h2>
-            <p className="text-xs text-gray-500 mt-1">{t('room.reviews.reviewSubtitle', { roomName: roomType?.name })}</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
-            <X size={20} />
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title={t('room.reviews.writeReview')}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isLoading}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-70"
+          >
+            {t('room.reviews.cancel')}
           </button>
-        </div>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-70"
+          >
+            {isLoading ? t('room.reviews.submitting') : t('room.reviews.submit')}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-5 text-sm">
+        <p className="text-gray-500">
+          {t('room.reviews.reviewSubtitle', { roomName: roomType?.name })}
+        </p>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Star Rating */}
-          <div className="flex flex-col items-center justify-center py-4 bg-blue-50/50 rounded-xl space-y-3">
-            <span className="text-sm font-semibold text-blue-600 uppercase tracking-wider">{t('room.reviews.satisfaction')}</span>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  className="transition-transform active:scale-90"
-                  onMouseEnter={() => setHover(star)}
-                  onMouseLeave={() => setHover(0)}
-                  onClick={() => setRating(star)}
-                >
-                  <Star
-                    size={40}
-                    className={`transition-colors duration-200 ${(hover || rating) >= star
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-300 fill-gray-100'
-                      }`}
-                  />
-                </button>
-              ))}
-            </div>
-            <span className="text-lg font-bold text-gray-700">
-              {rating === 5 ? t('room.reviews.ratingExcellent') :
-                rating === 4 ? t('room.reviews.ratingGood') :
-                  rating === 3 ? t('room.reviews.ratingAverage') :
-                    rating === 2 ? t('room.reviews.ratingPoor') : t('room.reviews.ratingBad')}
+        <div>
+          <label className="mb-1.5 block font-semibold text-gray-700">
+            {t('room.reviews.satisfaction')}
+          </label>
+          <div className="flex items-center gap-3">
+            <StarRating value={rating} onChange={setRating} />
+            {/* Hiện luôn con số bên cạnh: nửa sao rất khó ước lượng bằng mắt, nhất là
+                khi phân vân giữa 3.5 và 4. */}
+            <span className="text-sm text-gray-500">
+              {rating.toFixed(1)} — {t(RATING_LABEL_KEYS[Math.ceil(rating)])}
             </span>
           </div>
+        </div>
 
-          {/* Comment Area */}
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700 ml-1">{t('room.reviews.commentLabel')}</label>
-            <textarea
-              required
-              rows={4}
-              className="w-full p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-700"
-              placeholder={t('room.reviews.commentPlaceholder')}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="block font-semibold text-gray-700">
+              {t('room.reviews.commentLabel')}
+            </label>
+            <span className="text-xs text-gray-400">
+              {comment.length}/{COMMENT_MAX}
+            </span>
           </div>
-
-          {/* Footer Actions */}
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-3 px-4 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-colors"
-            >
-              {t('room.reviews.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex-1 py-3 px-4 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 disabled:opacity-50"
-            >
-              {isLoading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <>
-                  <Send size={18} />
-                  {t('room.reviews.submit')}
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+          <textarea
+            rows={5}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            maxLength={COMMENT_MAX}
+            placeholder={t('room.reviews.commentPlaceholder')}
+            className="w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
       </div>
-    </div>
+    </Modal>
   );
-};
-
-export default ReviewModal;
+}

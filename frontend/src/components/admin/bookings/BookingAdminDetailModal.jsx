@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { CheckCircle2, Loader2, LogIn, LogOut, XCircle } from 'lucide-react';
+import { CheckCircle2, DoorOpen, Loader2, LogIn, LogOut, XCircle } from 'lucide-react';
 import Modal from '../../common/Modal';
 import StatusPill from '../../booking/StatusPill';
+import AvailableRoomPicker from '../../booking/AvailableRoomPicker';
 import {
   BOOKING_STATUS_STYLES,
   PAYMENT_STATUS_STYLES,
@@ -14,6 +15,7 @@ import getBookingCode from '../../../utils/bookingCode';
 import {
   useConfirmBookingMutation,
   useCancelBookingMutation,
+  useCheckInMutation,
 } from '../../../services/booking';
 
 const BOOKING_STATUS_LABELS = {
@@ -33,12 +35,28 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
   const navigate = useNavigate();
   const [confirmBooking, { isLoading: confirming }] = useConfirmBookingMutation();
   const [cancelBooking, { isLoading: cancelling }] = useCancelBookingMutation();
+  const [checkIn, { isLoading: checkingIn }] = useCheckInMutation();
   const [cancelMode, setCancelMode] = useState(false);
   const [reason, setReason] = useState('');
+  // Bước chọn phòng của luồng nhận phòng — mở ngay trong modal này thay vì điều hướng
+  // sang Sơ đồ phòng: đơn đặt online luôn chưa gán phòng (khách chỉ chọn LOẠI phòng),
+  // nên nếu chỉ navigate thì nhân viên rơi vào sơ đồ trống trơn và phải tự mò phòng.
+  const [checkInMode, setCheckInMode] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
+
+  // Modal này luôn được mount (trang cha chỉ đổi prop `booking`), nên state không tự
+  // mất đi khi đóng — mở đơn A rồi bấm "Huỷ đơn"/"Nhận phòng", đóng lại, mở đơn B sẽ
+  // thấy nguyên ô lý do huỷ hoặc danh sách phòng của lần trước. Reset theo bookingId.
+  useEffect(() => {
+    setCheckInMode(false);
+    setSelectedRoomId(null);
+    setCancelMode(false);
+    setReason('');
+  }, [booking?.bookingId]);
 
   if (!booking) return null;
 
-  const busy = confirming || cancelling;
+  const busy = confirming || cancelling || checkingIn;
   const canCancel =
     booking.status === 'PENDING' || booking.status === 'CONFIRMED';
 
@@ -54,6 +72,21 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
       done('Đã xác nhận đơn đặt phòng');
     } catch (err) {
       toast.error(err?.data?.message || 'Không thể xác nhận đơn');
+    }
+  };
+
+  // Đơn đã được gán phòng sẵn thì bỏ qua bước chọn, nhận phòng luôn.
+  const handleCheckIn = async () => {
+    const roomId = booking.room?.roomId ?? selectedRoomId;
+    if (!roomId) {
+      toast.error('Vui lòng chọn phòng để nhận phòng cho khách');
+      return;
+    }
+    try {
+      await checkIn({ bookingId: booking.bookingId, roomId }).unwrap();
+      done('Đã nhận phòng cho khách');
+    } catch (err) {
+      toast.error(err?.data?.message || 'Không thể nhận phòng');
     }
   };
 
@@ -131,6 +164,29 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
         </div>
       </div>
 
+      {checkInMode && (
+        <div className="mt-5 rounded-xl border border-gray-200 p-4">
+          <h4 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">
+            <DoorOpen size={14} /> Chọn phòng cho khách
+          </h4>
+          {booking.room?.roomId ? (
+            <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Đơn đã được gán phòng{' '}
+              <span className="font-bold">{booking.room.roomNumber}</span> — bấm
+              "Xác nhận nhận phòng" để hoàn tất.
+            </p>
+          ) : (
+            <AvailableRoomPicker
+              roomTypeId={booking.roomType?.roomTypeId}
+              checkIn={booking.checkInDate}
+              checkOut={booking.checkOutDate}
+              selectedRoomId={selectedRoomId}
+              onSelect={setSelectedRoomId}
+            />
+          )}
+        </div>
+      )}
+
       {cancelMode && (
         <div className="mt-5">
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-400">
@@ -159,15 +215,20 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
           <Action
             icon={LogIn}
             tone="bg-emerald-600 hover:bg-emerald-700"
-            onClick={() =>
-              navigate(
-                booking.room?.roomId
-                  ? `/admin/rooms/${booking.room.roomId}`
-                  : '/admin/rooms',
-              )
+            busy={checkingIn}
+            disabled={
+              busy || (checkInMode && !booking.room?.roomId && !selectedRoomId)
             }
+            onClick={() => {
+              if (checkInMode) {
+                handleCheckIn();
+                return;
+              }
+              setCancelMode(false);
+              setCheckInMode(true);
+            }}
           >
-            Nhận phòng
+            {checkInMode ? 'Xác nhận nhận phòng' : 'Nhận phòng'}
           </Action>
         )}
         {booking.status === 'CHECKED_IN' && booking.room?.roomId && (
@@ -207,7 +268,10 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
             <button
               type="button"
               disabled={busy}
-              onClick={() => setCancelMode(true)}
+              onClick={() => {
+                setCheckInMode(false);
+                setCancelMode(true);
+              }}
               className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
             >
               <XCircle size={15} /> Huỷ đơn
@@ -238,11 +302,13 @@ function RowLine({ label, value }) {
   );
 }
 
-function Action({ icon: Icon, tone, busy, onClick, children }) {
+// busy = đang gọi API (hiện spinner); disabled = chưa đủ điều kiện bấm (vd. chưa chọn
+// phòng) — tách riêng để nút mờ đi mà không quay spinner gây hiểu nhầm là đang xử lý.
+function Action({ icon: Icon, tone, busy, disabled, onClick, children }) {
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={busy || disabled}
       onClick={onClick}
       className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${tone}`}
     >

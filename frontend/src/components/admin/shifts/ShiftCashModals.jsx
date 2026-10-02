@@ -1,15 +1,28 @@
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Modal from '../../common/Modal';
 import formatCurrency from '../../../utils/formatCurrency';
 import {
   useCheckInShiftAssignmentMutation,
   useCheckOutShiftAssignmentMutation,
+  useGetLastClosedShiftQuery,
   useGetShiftReportQuery,
 } from '../../../services/shiftAssignment';
 
 const METHOD_LABELS = { CASH: 'Tiền mặt', PAYOS: 'PayOS' };
+
+// Kèm cả ngày chứ không chỉ giờ: ca trước có thể là ca đêm hôm qua, hoặc cách đây
+// vài ngày nếu khách sạn vắng — chỉ hiện "14:05" sẽ khiến người vô ca tưởng đó là ca
+// vừa kết cách đây ít phút.
+function formatDateTime(value) {
+  return new Date(value).toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+  });
+}
 
 // Ô nhập tiền: chỉ giữ chữ số, hiển thị có dấu chấm ngăn cách hàng nghìn.
 function MoneyInput({ value, onChange, autoFocus }) {
@@ -44,6 +57,23 @@ function Row({ label, value, strong, hint }) {
 export function ShiftCheckInModal({ assignment, open, onClose }) {
   const [openingCash, setOpeningCash] = useState('');
   const [checkIn, { isLoading }] = useCheckInShiftAssignmentMutation();
+
+  // Tiền kết ca của ca trước — chỉ để hiện tham khảo khi nhân viên đếm tiền thật
+  // trong két, KHÔNG tự điền vào ô nhập (phải tự đếm và tự gõ số, xem lý do ở phần
+  // trao đổi trước đó: tránh sai số bị "chuyển tiếp" âm thầm qua ca).
+  //
+  // Lấy ca kết gần nhất của TOÀN khách sạn. Trước đây chỗ này tra lịch sử ca của
+  // chính người đang vô ca (/shift-assignments/me) — sai hẳn nghiệp vụ, vì két tiền
+  // dùng chung và ca trước thường do người khác trực: người vào ca sẽ thấy số tiền
+  // của ca cũ nào đó của chính mình thay vì số ca trước vừa bàn giao.
+  const { data: lastClosed } = useGetLastClosedShiftQuery(undefined, {
+    skip: !open,
+    refetchOnMountOrArgChange: true,
+  });
+  // closingCash = null: ca trước bị hệ thống tự đóng do quên kết ca, không có số
+  // bàn giao đã được đếm -> phải cảnh báo, không được lặng lẽ giấu đi.
+  const previousUncounted = Boolean(lastClosed) && lastClosed.closingCash === null;
+  const previousClosingCash = previousUncounted ? null : (lastClosed?.closingCash ?? null);
 
   const handleClose = () => {
     setOpeningCash('');
@@ -89,10 +119,36 @@ export function ShiftCheckInModal({ assignment, open, onClose }) {
         </>
       }
     >
-      <label className="mb-1.5 block text-sm font-semibold text-gray-700">Tiền mặt có trong két lúc vô ca</label>
+      {previousClosingCash !== null && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-xs text-gray-500">
+            Ca trước bàn giao — {lastClosed.shiftTypeName}, {lastClosed.staffName}
+            {lastClosed.checkOutAt && `, kết ca lúc ${formatDateTime(lastClosed.checkOutAt)}`}
+          </p>
+          <p className="mt-0.5 text-lg font-bold text-gray-900">
+            {formatCurrency(previousClosingCash)}
+          </p>
+        </div>
+      )}
+
+      {previousUncounted && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
+          <p className="text-xs text-amber-700">
+            Ca trước ({lastClosed.shiftTypeName}, {lastClosed.staffName}) bị hệ thống tự
+            đóng do quên kết ca, <strong>không có số chốt két để đối chiếu</strong>. Hãy
+            đếm kỹ và báo quản lý nếu thấy bất thường.
+          </p>
+        </div>
+      )}
+
+      <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+        Tiền mặt có trong két lúc vô ca
+      </label>
       <MoneyInput value={openingCash} onChange={setOpeningCash} autoFocus />
       <p className="mt-2 text-xs text-gray-500">
         Đếm tiền trong két trước khi nhận ca. Số này là mốc để chốt két lúc kết ca.
+        {previousClosingCash !== null && ' Đối chiếu với số ca trước ở trên, nếu lệch nhiều hãy báo lại trước khi xác nhận.'}
       </p>
     </Modal>
   );
@@ -227,15 +283,21 @@ export function ShiftCashSummary({ assignment, className = '' }) {
   const report = data?.report;
   if (!enabled || !report) return null;
 
+  // Kết ca thủ công luôn có closingCash — CHECKEDOUT mà closingCash null nghĩa là
+  // hệ thống tự đóng ca do quên kết ca (xem closeOverdueShifts ở backend).
+  const autoClosed = assignment.status === 'CHECKEDOUT' && report.closingCash === null;
+
   return (
     <p className={`text-xs text-gray-500 ${className}`}>
-      Đầu ca {formatCurrency(report.openingCash)} · Tiền mặt thu {formatCurrency(report.cashCollected)} · PayOS{' '}
-      {formatCurrency(report.transferCollected)}
+      Đầu ca {formatCurrency(report.openingCash)} · Tiền mặt thu {formatCurrency(report.cashCollected)}
       {report.difference !== null && (
         <span className={report.difference === 0 ? 'text-green-600' : 'text-red-600'}>
           {' '}
           · {report.difference === 0 ? 'Két khớp' : `Lệch ${formatCurrency(report.difference)}`}
         </span>
+      )}
+      {autoClosed && (
+        <span className="font-semibold text-red-600"> · Hệ thống tự đóng ca, chưa chốt két</span>
       )}
     </p>
   );

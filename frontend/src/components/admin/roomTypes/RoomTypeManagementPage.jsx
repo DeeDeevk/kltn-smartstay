@@ -84,7 +84,7 @@ export default function RoomTypeManagementPage() {
             >
               <div className="flex h-40 items-center justify-center bg-gray-100">
                 {room.images?.[0]?.url ? (
-                  <img src={room.images[0].url} alt={room.name} className="h-full w-full object-cover" />
+                  <img loading="lazy" src={room.images[0].url} alt={room.name} className="h-full w-full object-cover" />
                 ) : (
                   <ImageOff className="text-gray-300" size={28} />
                 )}

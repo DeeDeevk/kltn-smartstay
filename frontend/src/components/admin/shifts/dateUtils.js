@@ -43,6 +43,16 @@ export function isPastDateKey(key) {
   return key < todayKey();
 }
 
+// Lọc danh sách ca lấy về (thường query từ hôm qua -> hôm nay) để tìm ca "liên quan
+// đến hôm nay": workDate đúng hôm nay, HOẶC vẫn đang CHECKEDIN dù workDate là hôm qua
+// (ca đêm qua nửa đêm — workDate giữ nguyên ngày bắt đầu ca nên tới 00:00 sẽ rơi khỏi
+// khoảng "hôm nay" nếu chỉ lọc đúng workDate, khiến mất luôn nút "Kết ca").
+export function filterTodayRelevantAssignments(assignments, todayKeyValue) {
+  return assignments.filter(
+    (a) => a.workDate === todayKeyValue || a.status === 'CHECKEDIN',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Khung giờ ca — phải khớp với backend (shift-assignment.service.ts). Phần dưới
 // chỉ dùng để gợi ý trên giao diện (dựa vào giờ máy người dùng); backend vẫn là

@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { Star, Quote } from 'lucide-react';
+import { Quote } from 'lucide-react';
+import StarRating from '../common/StarRating';
+import { useGetFeaturedReviewsQuery } from '../../services/review';
 
 const AVATAR_STYLES = [
   'bg-blue-50 text-blue-600',
@@ -7,14 +9,22 @@ const AVATAR_STYLES = [
   'bg-rose-50 text-rose-600',
 ];
 
-const TESTIMONIALS = [
-  { key: 'guest1', initials: 'MQ' },
-  { key: 'guest2', initials: 'TH' },
-  { key: 'guest3', initials: 'DL' },
-];
+// "Nguyễn Hồ Việt Khoa" -> "NK". Chỉ lấy chữ cái đầu của từ đầu và từ cuối để ô avatar
+// không bị tràn với tên tiếng Việt (thường 3-4 từ).
+function getInitials(name) {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0][0].toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
 
 export default function TestimonialsSection() {
   const { t } = useTranslation();
+  const { data: reviews = [], isLoading } = useGetFeaturedReviewsQuery(3);
+
+  // Chưa có đánh giá thật nào thì ẩn hẳn cả khu này. Thà không hiện còn hơn hiện
+  // khung rỗng hoặc lời khen bịa — đây là phần khách đọc để quyết định có đặt hay không.
+  if (isLoading || reviews.length === 0) return null;
 
   return (
     <section className="py-20 bg-gray-50">
@@ -28,32 +38,30 @@ export default function TestimonialsSection() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {TESTIMONIALS.map(({ key, initials }, index) => (
+          {reviews.map((review, index) => (
             <div
-              key={key}
+              key={review.reviewId}
               className="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 flex flex-col"
             >
               <Quote size={28} className="text-blue-100 mb-3" fill="currentColor" />
 
-              <div className="flex items-center gap-1 mb-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} size={15} className="text-amber-400" fill="currentColor" />
-                ))}
+              <div className="mb-4">
+                <StarRating value={review.rating} size={15} />
               </div>
 
               <p className="text-gray-600 text-sm leading-relaxed italic flex-1">
-                "{t(`home.testimonials.${key}.quote`)}"
+                "{review.comment}"
               </p>
 
               <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-100">
                 <div
-                  className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${AVATAR_STYLES[index]}`}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${AVATAR_STYLES[index % AVATAR_STYLES.length]}`}
                 >
-                  {initials}
+                  {getInitials(review.authorName)}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-bold text-gray-900 text-sm truncate">{t(`home.testimonials.${key}.name`)}</p>
-                  <p className="text-gray-400 text-xs">{t(`home.testimonials.${key}.trip`)}</p>
+                  <p className="font-bold text-gray-900 text-sm truncate">{review.authorName}</p>
+                  <p className="text-gray-400 text-xs truncate">{review.roomTypeName}</p>
                 </div>
               </div>
             </div>

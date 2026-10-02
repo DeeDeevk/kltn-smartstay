@@ -10,13 +10,14 @@ import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { UserRole } from '../common/enums/user-role.enum';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { WsUser } from '../realtime/ws-auth.service';
 
 // Gắn vào cùng namespace mặc định với RealtimeGateway (không khai `namespace`) nên
 // dùng chung 1 kết nối socket phía FE và chung `client.data.user` mà
 // RealtimeGateway.handleConnection đã xác thực/gán — không xác thực lại ở đây.
 // Việc bắn sự kiện tới nhóm "lễ tân trực chat" vẫn đi qua RealtimeGateway (xem
 // emitToChatStaff) thay vì ChatModule tự biết tên room — giữ đúng ranh giới module.
-@WebSocketGateway({ cors: true })
+@WebSocketGateway()
 export class ChatGateway {
   @WebSocketServer()
   server!: Server;
@@ -27,11 +28,13 @@ export class ChatGateway {
   ) {}
 
   private requireUser(client: Socket) {
-    const user = client.data.user;
+    // client.data là `any` (Socket ở đây không tham số hoá kiểu data) — ép kiểu chính
+    // client.data trước khi đọc .user, giống cách RealtimeGateway.handleConnection gán nó.
+    const user = (client.data as { user?: WsUser }).user;
     if (!user) {
       throw new WsException('Chưa xác thực');
     }
-    return user as { userId: string; email: string; role: string };
+    return user;
   }
 
   @SubscribeMessage('chat:join')

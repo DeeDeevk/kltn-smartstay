@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "1.6.1",
     "@reduxjs/toolkit": "^2.12.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@vietmap/vietmap-gl-js": "^6.0.1",
     "axios": "^1.18.1",
     "date-fns": "^4.4.0",
     "dayjs": "^1.11.21",

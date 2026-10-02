@@ -32,6 +32,7 @@ export default function RoomGallery({ images = [], roomName = "" }) {
         {subImages.map((src, i) => (
           <div key={i} className={`min-h-0 overflow-hidden ${i === 1 ? 'rounded-tr-xl' : ''} ${i === 3 ? 'rounded-br-xl' : ''}`}>
             <img
+              loading="lazy"
               src={src}
               className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
               alt={`${roomName} ${i + 1}`}

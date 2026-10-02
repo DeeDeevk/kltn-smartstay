@@ -10,7 +10,8 @@ export default function RoomReviews({ averageRating, totalReviews }) {
   const { t } = useTranslation();
   const { id } = useParams();
   const { data: reviewsData, isLoading } = useGetReviewsByRoomTypeQuery(id);
-  const reviews = reviewsData?.data || [];
+  // API trả thẳng mảng đánh giá (trước đây là mock bọc trong { data }).
+  const reviews = reviewsData ?? [];
 
   const reviewsCount = reviews.length;
   const computedAverageRating = reviewsCount > 0
@@ -47,7 +48,7 @@ export default function RoomReviews({ averageRating, totalReviews }) {
       {reviews.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {visibleReviews.map((review) => (
-            <Review key={review.id} {...review} />
+            <Review key={review.reviewId} {...review} />
           ))}
         </div>
       ) : (

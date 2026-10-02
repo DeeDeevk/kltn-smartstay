@@ -1,12 +1,13 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft, SearchX, Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
-import Chatbot from '../components/Chatbot'
+// import Chatbot from '../components/Chatbot' // tạm ẩn, xem ghi chú ở nơi render bên dưới
+import AiChatbot from '../components/AiChatbot'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
 import TestimonialsSection from '../components/homepage/TestimonialsSection'
@@ -25,24 +26,8 @@ import RoomReviews from '../components/room/RoomReviews'
 import RoomCard from '../components/searchroom/RoomCard'
 import FilterSidebar from '../components/FilterSidebar'
 import OrderSummaryCard from '../components/booking/OrderSummaryCard'
-import ProfilePage from '../components/user/ProfilePage'
-import BookingHistoryPage from '../components/user/BookingHistoryPage'
-import PaymentSuccessPage from '../components/payment/PaymentSuccessPage'
-import PaymentCancelPage from '../components/payment/PaymentCancelPage'
-import UserManagementPage from '../components/admin/users/UserManagementPage'
-import StaffManagementPage from '../components/admin/users/StaffManagementPage'
-import ShiftSchedulePage from '../components/admin/shifts/ShiftSchedulePage'
-import MySchedulePage from '../components/admin/shifts/MySchedulePage'
-import RevenueSummaryPage from '../components/admin/revenue/RevenueSummaryPage'
-import RevenueByStaffPage from '../components/admin/revenue/RevenueByStaffPage'
-import RoomTypeManagementPage from '../components/admin/roomTypes/RoomTypeManagementPage'
-import RoomMapPage from '../components/admin/roomMap/RoomMapPage'
-import AdminRoomDetailPage from '../components/admin/roomMap/AdminRoomDetailPage'
-import AdminCheckoutPage from '../components/admin/roomMap/AdminCheckoutPage'
-import BookingManagementPage from '../components/admin/bookings/BookingManagementPage'
-import StaffChatPage from '../components/admin/chat/StaffChatPage'
-import AdminDashboardPage from '../components/admin/dashboard/AdminDashboardPage'
-import DashboardLayout from '../components/admin/layout/DashboardLayout'
+import PromoCodeBox from '../components/booking/PromoCodeBox'
+import { calculateVat } from '../utils/vat'
 import { roomTypeApi } from '../services/roomType'
 import { useLazySearchAvailabilityQuery } from '../services/availability'
 import { useCreateBookingMutation } from '../services/booking'
@@ -50,10 +35,39 @@ import { useCreatePayOSLinkMutation, useSyncPayOSStatusQuery } from '../services
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import ForbiddenPage from './ForbiddenPage'
+import PageLoader from '../components/common/PageLoader'
 import formatCurrency from '../utils/formatCurrency'
 import getBookingCode from '../utils/bookingCode'
 import getBookingQrPayload from '../utils/bookingQrPayload'
 import downloadQrPng from '../utils/downloadQr'
+
+// Trang admin và các trang phụ của khách chỉ tải khi truy cập tới, để lần vào trang chủ không
+// phải tải cả recharts, html5-qrcode... của phần quản trị.
+const ProfilePage = lazy(() => import('../components/user/ProfilePage'))
+const BookingHistoryPage = lazy(() => import('../components/user/BookingHistoryPage'))
+const NotificationsPage = lazy(() => import('../components/user/NotificationsPage'))
+const PaymentSuccessPage = lazy(() => import('../components/payment/PaymentSuccessPage'))
+const PaymentCancelPage = lazy(() => import('../components/payment/PaymentCancelPage'))
+const UserManagementPage = lazy(() => import('../components/admin/users/UserManagementPage'))
+const StaffManagementPage = lazy(() => import('../components/admin/users/StaffManagementPage'))
+const ShiftSchedulePage = lazy(() => import('../components/admin/shifts/ShiftSchedulePage'))
+const MySchedulePage = lazy(() => import('../components/admin/shifts/MySchedulePage'))
+const RevenueSummaryPage = lazy(() => import('../components/admin/revenue/RevenueSummaryPage'))
+const HotelLocationSettingsPage = lazy(() => import('../components/admin/settings/HotelLocationSettingsPage'))
+const LocalEventsSettingsPage = lazy(() => import('../components/admin/settings/LocalEventsSettingsPage'))
+const LocalPlacesSettingsPage = lazy(() => import('../components/admin/settings/LocalPlacesSettingsPage'))
+const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
+const PromotionManagementPage = lazy(() => import('../components/admin/promotions/PromotionManagementPage'))
+const ReviewManagementPage = lazy(() => import('../components/admin/reviews/ReviewManagementPage'))
+const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
+const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
+const RoomMapPage = lazy(() => import('../components/admin/roomMap/RoomMapPage'))
+const AdminRoomDetailPage = lazy(() => import('../components/admin/roomMap/AdminRoomDetailPage'))
+const AdminCheckoutPage = lazy(() => import('../components/admin/roomMap/AdminCheckoutPage'))
+const BookingManagementPage = lazy(() => import('../components/admin/bookings/BookingManagementPage'))
+const StaffChatPage = lazy(() => import('../components/admin/chat/StaffChatPage'))
+const AdminDashboardPage = lazy(() => import('../components/admin/dashboard/AdminDashboardPage'))
+const DashboardLayout = lazy(() => import('../components/admin/layout/DashboardLayout'))
 
 const paymentMethods = [
   { value: 'cash', labelKey: 'checkout.paymentCash', icon: Banknote },
@@ -558,6 +572,9 @@ function CheckoutPage() {
     email: user?.email || '',
   })
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // Mã khuyến mãi khách đã kiểm tra thành công: { code, discountAmount }. Chỉ để hiện
+  // trước số tiền giảm — backend tính lại khi tạo booking.
+  const [appliedPromotion, setAppliedPromotion] = useState(null)
   const [errors, setErrors] = useState({})
   const [paidBooking, setPaidBooking] = useState(null)
   // Booking online đã tạo, đang chờ thanh toán — giữ lại để nút "Tạo mã mới" gọi lại
@@ -609,6 +626,15 @@ function CheckoutPage() {
   }
 
   const { room, startDate, endDate, nights, totalPrice, vatAmount } = checkoutState
+  const roomTypeId = room.roomTypeId || room.id
+
+  // Tổng tiền sau khuyến mãi. VAT phải tính lại trên tiền phòng đã trừ giảm giá, khớp
+  // công thức `netRoomAmount * VAT_RATE` ở backend — giữ nguyên VAT cũ sẽ làm số tiền
+  // khách phải trả qua PayOS lệch với số tiền thật của đơn.
+  const discountAmount = appliedPromotion?.discountAmount ?? 0
+  const netRoomSubtotal = Math.max(totalPrice - (vatAmount ?? 0) - discountAmount, 0)
+  const payableTotal =
+    discountAmount > 0 ? netRoomSubtotal + calculateVat(netRoomSubtotal) : totalPrice
 
   const handleChange = (field) => (e) => {
     setGuestInfo((prev) => ({ ...prev, [field]: e.target.value }))
@@ -629,7 +655,7 @@ function CheckoutPage() {
 
     try {
       const booking = await createBooking({
-        roomTypeId: room.roomTypeId || room.id,
+        roomTypeId,
         checkIn: startDate,
         checkOut: endDate,
         guestInfo: {
@@ -638,6 +664,7 @@ function CheckoutPage() {
           email: guestInfo.email.trim(),
         },
         paymentMethod: paymentMethod === 'online' ? 'PAYOS' : 'CASH',
+        promotionCode: appliedPromotion?.code,
       }).unwrap()
 
       if (paymentMethod === 'online') {
@@ -662,11 +689,11 @@ function CheckoutPage() {
             room={room}
             startDate={startDate}
             endDate={endDate}
-            totalPrice={totalPrice}
+            totalPrice={payableTotal}
           />
         ) : pendingBooking ? (
           <PayOSPaymentPanel
-            totalPrice={totalPrice}
+            totalPrice={payableTotal}
             paymentLink={paymentLink}
             linkError={linkError}
             isCreatingLink={isCreatingLink}
@@ -747,6 +774,15 @@ function CheckoutPage() {
                   ))}
                 </div>
 
+                <PromoCodeBox
+                  roomTypeId={roomTypeId}
+                  checkIn={startDate}
+                  checkOut={endDate}
+                  applied={appliedPromotion}
+                  onApply={setAppliedPromotion}
+                  onClear={() => setAppliedPromotion(null)}
+                />
+
                 <button
                   type="submit"
                   disabled={isCreating}
@@ -758,7 +794,7 @@ function CheckoutPage() {
               </form>
 
               <aside className="lg:sticky lg:top-24 h-fit">
-                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} />
+                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} discountAmount={discountAmount} />
               </aside>
             </div>
           </>
@@ -769,11 +805,30 @@ function CheckoutPage() {
   )
 }
 
+// Trang của khách mờ dần vào mỗi lần đổi đường dẫn. Toàn bộ khu /admin dùng chung 1 key vì
+// layout admin tự lo hiệu ứng chuyển trang bên trong — nếu đổi key theo từng trang admin thì
+// cả Sidebar/Header cũng bị dựng lại.
+function RouteFade({ children }) {
+  const { pathname } = useLocation()
+  const key = pathname.startsWith('/admin') ? 'admin' : pathname
+  return (
+    <div key={key} className="anim-fade-in">
+      {children}
+    </div>
+  )
+}
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      <Chatbot />
+      {/* Tạm ẩn nút chat với lễ tân theo yêu cầu, chỉ để lại trợ lý AI — bật lại bằng
+          cách bỏ comment dòng import ở trên và dòng <Chatbot /> dưới đây. Khi bật lại,
+          2 khung chat tự loại trừ nhau (useExclusiveChatPanel). */}
+      {/* <Chatbot /> */}
+      <AiChatbot />
+      <Suspense fallback={<PageLoader className="min-h-screen" />}>
+      <RouteFade>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
@@ -794,6 +849,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute>
               <BookingHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/user/notifications"
+          element={
+            <ProtectedRoute>
+              <NotificationsPage />
             </ProtectedRoute>
           }
         />
@@ -823,10 +886,12 @@ export default function AppRoutes() {
           }
         >
           <Route index element={<AdminDashboardPage />} />
+          {/* Lễ tân cũng cần xác nhận đơn/nhận phòng từ danh sách đặt phòng — mọi API
+              trang này dùng (list, confirm, check-in/out, cancel) đều đã mở cho STAFF. */}
           <Route
             path="bookings"
             element={
-              <ProtectedRoute roles={['ADMIN']}>
+              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
                 <BookingManagementPage />
               </ProtectedRoute>
             }
@@ -901,6 +966,54 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="settings/location"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <HotelLocationSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings/local-events"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <LocalEventsSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings/local-places"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <LocalPlacesSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="faqs"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <FaqManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="promotions"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <PromotionManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="reviews"
+            element={
+              <ProtectedRoute roles={['ADMIN']}>
+                <ReviewManagementPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route
           path="/admin/checkout"
@@ -913,6 +1026,8 @@ export default function AppRoutes() {
         <Route path="/403" element={<ForbiddenPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </RouteFade>
+      </Suspense>
     </BrowserRouter>
   )
 }

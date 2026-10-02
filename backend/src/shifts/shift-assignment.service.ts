@@ -6,7 +6,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, QueryFailedError, Repository } from 'typeorm';
+import {
+  Between,
+  In,
+  IsNull,
+  LessThanOrEqual,
+  Not,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { ShiftAssignment } from './entities/shift-assignment.entity';
 import { ShiftType } from './entities/shift-type.entity';
 import { CreateShiftAssignmentDto } from './dto/create-shift-assignment.dto';
@@ -80,6 +88,10 @@ function formatDayMonth(d: Date): string {
 // Vô ca trễ không quá số phút này vẫn tính là đúng giờ.
 const LATE_GRACE_MINUTES = 15;
 
+// Quá giờ kết thúc ca bao lâu mà chưa kết ca thì hệ thống tự đóng ca, và lễ tân
+// không còn được thu tiền trên ca đó nữa.
+const AUTO_CLOSE_GRACE_MINUTES = 60;
+
 export type ShiftAssignmentWithLate = ShiftAssignment & {
   isLate: boolean;
   lateMinutes: number;
@@ -147,14 +159,45 @@ export class ShiftAssignmentService {
     return assignments.map(withLateInfo);
   }
 
+  // Ca kết gần nhất của TOÀN khách sạn — để người sắp vô ca đối chiếu tiền đếm được
+  // trong két với số ca trước bàn giao lại.
+  //
+  // Phải tra theo toàn khách sạn chứ không phải theo từng nhân viên: két tiền dùng
+  // chung, ca trước do người khác trực nên lấy lịch sử của chính người đang vô ca sẽ
+  // ra một con số vô nghĩa (và tệ hơn là trông vẫn hợp lệ).
+  //
+  // KHÔNG lọc bỏ ca có closingCash = null. Đó là ca bị hệ thống tự đóng do quên kết ca
+  // (xem closeOverdueShifts) — nhảy lùi lấy ca cũ hơn sẽ đưa ra số bàn giao sai mà
+  // không ai biết. Trả nguyên ca đó ra để tầng UI cảnh báo "ca trước chưa chốt két".
+  async findLastClosed(): Promise<{
+    shiftAssignmentId: string;
+    closingCash: number | null;
+    checkOutAt: Date | null;
+    staffName: string;
+    shiftTypeName: string;
+  } | null> {
+    const assignment = await this.shiftAssignmentRepo.findOne({
+      where: { checkOutAt: Not(IsNull()) },
+      relations: { shiftType: true, staff: true },
+      order: { checkOutAt: 'DESC' },
+    });
+    if (!assignment) return null;
+
+    return {
+      shiftAssignmentId: assignment.shiftAssignmentId,
+      closingCash: assignment.closingCash,
+      checkOutAt: assignment.checkOutAt,
+      staffName: assignment.staff?.fullName ?? 'Không rõ',
+      shiftTypeName: assignment.shiftType?.name ?? 'Không rõ',
+    };
+  }
+
   private readonly DUPLICATE_MESSAGE =
     'Nhân viên này đã được phân vào ca này trong ngày đã chọn';
 
   async create(dto: CreateShiftAssignmentDto): Promise<ShiftAssignment> {
     if (dto.workDate < todayKey()) {
-      throw new BadRequestException(
-        'Không thể phân ca cho ngày trong quá khứ',
-      );
+      throw new BadRequestException('Không thể phân ca cho ngày trong quá khứ');
     }
 
     const staff = await this.userService.findById(dto.staffId);
@@ -301,6 +344,21 @@ export class ShiftAssignmentService {
       );
     }
 
+    // Mỗi nhân viên chỉ được mở 1 ca tại 1 thời điểm — nếu không, khoảng thời gian
+    // của 2 ca chồng nhau và cùng 1 khoản tiền bị tính vào báo cáo của cả 2 ca.
+    const openShift = await this.shiftAssignmentRepo.findOne({
+      where: {
+        staff: { userId: requesterId },
+        status: ShiftAssignmentStatus.CHECKEDIN,
+      },
+      relations: { shiftType: true },
+    });
+    if (openShift) {
+      throw new BadRequestException(
+        `Bạn đang còn ca "${openShift.shiftType.name}" ngày ${openShift.workDate} chưa kết ca. Hãy kết ca đó trước khi vô ca mới.`,
+      );
+    }
+
     const { start, end } = buildShiftWindow(
       assignment.workDate,
       assignment.shiftType.startTime,
@@ -369,7 +427,7 @@ export class ShiftAssignmentService {
       throw new NotFoundException('Không tìm thấy lịch phân ca');
     }
     if (
-      requester.role !== UserRole.ADMIN &&
+      (requester.role as UserRole) !== UserRole.ADMIN &&
       assignment.staff.userId !== requester.userId
     ) {
       throw new ForbiddenException('Đây không phải ca làm việc của bạn');
@@ -382,18 +440,80 @@ export class ShiftAssignmentService {
 
   // Lễ tân chỉ được thao tác thu tiền/nhận trả phòng khi đang trong ca, để mọi khoản
   // tiền mặt đều rơi vào 1 ca và chốt két được.
+  // Ngoài trạng thái CHECKEDIN còn kiểm tra khung giờ ca, vì cron tự đóng ca chỉ
+  // chạy định kỳ — không để ca quên kết từ hôm trước tiếp tục thu tiền.
   async assertOnDuty(staffId: string): Promise<void> {
-    const onDuty = await this.shiftAssignmentRepo.exists({
+    const openShift = await this.shiftAssignmentRepo.findOne({
       where: {
         staff: { userId: staffId },
         status: ShiftAssignmentStatus.CHECKEDIN,
       },
+      relations: { shiftType: true },
     });
-    if (!onDuty) {
+    if (!openShift) {
       throw new ForbiddenException(
-        'Bạn cần vô ca trước khi check-in/check-out cho khách',
+        'Bạn cần vô ca trước khi làm thủ tục nhận/trả phòng cho khách',
       );
     }
+    const { end } = buildShiftWindow(
+      openShift.workDate,
+      openShift.shiftType.startTime,
+      openShift.shiftType.endTime,
+    );
+    if (Date.now() > end.getTime() + AUTO_CLOSE_GRACE_MINUTES * 60_000) {
+      throw new ForbiddenException(
+        `Ca "${openShift.shiftType.name}" đã quá giờ kết thúc, hãy kết ca trước`,
+      );
+    }
+  }
+
+  // Gọi định kỳ bởi ShiftAutoCloseJob:
+  // - Ca SCHEDULED đã qua giờ kết thúc mà chưa vô ca -> ABSENT.
+  // - Ca CHECKEDIN quá giờ kết thúc + AUTO_CLOSE_GRACE_MINUTES -> CHECKEDOUT với
+  //   checkOutAt = giờ kết thúc ca (báo cáo không cộng dồn tiền sau ca) và
+  //   closingCash = null. Kết ca thủ công luôn bắt nhập closingCash, nên
+  //   CHECKEDOUT + closingCash null nghĩa là "hệ thống tự đóng, chưa chốt két".
+  async closeOverdueShifts(): Promise<{ absent: number; autoClosed: number }> {
+    const now = new Date();
+    const candidates = await this.shiftAssignmentRepo.find({
+      where: {
+        status: In([
+          ShiftAssignmentStatus.SCHEDULED,
+          ShiftAssignmentStatus.CHECKEDIN,
+        ]),
+        workDate: LessThanOrEqual(todayKey()),
+      },
+      relations: { shiftType: true },
+    });
+
+    let absent = 0;
+    let autoClosed = 0;
+    const toSave: ShiftAssignment[] = [];
+    for (const assignment of candidates) {
+      const { end } = buildShiftWindow(
+        assignment.workDate,
+        assignment.shiftType.startTime,
+        assignment.shiftType.endTime,
+      );
+      if (assignment.status === ShiftAssignmentStatus.SCHEDULED && now > end) {
+        assignment.status = ShiftAssignmentStatus.ABSENT;
+        absent += 1;
+        toSave.push(assignment);
+      } else if (
+        assignment.status === ShiftAssignmentStatus.CHECKEDIN &&
+        now.getTime() > end.getTime() + AUTO_CLOSE_GRACE_MINUTES * 60_000
+      ) {
+        assignment.status = ShiftAssignmentStatus.CHECKEDOUT;
+        assignment.checkOutAt = end;
+        autoClosed += 1;
+        toSave.push(assignment);
+      }
+    }
+
+    if (toSave.length > 0) {
+      await this.shiftAssignmentRepo.save(toSave);
+    }
+    return { absent, autoClosed };
   }
 
   private async buildReport(assignment: ShiftAssignment) {

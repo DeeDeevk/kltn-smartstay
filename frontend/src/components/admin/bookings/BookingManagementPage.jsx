@@ -10,6 +10,7 @@ import {
   MoonStar,
   RefreshCw,
   Search,
+  SearchX,
 } from 'lucide-react';
 import { useGetBookingsQuery } from '../../../services/booking';
 import useAdminOverviewStats from '../dashboard/useAdminOverviewStats';
@@ -19,6 +20,14 @@ import { BOOKING_STATUS_STYLES } from '../../../utils/bookingStatusStyles';
 import formatCurrency from '../../../utils/formatCurrency';
 import formatDate from '../../../utils/formatDate';
 import getBookingCode from '../../../utils/bookingCode';
+import { stagger } from '../../../utils/motion';
+import { inputClass } from '../../common/formStyles';
+import Field from '../../common/Field';
+import SearchInput from '../../common/SearchInput';
+import Button from '../../common/Button';
+import EmptyState from '../../common/EmptyState';
+import AnimatedNumber from '../../common/AnimatedNumber';
+import { TableSkeletonRows } from '../../common/Skeleton';
 
 const BOOKING_STATUS_LABELS = {
   PENDING: 'Chờ xác nhận',
@@ -68,6 +77,7 @@ export default function BookingManagementPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const byStatus = stats?.bookings?.byStatus ?? {};
+  const isFirstLoad = isFetching && rows.length === 0;
 
   const applySearch = () => {
     if (Boolean(draft.from) !== Boolean(draft.to)) {
@@ -100,23 +110,19 @@ export default function BookingManagementPage() {
             Xem, tìm kiếm và xử lý toàn bộ lịch sử đặt phòng của khách sạn
           </p>
         </div>
-        <button
-          type="button"
-          onClick={refreshAll}
-          disabled={isFetching}
-          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
-        >
+        <Button variant="secondary" onClick={refreshAll} disabled={isFetching}>
           {isFetching ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
             <RefreshCw size={16} />
           )}
           Làm mới
-        </button>
+        </Button>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatCard
+          index={0}
           icon={CalendarDays}
           label="Tổng đơn đặt"
           value={stats?.bookings?.total ?? 0}
@@ -124,6 +130,7 @@ export default function BookingManagementPage() {
           bg="bg-blue-50 text-blue-600"
         />
         <StatCard
+          index={1}
           icon={Clock}
           label="Chờ xác nhận"
           value={byStatus.PENDING ?? 0}
@@ -131,6 +138,7 @@ export default function BookingManagementPage() {
           bg="bg-amber-50 text-amber-600"
         />
         <StatCard
+          index={2}
           icon={CheckCircle2}
           label="Đã xác nhận"
           value={byStatus.CONFIRMED ?? 0}
@@ -138,6 +146,7 @@ export default function BookingManagementPage() {
           bg="bg-blue-50 text-blue-600"
         />
         <StatCard
+          index={3}
           icon={MoonStar}
           label="Đang lưu trú"
           value={byStatus.CHECKED_IN ?? 0}
@@ -145,6 +154,7 @@ export default function BookingManagementPage() {
           bg="bg-emerald-50 text-emerald-600"
         />
         <StatCard
+          index={4}
           icon={CalendarCheck2}
           label="Đã hoàn thành"
           value={byStatus.CHECKED_OUT ?? 0}
@@ -161,25 +171,24 @@ export default function BookingManagementPage() {
           }}
           className="grid gap-3 lg:grid-cols-[1fr_170px_170px_auto]"
         >
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <input
+          {/* Ô tìm kiếm cùng dạng "nhãn + ô nhập" với 2 ô ngày. Trước đây ô này không có
+              nhãn nên hàng lưới bị 2 ô ngày kéo cao hơn: khung relative giãn theo hàng,
+              input vẫn nằm sát trên còn icon top-1/2 căn theo khung giãn -> icon rớt thấp
+              hơn ô nhập. SearchInput có khung relative chỉ bọc đúng input. */}
+          <Field label="Tìm kiếm">
+            <SearchInput
               value={draft.keyword}
-              onChange={(e) => setDraft({ ...draft, keyword: e.target.value })}
-              placeholder="Tìm mã đặt, tên khách hàng, SĐT, email..."
-              className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              onChange={(keyword) => setDraft({ ...draft, keyword })}
+              placeholder="Mã đặt, tên khách hàng, SĐT, email..."
             />
-          </div>
+          </Field>
           <Field label="Từ ngày">
             <input
               type="date"
               value={draft.from}
               max={draft.to || undefined}
               onChange={(e) => setDraft({ ...draft, from: e.target.value })}
-              className={inputCls}
+              className={inputClass}
             />
           </Field>
           <Field label="Đến ngày">
@@ -188,23 +197,16 @@ export default function BookingManagementPage() {
               value={draft.to}
               min={draft.from || undefined}
               onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-              className={inputCls}
+              className={inputClass}
             />
           </Field>
           <div className="flex items-end gap-2">
-            <button
-              type="submit"
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 lg:flex-none"
-            >
-              <Search size={15} /> Tìm
-            </button>
-            <button
-              type="button"
-              onClick={resetSearch}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50"
-            >
+            <Button type="submit" icon={Search} className="flex-1 lg:flex-none">
+              Tìm
+            </Button>
+            <Button variant="secondary" onClick={resetSearch}>
               Xoá lọc
-            </button>
+            </Button>
           </div>
         </form>
 
@@ -220,9 +222,9 @@ export default function BookingManagementPage() {
                 setTab(t.key);
                 setPage(1);
               }}
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+              className={`press rounded-lg px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
                 tab === t.key
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -233,19 +235,22 @@ export default function BookingManagementPage() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        {isFetching && rows.length === 0 ? (
-          <div className="flex justify-center py-20 text-gray-300">
-            <Loader2 className="animate-spin" size={28} />
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="py-20 text-center text-sm text-gray-400">
-            Không có đơn đặt phòng nào khớp bộ lọc.
-          </p>
+        {!isFirstLoad && rows.length === 0 ? (
+          <EmptyState
+            icon={SearchX}
+            title="Không có đơn đặt phòng nào khớp bộ lọc"
+            description="Thử đổi từ khoá, khoảng ngày hoặc trạng thái, hoặc bấm “Xoá lọc”."
+          />
         ) : (
-          <div className="overflow-x-auto">
+          // Đang làm mới khi đã có dữ liệu: mờ nhẹ thay vì xoá bảng, để không bị giật.
+          <div
+            className={`overflow-x-auto transition-opacity duration-200 ${
+              isFetching && !isFirstLoad ? 'opacity-60' : 'opacity-100'
+            }`}
+          >
             <table className="w-full min-w-[820px] text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-400">
+                <tr className="border-b border-gray-100 bg-gray-50/70 text-left text-xs uppercase tracking-wider text-gray-400">
                   <th className="px-4 py-3 font-semibold">Mã đặt</th>
                   <th className="px-4 py-3 font-semibold">Khách hàng</th>
                   <th className="px-4 py-3 font-semibold">Ngày ở</th>
@@ -256,61 +261,70 @@ export default function BookingManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {rows.map((b) => (
-                  <tr key={b.bookingId} className="text-gray-700">
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs font-bold text-blue-600">
-                        {getBookingCode(b.bookingId)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-gray-900">
-                        {b.guestInfo?.fullName || '—'}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {b.guestInfo?.phone || 'Không có SĐT'}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-gray-600">
-                        <CalendarDays size={13} className="text-gray-400" />
-                        {formatDate(b.checkInDate)} → {formatDate(b.checkOutDate)}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {nights(b.checkInDate, b.checkOutDate)} đêm
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {b.room?.roomNumber ? (
-                        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-600">
-                          {b.room.roomNumber}
+                {isFirstLoad ? (
+                  <TableSkeletonRows rows={PAGE_SIZE} cols={7} />
+                ) : (
+                  rows.map((b, index) => (
+                    <tr
+                      key={b.bookingId}
+                      onClick={() => setDetail(b)}
+                      style={stagger(index, 30, 8)}
+                      className="anim-fade-in cursor-pointer text-gray-700 transition-colors hover:bg-blue-50/40"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs font-bold text-blue-600">
+                          {getBookingCode(b.bookingId)}
                         </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">Chưa gán</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                      {formatCurrency(b.totalAmount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill
-                        value={b.status}
-                        styles={BOOKING_STATUS_STYLES}
-                        label={BOOKING_STATUS_LABELS[b.status] || b.status}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setDetail(b)}
-                        title="Xem chi tiết"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-blue-300 hover:text-blue-600"
-                      >
-                        <Eye size={15} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900">
+                          {b.guestInfo?.fullName || '—'}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {b.guestInfo?.phone || 'Không có SĐT'}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-1.5 text-gray-600">
+                          <CalendarDays size={13} className="text-gray-400" />
+                          {formatDate(b.checkInDate)} → {formatDate(b.checkOutDate)}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {nights(b.checkInDate, b.checkOutDate)} đêm
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {b.room?.roomNumber ? (
+                          <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-600">
+                            {b.room.roomNumber}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Chưa gán</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-900">
+                        {formatCurrency(b.totalAmount)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill
+                          value={b.status}
+                          styles={BOOKING_STATUS_STYLES}
+                          label={BOOKING_STATUS_LABELS[b.status] || b.status}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setDetail(b)}
+                          title="Xem chi tiết"
+                          className="press inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-blue-300 hover:bg-white hover:text-blue-600"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -322,22 +336,22 @@ export default function BookingManagementPage() {
               Trang {page}/{totalPages} · {total} đơn
             </span>
             <div className="flex gap-2">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
               >
                 Trước
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
               >
                 Sau
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -352,23 +366,12 @@ export default function BookingManagementPage() {
   );
 }
 
-const inputCls =
-  'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100';
-
-function Field({ label, children }) {
+function StatCard({ index, icon: Icon, label, value, tone, bg }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, tone, bg }) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      style={stagger(index, 60)}
+      className="anim-fade-up lift rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+    >
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
           {label}
@@ -377,7 +380,9 @@ function StatCard({ icon: Icon, label, value, tone, bg }) {
           <Icon size={16} />
         </span>
       </div>
-      <p className={`mt-2 text-2xl font-extrabold ${tone}`}>{value}</p>
+      <p className={`mt-2 text-2xl font-extrabold ${tone}`}>
+        <AnimatedNumber value={value} />
+      </p>
     </div>
   );
 }

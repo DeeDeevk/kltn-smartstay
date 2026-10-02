@@ -64,23 +64,6 @@ export const sampleExtraServices = [
   },
 ];
 
-export const sampleReviews = [
-  {
-    id: 1,
-    rating: 5,
-    comment: "Phòng sạch sẽ, nhân viên thân thiện.",
-    author_name: "Minh Anh",
-    created_at: "2026-07-01T08:30:00Z",
-  },
-  {
-    id: 2,
-    rating: 4,
-    comment: "View đẹp, bữa sáng ổn.",
-    author_name: "Huy",
-    created_at: "2026-07-05T10:15:00Z",
-  },
-];
-
 export const sampleFloors = [
   { id: 1, name: "Tầng 1" },
   { id: 2, name: "Tầng 2" },

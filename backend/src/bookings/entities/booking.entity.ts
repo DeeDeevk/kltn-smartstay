@@ -9,6 +9,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -23,6 +24,19 @@ export interface GuestInfo {
   email?: string;
 }
 
+// Index theo đúng các truy vấn của BookingService/RoomService (tên đặt cố định để khớp
+// migration AddIndexesBooking):
+// - đếm booking trùng ngày theo loại phòng / theo phòng (tìm phòng trống, tạo đơn, sơ đồ phòng)
+// - "đơn của tôi" lọc theo user và sắp theo ngày tạo
+// - danh sách quản trị lọc theo trạng thái và sắp theo ngày tạo
+@Index('IDX_booking_room_type_status_checkin', [
+  'roomType',
+  'status',
+  'checkInDate',
+])
+@Index('IDX_booking_room_status_checkin', ['room', 'status', 'checkInDate'])
+@Index('IDX_booking_user_created_at', ['user', 'createdAt'])
+@Index('IDX_booking_status_created_at', ['status', 'createdAt'])
 @Entity('Booking')
 export class Booking {
   @PrimaryGeneratedColumn('uuid', { name: 'bookingId' })

@@ -7,7 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { UserRole } from '../common/enums/user-role.enum';
-import { WsAuthService } from './ws-auth.service';
+import { WsAuthService, WsUser } from './ws-auth.service';
+
+// socket.io không tham số hoá `Socket.data` ở đây (không truyền generic cho `Socket`) nên
+// mặc định là `any` — khai lại đúng hình dạng thật sự được gán ở handleConnection bên dưới
+// để không phải rải `any` qua ChatGateway (đọc lại client.data.user) và các nơi khác.
+interface SocketData {
+  user?: WsUser;
+}
 
 // Tên room là chi tiết triển khai nội bộ của RealtimeGateway — các module khác
 // (Reservations, Chat) không import trực tiếp các hằng số này, chỉ gọi qua các
@@ -29,8 +36,10 @@ const userRoom = (userId: string) => `user:${userId}`;
 // Namespace mặc định ('/'): ChatGateway cũng gắn vào cùng namespace này nên dùng
 // chung 1 kết nối socket phía FE và chung client.data.user do handleConnection ở
 // đây gán — không cần xác thực lại trong ChatGateway.
-@WebSocketGateway({ cors: true })
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+@WebSocketGateway()
+export class RealtimeGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
@@ -40,13 +49,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   async handleConnection(client: Socket) {
     try {
-      const token =
-        client.handshake.auth?.token ||
+      // client.handshake.auth là `{ [key: string]: any }` theo kiểu của socket.io — ép
+      // kiểu tường minh ngay khi đọc ra thay vì để `any` len vào token/verifyToken().
+      const token = (client.handshake.auth?.token ||
         (client.handshake.headers.authorization?.startsWith('Bearer ')
           ? client.handshake.headers.authorization.slice(7)
-          : undefined);
+          : undefined)) as string | undefined;
       const user = await this.wsAuth.verifyToken(token);
-      client.data.user = user;
+      (client.data as SocketData).user = user;
 
       if (user.role === UserRole.ADMIN || user.role === UserRole.STAFF) {
         await client.join(STAFF_ROOM);
@@ -59,7 +69,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // bắt khách F5 lại trang Lịch sử đặt phòng mới thấy.
       await client.join(userRoom(user.userId));
     } catch (error) {
-      this.logger.warn(`Socket ${client.id} bị từ chối: ${(error as Error).message}`);
+      this.logger.warn(
+        `Socket ${client.id} bị từ chối: ${(error as Error).message}`,
+      );
       client.disconnect(true);
     }
   }
@@ -69,26 +81,45 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   emitRoomStatusChanged(payload: { roomId: string; status: string }) {
-    this.server.to(STAFF_ROOM).emit('room:status-changed', payload);
+    this.emit(STAFF_ROOM, 'room:status-changed', payload);
   }
 
   emitBookingCreated(payload: unknown) {
-    this.server.to(STAFF_ROOM).emit('booking:created', payload);
+    this.emit(STAFF_ROOM, 'booking:created', payload);
   }
 
   emitBookingPaid(payload: unknown) {
-    this.server.to(STAFF_ROOM).emit('booking:paid', payload);
+    this.emit(STAFF_ROOM, 'booking:paid', payload);
   }
 
   // Báo cho đúng khách hàng sở hữu đơn biết đơn của họ vừa đổi trạng thái/thanh
   // toán (xác nhận, check-in, check-out, huỷ, thanh toán...).
   emitBookingUpdatedForCustomer(userId: string, payload: unknown) {
-    this.server.to(userRoom(userId)).emit('booking:updated', payload);
+    this.emit(userRoom(userId), 'booking:updated', payload);
   }
 
   // ChatModule gọi hàm này thay vì tự biết tên room "chat-staff" — RealtimeModule
   // giữ độc quyền quyết định socket nào thuộc nhóm lễ tân trực chat.
+  // Thông báo mới của 1 khách — bắn vào room riêng của chính họ.
+  emitNotification(userId: string, payload: unknown) {
+    this.emit(userRoom(userId), 'notification:new', payload);
+  }
+
   emitToChatStaff(event: string, payload: unknown) {
-    this.server.to(CHAT_STAFF_ROOM).emit(event, payload);
+    this.emit(CHAT_STAFF_ROOM, event, payload);
+  }
+
+  // Các nghiệp vụ gọi emitXxx() chỉ để thông báo real-time — đây là tác vụ phụ, không
+  // được phép làm hỏng nghiệp vụ chính (VD tạo booking) nếu socket server chưa sẵn sàng
+  // hoặc phát sinh lỗi bất ngờ khi emit. Từng xảy ra thật: tạo booking thành công trong
+  // DB nhưng client vẫn nhận lỗi vì bước emit ngay sau đó ném exception.
+  private emit(room: string, event: string, payload: unknown) {
+    try {
+      this.server?.to(room).emit(event, payload);
+    } catch (error) {
+      this.logger.warn(
+        `Không gửi được realtime event "${event}" tới room "${room}": ${(error as Error).message}`,
+      );
+    }
   }
 }

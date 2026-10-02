@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { OAuth2Client } from 'google-auth-library';
@@ -42,9 +42,18 @@ interface RefreshPayload {
   jti: string;
 }
 
+// Payload đầy đủ khi decode() một access/refresh token do chính hệ thống ký — thêm các
+// claim chuẩn của JWT (exp) mà RefreshPayload không cần tới.
+interface DecodedTokenPayload extends RefreshPayload {
+  exp: number;
+}
+
 @Injectable()
 export class AuthService {
   private readonly googleClient: OAuth2Client;
+  // GOOGLE_CLIENT_ID có thể chứa nhiều client ID ngăn cách bởi dấu phẩy (web, iOS, Android):
+  // id_token từ app mobile mang aud = client ID của nền tảng đó, không phải client ID web.
+  private readonly googleClientIds: string[];
 
   constructor(
     private readonly userService: UserService,
@@ -55,9 +64,13 @@ export class AuthService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly mailService: MailService,
   ) {
-    this.googleClient = new OAuth2Client(
-      this.configService.get<string>('GOOGLE_CLIENT_ID'),
-    );
+    this.googleClientIds = (
+      this.configService.get<string>('GOOGLE_CLIENT_ID') ?? ''
+    )
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    this.googleClient = new OAuth2Client(this.googleClientIds[0]);
   }
 
   async register(dto: RegisterDTO) {
@@ -173,7 +186,7 @@ export class AuthService {
     return chars.join('');
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: Pick<LoginDto, 'email' | 'password'>) {
     const user = await this.userService.findByEmail(dto.email);
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -354,7 +367,7 @@ export class AuthService {
     try {
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: this.googleClientIds,
       });
       const ticketPayload = ticket.getPayload();
       if (!ticketPayload) {
@@ -445,7 +458,7 @@ export class AuthService {
   }
 
   async logout(token: string) {
-    const decoded = this.jwtService.decode(token);
+    const decoded = this.jwtService.decode<DecodedTokenPayload | null>(token);
 
     if (!decoded?.jti || !decoded?.exp) {
       throw new UnauthorizedException('Token không hợp lệ');
@@ -471,14 +484,15 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
       expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES'),
-    } as any);
+    } as JwtSignOptions);
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES'),
-    } as any);
+    } as JwtSignOptions);
 
-    const decodedRefresh = this.jwtService.decode(refreshToken);
+    const decodedRefresh =
+      this.jwtService.decode<DecodedTokenPayload>(refreshToken);
     const refreshTtl = decodedRefresh.exp - Math.floor(Date.now() / 1000);
     await this.redisClient.set(`refresh:${jti}`, userId, 'EX', refreshTtl);
 

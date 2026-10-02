@@ -33,6 +33,6 @@ export class UploadController {
     file: Express.Multer.File,
   ) {
     const result = await this.uploadService.uploadImage(file);
-    return { url: result.secure_url, publicId: result.public_id };
+    return { url: result.url, publicId: result.publicId };
   }
 }

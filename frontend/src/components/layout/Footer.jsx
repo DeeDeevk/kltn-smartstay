@@ -15,7 +15,9 @@ export default function Footer() {
           {/* Brand */}
           <div className="space-y-5 min-w-0">
             <div className="flex items-center gap-3 min-w-0">
-              <img src={Logo} alt="Vika Hotel" className="h-12 w-12 shrink-0 rounded-2xl object-contain bg-white shadow-sm ring-1 ring-white/10 p-1" />
+              {/* Icon.png tự nó đã là 1 huy hiệu tròn viền vàng hoàn chỉnh — bỏ khung nền
+                  trắng bao ngoài (bg-white/p-1) theo đúng góp ý đã áp dụng ở AuthHero.jsx. */}
+              <img src={Logo} alt="Vika Hotel" className="h-12 w-12 shrink-0 object-contain" />
               <span className="text-xl font-bold text-white tracking-tight">VIKA HOTEL</span>
             </div>
             <p className="max-w-sm text-gray-400 text-sm leading-relaxed">

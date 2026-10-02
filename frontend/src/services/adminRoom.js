@@ -40,7 +40,13 @@ export const adminRoomApi = createApi({
         method: 'patch',
         data: { status },
       }),
-      invalidatesTags: [{ type: 'AdminRoom', id: 'LIST' }],
+      // Phải invalidate cả tag riêng của roomId, không chỉ LIST — nếu không, panel chi
+      // tiết phòng (dùng getRoom, tag theo id) vẫn giữ nguyên data cache cũ sau khi đổi
+      // trạng thái thành công, dù Sơ đồ phòng (dùng getRoomMap, tag LIST) đã cập nhật.
+      invalidatesTags: (result, error, { roomId }) => [
+        { type: 'AdminRoom', id: 'LIST' },
+        { type: 'AdminRoom', id: roomId },
+      ],
     }),
   }),
 });
