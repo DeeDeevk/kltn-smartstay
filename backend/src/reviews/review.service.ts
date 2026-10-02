@@ -57,6 +57,35 @@ export class ReviewService {
     return reviews.map((review) => this.toPublicResponse(review));
   }
 
+  // Tổng số đánh giá của 1 loại phòng — dùng để RoomTypeReviewSummaryService biết cache AI
+  // tổng hợp đã cũ hay chưa (so với reviewCount lưu trong cache lần trước), KHÔNG dùng để
+  // hiển thị danh sách nên không cần join đủ user/roomType như baseQuery().
+  async countForRoomType(roomTypeId: string): Promise<number> {
+    return this.reviewRepo
+      .createQueryBuilder('review')
+      .innerJoin('review.booking', 'booking')
+      .innerJoin('booking.roomType', 'roomType')
+      .where('roomType.roomTypeId = :roomTypeId', { roomTypeId })
+      .getCount();
+  }
+
+  // Lấy rating + comment của những đánh giá GẦN NHẤT thuộc 1 loại phòng, làm dữ liệu đầu
+  // vào cho AI tổng hợp (RoomTypeReviewSummaryService) — chỉ cần đúng 2 trường này, không
+  // trả nguyên Review entity.
+  async findRecentForSummary(
+    roomTypeId: string,
+    limit: number,
+  ): Promise<{ rating: number; comment: string }[]> {
+    const reviews = await this.baseQuery()
+      .andWhere('roomType.roomTypeId = :roomTypeId', { roomTypeId })
+      .take(limit)
+      .getMany();
+    return reviews.map((review) => ({
+      rating: review.rating,
+      comment: review.comment,
+    }));
+  }
+
   async findFeatured(limit = FEATURED_DEFAULT_LIMIT) {
     const reviews = await this.baseQuery()
       .andWhere('review.rating >= :min', { min: FEATURED_MIN_RATING })

@@ -277,7 +277,12 @@
       "submitting": "Đang gửi...",
       "submit": "Gửi đánh giá",
       "submitSuccess": "Cảm ơn bạn đã để lại đánh giá!",
-      "submitError": "Không thể gửi đánh giá. Vui lòng thử lại."
+      "submitError": "Không thể gửi đánh giá. Vui lòng thử lại.",
+      "aiSummaryTitle": "AI tóm tắt đánh giá",
+      "aiSummaryBadge": "Tổng hợp bởi AI",
+      "aiSummaryPositives": "Khách khen",
+      "aiSummaryNegatives": "Khách chê",
+      "aiSummaryNoNegatives": "Chưa có ý kiến chê đáng kể nào."
     }
   },
   "checkout": {

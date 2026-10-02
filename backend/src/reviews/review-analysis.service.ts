@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GeminiProvider } from '../ai-agent/llm/gemini.provider';
+import { retryWithBackoff } from '../common/utils/retry-with-backoff';
 import {
   AspectSentiment,
   REVIEW_TOPIC_VALUES,
@@ -78,22 +79,22 @@ export class ReviewAnalysisService {
     }
   }
 
+  // Cơ chế retry dùng chung (retry-with-backoff.ts) với các service AI khác trong dự án
+  // (LocalEventExtractionService, LocalPlaceExtractionService, RoomTypeReviewSummaryService...).
   private async generateWithRetry(content: string): Promise<unknown> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await this.geminiProvider.generateJson(SYSTEM_PROMPT, content);
-      } catch (err) {
-        const status = (err as { status?: number })?.status;
-        const retryable = status === undefined || RETRYABLE_STATUS.has(status);
-        if (!retryable || attempt >= RETRY_DELAYS_MS.length) throw err;
-        this.logger.warn(
-          `Gọi Gemini lỗi${status ? ` (status ${status})` : ''}, thử lại lần ${attempt + 1}`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_DELAYS_MS[attempt]),
-        );
-      }
-    }
+    return retryWithBackoff(
+      () => this.geminiProvider.generateJson(SYSTEM_PROMPT, content),
+      {
+        retryableStatus: RETRYABLE_STATUS,
+        delaysMs: RETRY_DELAYS_MS,
+        onRetry: (attempt, err) => {
+          const status = (err as { status?: number })?.status;
+          this.logger.warn(
+            `Gọi Gemini lỗi${status ? ` (status ${status})` : ''}, thử lại lần ${attempt + 1}`,
+          );
+        },
+      },
+    );
   }
 
   // Không tin thẳng JSON model trả về: lọc bỏ khía cạnh sai định dạng, quy chủ đề lạ
