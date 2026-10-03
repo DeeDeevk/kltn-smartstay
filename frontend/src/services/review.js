@@ -28,6 +28,16 @@ export const reviewApi = createApi({
       query: (limit = 3) => ({ url: '/reviews/featured', method: 'get', params: { limit } }),
       providesTags: ['Review'],
     }),
+    // Công khai — khối "AI tóm tắt đánh giá" trên trang chi tiết phòng. Backend tự cache
+    // (RoomType.reviewSummary) và chỉ gọi Gemini lại khi có đánh giá mới, nên gọi lại nhiều
+    // lần không tốn thêm — vẫn providesTags ['Review'] để tự làm mới khi có review mới.
+    getRoomTypeReviewSummary: builder.query({
+      query: (roomTypeId) => ({
+        url: `/reviews/room-type/${roomTypeId}/summary`,
+        method: 'get',
+      }),
+      providesTags: ['Review'],
+    }),
     // Đánh giá của chính mình — để biết đơn nào đã đánh giá rồi mà ẩn nút đi.
     getMyReviews: builder.query({
       query: () => ({ url: '/reviews/me', method: 'get' }),
@@ -57,6 +67,7 @@ export const {
   useGetReviewsByRoomTypeQuery,
   useGetAllReviewsQuery,
   useGetFeaturedReviewsQuery,
+  useGetRoomTypeReviewSummaryQuery,
   useGetMyReviewsQuery,
   useCreateReviewMutation,
   useAnalyzeAllReviewsMutation,

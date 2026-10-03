@@ -277,7 +277,12 @@
       "submitting": "Submitting...",
       "submit": "Submit review",
       "submitSuccess": "Thanks for leaving a review!",
-      "submitError": "Could not submit your review. Please try again."
+      "submitError": "Could not submit your review. Please try again.",
+      "aiSummaryTitle": "AI Review Summary",
+      "aiSummaryBadge": "Summarized by AI",
+      "aiSummaryPositives": "Guests liked",
+      "aiSummaryNegatives": "Guests mentioned",
+      "aiSummaryNoNegatives": "No notable complaints yet."
     }
   },
   "checkout": {

@@ -10,6 +10,7 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from 'src/redis/redis.module';
 import { LocalEvent } from './entities/local-event.entity';
 import { EventScanRun } from './entities/event-scan-run.entity';
+import { EventRecurrence } from 'src/common/enums/event-recurrence.enum';
 import { LocalEventSource } from 'src/common/enums/local-event-source.enum';
 import { LocalEventStatus } from 'src/common/enums/local-event-status.enum';
 import { EventScanTriggeredBy } from 'src/common/enums/event-scan-triggered-by.enum';
@@ -17,6 +18,7 @@ import { EventScanStatus } from 'src/common/enums/event-scan-status.enum';
 import { HotelConfigService } from './hotel-config.service';
 import { GeminiProvider } from 'src/ai-agent/llm/gemini.provider';
 import { LocalEventExtractionService } from './local-event-extraction.service';
+import { retryWithBackoff } from 'src/common/utils/retry-with-backoff';
 
 // MỞ RỘNG NGOÀI PHẠM VI SRS GỐC (SRS ghi rõ "không tự động tổng hợp sự kiện từ nguồn
 // ngoài"). Khác với LocalEventExtractionService (admin chủ động dán link/text/file —
@@ -131,6 +133,24 @@ export class LocalEventAutoScanService {
     triggeredBy: EventScanTriggeredBy,
     triggeredByUserId: string | null,
   ): Promise<EventScanRun> {
+    // Đóng gói sẵn 4 field không đổi giữa các nhánh — mỗi nhánh return bên dưới chỉ còn
+    // phải khai báo phần THỰC SỰ khác nhau (status/errorMessage/citations/counts), tránh
+    // lặp lại 4 field giống hệt nhau ở từng lần gọi saveRun() như trước, dễ quên cập nhật 1
+    // nhánh nếu sau này EventScanRun có thêm field mới.
+    const buildRun = (
+      outcome: Omit<
+        Parameters<typeof this.saveRun>[0],
+        'fromDate' | 'toDate' | 'triggeredBy' | 'triggeredByUserId'
+      >,
+    ) =>
+      this.saveRun({
+        fromDate,
+        toDate,
+        triggeredBy,
+        triggeredByUserId,
+        ...outcome,
+      });
+
     const hotelConfig = await this.hotelConfigService.getOrCreate();
     const configured = !(
       hotelConfig.latitude === 0 && hotelConfig.longitude === 0
@@ -138,11 +158,7 @@ export class LocalEventAutoScanService {
     if (!configured) {
       // Dừng TRƯỚC khi gọi Gemini — không có địa chỉ thì câu tìm kiếm vô nghĩa, và gọi
       // search-grounding tốn quota hơn hẳn 1 lệnh gọi JSON thường.
-      return this.saveRun({
-        fromDate,
-        toDate,
-        triggeredBy,
-        triggeredByUserId,
+      return buildRun({
         status: EventScanStatus.FAILED,
         errorMessage:
           'Chưa cấu hình địa chỉ khách sạn (mục Vị trí khách sạn) nên không thể tìm sự kiện xung quanh.',
@@ -163,11 +179,7 @@ export class LocalEventAutoScanService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Auto-scan search-grounding failed: ${message}`);
-      return this.saveRun({
-        fromDate,
-        toDate,
-        triggeredBy,
-        triggeredByUserId,
+      return buildRun({
         status: EventScanStatus.FAILED,
         errorMessage:
           'Không tìm kiếm được sự kiện lúc này, vui lòng thử lại sau.',
@@ -177,6 +189,12 @@ export class LocalEventAutoScanService {
       });
     }
 
+    // QUAN TRỌNG: extractDraftsFromContent() trả về mảng RỖNG (không ném lỗi) khi Gemini
+    // hợp lệ nhưng chỉ đơn giản không tìm thấy sự kiện nào — đây là kết quả hợp lệ, không
+    // phải sự cố. Nó CHỈ ném lỗi khi có sự cố THẬT (Gemini trả sai định dạng, hoặc hết số
+    // lần retry vẫn lỗi) — nên try/catch dưới đây giờ chỉ bắt lỗi THẬT, không còn lẫn lộn
+    // với trường hợp "quét xong, không có gì" như trước (bug: trước đây catch-all coi mọi
+    // lỗi, kể cả lỗi lưu DB thật sự, là "không tìm thấy sự kiện" rồi báo SUCCESS nhầm).
     try {
       const drafts = await this.extractionService.extractDraftsFromContent(
         searchResult.text,
@@ -186,11 +204,7 @@ export class LocalEventAutoScanService {
         fromDate,
         toDate,
       );
-      return this.saveRun({
-        fromDate,
-        toDate,
-        triggeredBy,
-        triggeredByUserId,
+      return buildRun({
         status: EventScanStatus.SUCCESS,
         errorMessage: null,
         citations: searchResult.citations,
@@ -198,20 +212,16 @@ export class LocalEventAutoScanService {
         skippedDuplicateCount,
       });
     } catch (err) {
-      // extractDraftsFromContent() ném BadRequestException khi Gemini không tìm thấy sự
-      // kiện nào trong văn bản search-grounded — đây KHÔNG phải lỗi hệ thống, chỉ đơn giản
-      // là không có sự kiện nào trong khoảng ngày đó. Vẫn ghi SUCCESS (quét thành công,
-      // chỉ là 0 kết quả) để không làm admin tưởng nhầm có sự cố kỹ thuật, nhưng giữ lại
-      // citations để biết Gemini đã thực sự tìm kiếm (nếu có).
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Auto-scan found no events to save: ${message}`);
-      return this.saveRun({
-        fromDate,
-        toDate,
-        triggeredBy,
-        triggeredByUserId,
-        status: EventScanStatus.SUCCESS,
-        errorMessage: null,
+      this.logger.error(
+        `Auto-scan failed after search-grounding succeeded (parse/save step): ${message}`,
+      );
+      return buildRun({
+        status: EventScanStatus.FAILED,
+        errorMessage:
+          'Tìm được kết quả nhưng không xử lý/lưu được, vui lòng thử lại sau.',
+        // Vẫn giữ citations: Gemini ĐÃ thực sự tìm kiếm thành công ở bước trước, chỉ lỗi ở
+        // bước xử lý/lưu sau đó — admin vẫn nên xem được nguồn Gemini đã dùng.
         citations: searchResult.citations,
         createdEventsCount: 0,
         skippedDuplicateCount: 0,
@@ -222,38 +232,25 @@ export class LocalEventAutoScanService {
   private async generateWithSearchRetry(
     prompt: string,
   ): Promise<{ text: string; citations: { url: string; title: string }[] }> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await this.geminiProvider.generateWithSearch(prompt);
-      } catch (err) {
-        const status = (err as { status?: number })?.status;
-        const retryable =
-          status === undefined ||
-          LocalEventAutoScanService.RETRYABLE_STATUS.has(status);
-        if (
-          !retryable ||
-          attempt >= LocalEventAutoScanService.RETRY_DELAYS_MS.length
-        ) {
-          throw err;
-        }
-        this.logger.warn(
-          `Gemini search-grounding call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${LocalEventAutoScanService.RETRY_DELAYS_MS.length})`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            LocalEventAutoScanService.RETRY_DELAYS_MS[attempt],
-          ),
-        );
-      }
-    }
+    return retryWithBackoff(
+      () => this.geminiProvider.generateWithSearch(prompt),
+      {
+        retryableStatus: LocalEventAutoScanService.RETRYABLE_STATUS,
+        delaysMs: LocalEventAutoScanService.RETRY_DELAYS_MS,
+        onRetry: (attempt, err) => {
+          const status = (err as { status?: number })?.status;
+          this.logger.warn(
+            `Gemini search-grounding call failed${status ? ` (status ${status})` : ''}, retrying (${attempt + 1}/${LocalEventAutoScanService.RETRY_DELAYS_MS.length})`,
+          );
+        },
+      },
+    );
   }
 
   // Chống trùng: so title (chuẩn hoá) VÀ (specificDate trùng HOẶC dayOfWeek trùng) với
   // LocalEvent đã có — BẤT KỲ status nào (kể cả PENDING/đã bị từ chối-xoá thì không còn
   // trong DB nên tự động không tính), tránh 2 lần quét trùng khoảng ngày tạo ra 2 bản ghi
-  // y hệt nhau cho admin duyệt 2 lần. Nạp toàn bộ LocalEvent 1 lần (bảng này nhỏ, vài chục
-  // dòng là nhiều) thay vì query riêng cho từng draft — tránh N+1.
+  // y hệt nhau cho admin duyệt 2 lần.
   private async saveDedupedDrafts(
     drafts: Pick<
       LocalEvent,
@@ -262,9 +259,12 @@ export class LocalEventAutoScanService {
     fromDate: string,
     toDate: string,
   ): Promise<{ created: number; skippedDuplicateCount: number }> {
-    const existing = await this.localEventRepo.find({
-      select: { title: true, specificDate: true, dayOfWeek: true },
-    });
+    // Không có draft nào thì không cần tải dữ liệu để so trùng làm gì.
+    if (drafts.length === 0) {
+      return { created: 0, skippedDuplicateCount: 0 };
+    }
+
+    const existing = await this.loadExistingForDedup(fromDate, toDate);
     const existingNormalized = existing.map((e) => ({
       title: this.normalizeTitle(e.title),
       specificDate: e.specificDate,
@@ -321,6 +321,35 @@ export class LocalEventAutoScanService {
     );
     const saved = await this.localEventRepo.save(events);
     return { created: saved.length, skippedDuplicateCount };
+  }
+
+  // Chỉ tải những dòng LocalEvent CÓ THỂ trùng với 1 draft của lượt quét này, thay vì tải
+  // toàn bộ bảng — 2 nhóm duy nhất 1 draft có thể khớp (xem điều kiện trùng ở trên):
+  //   - MỌI dòng WEEKLY: lặp vô hạn nên draft.dayOfWeek có thể khớp bất kỳ lúc nào, không
+  //     phụ thuộc khoảng ngày đang quét.
+  //   - Dòng ONCE có specificDate nằm TRONG [fromDate, toDate]: draft.specificDate (nếu
+  //     có) luôn nằm trong chính khoảng ngày này (đó là khoảng Gemini được yêu cầu tìm sự
+  //     kiện), nên 1 dòng ONCE đã qua hoặc ở tương lai xa ngoài khoảng này không bao giờ
+  //     trùng được với draft của lần quét hiện tại — không có lý do gì để tải nó vào bộ
+  //     nhớ. Quan trọng khi bảng LocalEvent tích luỹ nhiều năm qua các lần quét cron hàng
+  //     tuần: tránh full table scan không giới hạn trên mỗi lượt quét.
+  private async loadExistingForDedup(
+    fromDate: string,
+    toDate: string,
+  ): Promise<Pick<LocalEvent, 'title' | 'specificDate' | 'dayOfWeek'>[]> {
+    return this.localEventRepo
+      .createQueryBuilder('event')
+      .select(['event.title', 'event.specificDate', 'event.dayOfWeek'])
+      .where(
+        '(event.recurrence = :weekly) OR (event.recurrence = :once AND event.specificDate BETWEEN :fromDate AND :toDate)',
+        {
+          weekly: EventRecurrence.WEEKLY,
+          once: EventRecurrence.ONCE,
+          fromDate,
+          toDate,
+        },
+      )
+      .getMany();
   }
 
   private normalizeTitle(title: string): string {

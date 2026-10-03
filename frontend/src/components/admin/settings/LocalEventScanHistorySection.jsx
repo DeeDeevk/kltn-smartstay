@@ -1,16 +1,9 @@
 import { useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, History, X, XCircle } from 'lucide-react';
 import { useGetScanRunsQuery } from '../../../services/hotelConfig';
+import { formatDateOnly } from '../../../utils/formatDate';
 
 const PAGE_LIMIT = 10;
-
-// specificDate/fromDate/toDate ở EventScanRun là cột "date" thuần (không giờ/múi giờ) —
-// tách chuỗi trực tiếp, cùng cách formatVnDate() ở LocalEventsSettingsPage để tránh lệch
-// ngày do new Date() tự quy đổi múi giờ.
-function formatVnDate(isoDate) {
-    const [year, month, day] = isoDate.split('-');
-    return `${day}/${month}/${year}`;
-}
 
 function formatVnDateTime(isoDateTime) {
     return new Date(isoDateTime).toLocaleString('vi-VN', {
@@ -82,7 +75,7 @@ function ScanRunDetailModal({ run, onClose }) {
                         <div>
                             <p className="text-[#9AA0B4]">Khoảng ngày quét</p>
                             <p className="font-medium text-[#1C1B29]">
-                                {formatVnDate(run.fromDate)} – {formatVnDate(run.toDate)}
+                                {formatDateOnly(run.fromDate)} – {formatDateOnly(run.toDate)}
                             </p>
                         </div>
                         <div>
@@ -184,7 +177,7 @@ export default function LocalEventScanHistorySection() {
                                 <TriggerBadge triggeredBy={run.triggeredBy} />
                             </div>
                             <p className="text-sm text-[#6B7280]">
-                                Khoảng quét: {formatVnDate(run.fromDate)} – {formatVnDate(run.toDate)}
+                                Khoảng quét: {formatDateOnly(run.fromDate)} – {formatDateOnly(run.toDate)}
                             </p>
                         </div>
                         <div className="shrink-0 text-sm font-semibold text-[#4F46E5]">

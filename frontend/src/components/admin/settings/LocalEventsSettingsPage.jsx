@@ -6,6 +6,7 @@ import LocalEventFormModal, { WEEKDAY_OPTIONS } from './LocalEventFormModal';
 import LocalEventExtractModal from './LocalEventExtractModal';
 import LocalEventScanModal from './LocalEventScanModal';
 import LocalEventScanHistorySection from './LocalEventScanHistorySection';
+import { formatDateOnly } from '../../../utils/formatDate';
 import {
     useApproveLocalEventMutation,
     useDeleteLocalEventMutation,
@@ -18,14 +19,6 @@ const WEEKDAY_LABEL_BY_VALUE = Object.fromEntries(
 
 // Key localStorage cho toggle "Ẩn sự kiện đã qua" — chỉ ảnh hưởng tab "Đã duyệt".
 const HIDE_PAST_STORAGE_KEY = 'vika-local-events-hide-past';
-
-function formatVnDate(isoDate) {
-    // specificDate là chuỗi "YYYY-MM-DD" thuần (cột kiểu date, không có giờ/múi giờ) — tách
-    // chuỗi trực tiếp thay vì new Date(isoDate) để tránh bị lùi 1 ngày do trình duyệt hiểu
-    // "YYYY-MM-DD" là nửa đêm UTC rồi tự quy đổi sang múi giờ local (UTC+7) lúc hiển thị.
-    const [year, month, day] = isoDate.split('-');
-    return `${day}/${month}/${year}`;
-}
 
 // "Hôm nay" dạng "YYYY-MM-DD" theo ngày của trình duyệt (không phải UTC) — so sánh trực
 // tiếp bằng string với specificDate (cũng "YYYY-MM-DD" thuần) để tránh mọi lệch múi giờ
@@ -76,13 +69,13 @@ function EventTypeBadge({ event, isPast = false }) {
     if (isPast) {
         return (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#E5E7EB] bg-[#F3F4F6] px-2.5 py-1 text-xs font-semibold text-[#6B7280]">
-                Một lần · {formatVnDate(event.specificDate)} · Đã qua
+                Một lần · {formatDateOnly(event.specificDate)} · Đã qua
             </span>
         );
     }
     return (
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-xs font-semibold text-[#2563EB]">
-            Một lần · {formatVnDate(event.specificDate)}
+            Một lần · {formatDateOnly(event.specificDate)}
         </span>
     );
 }

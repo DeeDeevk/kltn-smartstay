@@ -47,7 +47,15 @@ function computeQuickRange(quick) {
     const fromDate = toDateStr(today);
     if (quick === '7d') return { fromDate, toDate: toDateStr(addDays(today, 7)) };
     if (quick === '14d') return { fromDate, toDate: toDateStr(addDays(today, 14)) };
-    if (quick === 'month') return { fromDate, toDate: toDateStr(endOfMonth(today)) };
+    if (quick === 'month') {
+        const lastDayOfMonth = endOfMonth(today);
+        // Nếu hôm nay đã là ngày cuối tháng, endOfMonth === hôm nay -> khoảng 0 ngày, bị
+        // backend từ chối (tối thiểu 1 ngày) và nút "Quét ngay" bị khoá không rõ lý do.
+        // Fallback: quét thêm sang ngày đầu tháng sau, để nút luôn dùng được.
+        const toDate =
+            toDateStr(lastDayOfMonth) === fromDate ? toDateStr(addDays(today, 1)) : toDateStr(lastDayOfMonth);
+        return { fromDate, toDate };
+    }
     return null;
 }
 
