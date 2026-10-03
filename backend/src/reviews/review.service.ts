@@ -15,13 +15,19 @@ import { QueryReviewDto } from './dto/query-review.dto';
 import { ReplyReviewDto } from './dto/reply-review.dto';
 import { BookingStatus } from '../common/enums/booking-status.enum';
 import { ReviewAnalysisService } from './review-analysis.service';
-import { NotificationService } from '../notifications/notification.service';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notifications/notification.service';
 
 // Chỉ lấy đánh giá tốt cho khu "Cảm nhận khách hàng" ngoài trang chủ — đó là khu
 // marketing, không phải danh sách đánh giá đầy đủ (danh sách đầy đủ nằm ở trang chi
 // tiết phòng và hiện mọi mức sao).
 const FEATURED_MIN_RATING = 4;
 const FEATURED_DEFAULT_LIMIT = 3;
+// Dưới mức sao này là đánh giá tiêu cực — báo admin để phản hồi. Khớp với ngưỡng nhóm
+// "Tiêu cực" trên trang quản lý đánh giá (frontend).
+const NEGATIVE_REVIEW_THRESHOLD = 3;
 
 // Số đánh giá phân tích tối đa trong 1 lần bấm "Phân tích tất cả". Mỗi lượt gọi Gemini
 // mất khoảng 1-3 giây nên để cao hơn sẽ làm request treo tới mức timeout.
@@ -113,9 +119,20 @@ export class ReviewService {
       throw err;
     }
 
+    // Đánh giá xấu cần admin phản hồi sớm (chỉ admin mới phản hồi được). Dùng chung
+    // ngưỡng "tiêu cực" với trang quản lý đánh giá (< 3 sao) để hai nơi nói cùng một ý.
+    if (saved.rating < NEGATIVE_REVIEW_THRESHOLD) {
+      void this.notificationService.notifyAdmins(
+        NotificationType.ADMIN_NEGATIVE_REVIEW,
+        `Đánh giá ${saved.rating} sao cần phản hồi`,
+        `${booking.user?.fullName ?? 'Khách'} đánh giá ${booking.roomType?.name ?? 'phòng'}: "${this.truncate(saved.comment, 120)}"`,
+        booking.bookingId,
+      );
+    }
+
     // Phân tích SAU khi đã lưu, và lỗi ở bước này không làm hỏng việc gửi đánh giá:
     // khách không có lỗi gì khi Gemini quá tải. Thất bại thì aiAnalysis để null, admin
-    // chạy bù bằng POST /reviews/:id/analyze.
+    // chạy bù bằng nút "Phân tích tất cả".
     return this.toPublicResponse(await this.runAnalysis(saved));
   }
 
@@ -213,6 +230,10 @@ export class ReviewService {
     }
 
     return this.toPublicResponse(saved);
+  }
+
+  private truncate(text: string, max: number): string {
+    return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
   }
 
   private baseQuery() {

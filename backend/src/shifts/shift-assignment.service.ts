@@ -23,6 +23,10 @@ import { ShiftAssignmentStatus } from '../common/enums/shift-assignment-status.e
 import { UserRole } from '../common/enums/user-role.enum';
 import { UserService } from '../users/user.service';
 import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notifications/notification.service';
 import { CheckInShiftDto } from './dto/check-in-shift.dto';
 import { CheckOutShiftDto } from './dto/check-out-shift.dto';
 
@@ -85,6 +89,20 @@ function formatDayMonth(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// "1234567" -> "1.234.567đ". Tự format (không toLocaleString) cùng lý do với formatHm.
+function formatVnd(amount: number): string {
+  const sign = amount < 0 ? '-' : '';
+  const digits = String(Math.abs(Math.round(amount))).replace(
+    /\B(?=(\d{3})+(?!\d))/g,
+    '.',
+  );
+  return `${sign}${digits}đ`;
+}
+
+// Két lệch dưới mức này (thừa/thiếu tiền lẻ) không báo admin — tránh làm nhiễu bằng
+// vài nghìn đồng thối nhầm. Lệch từ mức này trở lên mới đáng để quản lý đối chất.
+const CASH_MISMATCH_ALERT_THRESHOLD = 50_000;
+
 // Vô ca trễ không quá số phút này vẫn tính là đúng giờ.
 const LATE_GRACE_MINUTES = 15;
 
@@ -124,6 +142,7 @@ export class ShiftAssignmentService {
     private readonly shiftTypeRepo: Repository<ShiftType>,
     private readonly userService: UserService,
     private readonly paymentTransactionService: PaymentTransactionService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Admin xem lịch phân ca — lọc theo khoảng ngày (thường là 1 tuần) và tuỳ
@@ -407,10 +426,21 @@ export class ShiftAssignmentService {
     assignment.checkOutAt = new Date();
     assignment.closingCash = dto.closingCash;
     const saved = await this.shiftAssignmentRepo.save(assignment);
-    return {
-      assignment: withLateInfo(saved),
-      report: await this.buildReport(saved),
-    };
+    const report = await this.buildReport(saved);
+
+    if (
+      report?.difference != null &&
+      Math.abs(report.difference) >= CASH_MISMATCH_ALERT_THRESHOLD
+    ) {
+      const kind = report.difference < 0 ? 'thiếu' : 'thừa';
+      void this.notificationService.notifyAdmins(
+        NotificationType.ADMIN_CASH_MISMATCH,
+        `Két ${kind} ${formatVnd(Math.abs(report.difference))} khi kết ca`,
+        `${saved.staff?.fullName ?? 'Nhân viên'} kết ${saved.shiftType?.name ?? 'ca'} ngày ${saved.workDate}: đếm được ${formatVnd(saved.closingCash ?? 0)}, lẽ ra phải có ${formatVnd(report.expectedCash)}.`,
+      );
+    }
+
+    return { assignment: withLateInfo(saved), report };
   }
 
   // Báo cáo chốt két của 1 ca: chủ ca hoặc Admin xem được. Ca đang diễn ra thì tính
@@ -483,7 +513,8 @@ export class ShiftAssignmentService {
         ]),
         workDate: LessThanOrEqual(todayKey()),
       },
-      relations: { shiftType: true },
+      // Cần tên nhân viên cho nội dung thông báo gửi admin.
+      relations: { shiftType: true, staff: true },
     });
 
     let absent = 0;
@@ -512,8 +543,30 @@ export class ShiftAssignmentService {
 
     if (toSave.length > 0) {
       await this.shiftAssignmentRepo.save(toSave);
+      // Báo SAU khi đã lưu: lưu lỗi thì không báo một chuyện chưa xảy ra.
+      for (const assignment of toSave) {
+        void this.notifyAdminsOfShiftProblem(assignment);
+      }
     }
     return { absent, autoClosed };
+  }
+
+  private notifyAdminsOfShiftProblem(assignment: ShiftAssignment) {
+    const who = assignment.staff?.fullName ?? 'Nhân viên';
+    const shift = `${assignment.shiftType?.name ?? 'ca'} ngày ${assignment.workDate}`;
+    if (assignment.status === ShiftAssignmentStatus.ABSENT) {
+      return this.notificationService.notifyAdmins(
+        NotificationType.ADMIN_SHIFT_ABSENT,
+        `${who} vắng ca`,
+        `${who} không vô ${shift}. Ca đã qua giờ kết thúc nên hệ thống đánh dấu vắng mặt.`,
+      );
+    }
+    // Ca đang làm mà quên kết: két ca này chưa ai đếm và xác nhận.
+    return this.notificationService.notifyAdmins(
+      NotificationType.ADMIN_SHIFT_AUTO_CLOSED,
+      `Ca của ${who} bị tự đóng, chưa chốt két`,
+      `${who} quên kết ${shift}. Hệ thống đã tự đóng ca nhưng tiền trong két chưa được đếm và xác nhận.`,
+    );
   }
 
   private async buildReport(assignment: ShiftAssignment) {

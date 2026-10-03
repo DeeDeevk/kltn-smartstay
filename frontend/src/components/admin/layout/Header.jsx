@@ -1,5 +1,6 @@
 import React from 'react';
 import { Menu } from 'lucide-react';
+import NotificationBell from '../../layout/NotificationBell';
 
 export default function Header({ collapsed = false, onMenuClick }) {
   return (
@@ -18,8 +19,11 @@ export default function Header({ collapsed = false, onMenuClick }) {
         <Menu size={22} />
       </button>
 
-      {/* Actions (chỗ dành cho nút xuất báo cáo, chuông thông báo... khi cần) */}
-      <div className="ml-auto flex items-center gap-4" />
+      <div className="ml-auto flex items-center gap-4">
+        {/* Có khách đặt phòng -> backend tạo thông báo cho từng admin/nhân viên và đẩy
+            real-time, chuông tự cập nhật không cần F5. */}
+        <NotificationBell viewAllPath="/admin/notifications" />
+      </div>
     </header>
   );
 }

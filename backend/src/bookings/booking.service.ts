@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -59,6 +60,8 @@ interface Requester {
 
 @Injectable()
 export class BookingService {
+  private readonly logger = new Logger(BookingService.name);
+
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
@@ -194,6 +197,13 @@ export class BookingService {
       this.realtimeGateway.emitBookingCreated({
         bookingId: detail.bookingId,
         guestName: dto.guestInfo?.fullName,
+        checkIn: dto.checkIn,
+        checkOut: dto.checkOut,
+      });
+      void this.notifyStaffOfNewBooking(userId, {
+        bookingId: detail.bookingId,
+        guestName: dto.guestInfo?.fullName,
+        roomTypeName: roomType.name,
         checkIn: dto.checkIn,
         checkOut: dto.checkOut,
       });
@@ -830,6 +840,20 @@ export class BookingService {
       },
     );
 
+    // Đơn đã có tiền (khách trả trước qua PayOS) mà bị huỷ: hệ thống KHÔNG có luồng hoàn
+    // tiền tự động, nên phải báo admin xử lý hoàn tay — không thì tiền của khách bị treo
+    // và dễ thành khiếu nại.
+    if (booking.paidAmount > 0) {
+      const who =
+        booking.user?.userId === requester.userId ? 'Khách' : 'Nhân viên';
+      void this.notificationService.notifyAdmins(
+        NotificationType.ADMIN_PAID_BOOKING_CANCELLED,
+        `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(booking.paidAmount)}`,
+        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, cần hoàn tiền thủ công.`,
+        booking.bookingId,
+      );
+    }
+
     if (booking.room) {
       booking.room.status = RoomStatus.AVAILABLE;
       await this.roomRepo.save(booking.room);
@@ -1179,6 +1203,38 @@ export class BookingService {
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
+
+  // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Chỉ báo cho nhân viên
+  // lễ tân (người xác nhận đơn), không báo admin. Đơn walk-in do chính lễ tân tạo nên
+  // không báo. Bỏ qua người vừa đặt nếu họ cũng là nhân viên (tự đặt
+  // phòng cho mình thì không cần tự báo cho mình). Lỗi ở đây không được làm hỏng việc
+  // đặt phòng — đơn đã tạo xong rồi.
+  private async notifyStaffOfNewBooking(
+    bookerUserId: string,
+    booking: {
+      bookingId: string;
+      guestName?: string | null;
+      roomTypeName?: string | null;
+      checkIn: string;
+      checkOut: string;
+    },
+  ): Promise<void> {
+    try {
+      const staffIds = (await this.userService.findActiveStaffIds()).filter(
+        (id) => id !== bookerUserId,
+      );
+      await this.notificationService.notifyStaffNewBooking(staffIds, booking);
+    } catch (error) {
+      this.logger.warn(
+        `Không báo được đơn mới ${booking.bookingId} cho nhân viên: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  // "1234567" -> "1.234.567đ" cho nội dung thông báo.
+  private formatVnd(amount: number): string {
+    return `${String(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+  }
 
   private getStayDates(checkIn: string, checkOut: string): string[] {
     const dates: string[] = [];
