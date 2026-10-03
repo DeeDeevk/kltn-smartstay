@@ -60,6 +60,28 @@ export class UserService {
     return this.userRepo.findOne({ where: { phone } });
   }
 
+  // Id của mọi NHÂN VIÊN (lễ tân) còn hoạt động — để gửi thông báo vận hành như có đơn
+  // đặt phòng mới. Cố ý không gồm ADMIN: admin chỉ nhận thông báo quan trọng cần tới
+  // quyền quản lý, không nhận các việc lễ tân xử lý hằng ngày. Tài khoản bị khoá thì
+  // bỏ qua vì họ không đăng nhập được để đọc.
+  async findActiveStaffIds(): Promise<string[]> {
+    const users = await this.userRepo.find({
+      select: { userId: true },
+      where: { role: UserRole.STAFF, status: UserStatus.ACTIVE },
+    });
+    return users.map((user) => user.userId);
+  }
+
+  // Id của mọi ADMIN còn hoạt động — nhận các thông báo quan trọng cần quyền quản lý
+  // (két lệch, vắng ca, đơn đã trả tiền bị huỷ, đánh giá xấu...).
+  async findActiveAdminIds(): Promise<string[]> {
+    const users = await this.userRepo.find({
+      select: { userId: true },
+      where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+    });
+    return users.map((user) => user.userId);
+  }
+
   async findById(userId: string): Promise<User> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
