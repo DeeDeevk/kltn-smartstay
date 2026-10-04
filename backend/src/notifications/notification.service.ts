@@ -14,6 +14,10 @@ export enum NotificationType {
   PAYMENT_SUCCESS = 'PAYMENT_SUCCESS',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
   REVIEW_REPLIED = 'REVIEW_REPLIED',
+  // Yêu cầu hoàn tiền (RefundRequest, KAN-114) đã được admin xử lý — nội dung tuỳ biến
+  // theo adminNote nên không nằm trong BOOKING_MESSAGES cố định, xem notifyRefund().
+  REFUND_COMPLETED = 'REFUND_COMPLETED',
+  REFUND_REJECTED = 'REFUND_REJECTED',
   // Gửi cho nhân viên lễ tân (không gửi admin, không gửi khách): có khách vừa đặt phòng.
   STAFF_NEW_BOOKING = 'STAFF_NEW_BOOKING',
   // --- Chỉ gửi ADMIN: việc cần quyền quản lý mới xử lý được ---
@@ -38,6 +42,8 @@ type BookingNotificationType = Exclude<
   NotificationType,
   | NotificationType.REVIEW_REPLIED
   | NotificationType.STAFF_NEW_BOOKING
+  | NotificationType.REFUND_COMPLETED
+  | NotificationType.REFUND_REJECTED
   | AdminNotificationType
 >;
 
@@ -131,6 +137,31 @@ export class NotificationService {
       `Về đánh giá ${review.roomTypeName ?? 'kỳ nghỉ'} của bạn: "${reply}"`,
       review.bookingId,
     );
+  }
+
+  // Admin đã xử lý xong 1 yêu cầu hoàn tiền (RefundRequest, KAN-114) — nội dung tuỳ theo
+  // completed/rejected và kèm adminNote nếu có, giống cách notifyReviewReplied() ghép nội
+  // dung tuỳ biến thay vì tra BOOKING_MESSAGES cố định.
+  async notifyRefund(
+    userId: string,
+    type: NotificationType.REFUND_COMPLETED | NotificationType.REFUND_REJECTED,
+    refund: {
+      bookingId: string;
+      roomTypeName?: string | null;
+      adminNote?: string | null;
+    },
+  ): Promise<void> {
+    const room = refund.roomTypeName ?? 'của bạn';
+    const note = refund.adminNote?.trim();
+    const title =
+      type === NotificationType.REFUND_COMPLETED
+        ? 'Đã hoàn tiền thành công'
+        : 'Yêu cầu hoàn tiền bị từ chối';
+    const body =
+      type === NotificationType.REFUND_COMPLETED
+        ? `Khách sạn đã hoàn tiền cho đơn ${room}.${note ? ` Ghi chú: ${note}` : ''}`
+        : `Yêu cầu hoàn tiền cho đơn ${room} không được chấp nhận. Lý do: ${note ?? 'không rõ'}`;
+    await this.create(userId, type, title, body, refund.bookingId);
   }
 
   // Báo cho TỪNG nhân viên lễ tân là có đơn mới. Mỗi người một dòng riêng để trạng thái

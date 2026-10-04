@@ -40,6 +40,7 @@ import {
   NotificationService,
   NotificationType,
 } from '../notifications/notification.service';
+import { RefundRequestService } from '../refund-requests/refund-request.service';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -78,6 +79,7 @@ export class BookingService {
     private readonly shiftAssignmentService: ShiftAssignmentService,
     private readonly paymentTransactionService: PaymentTransactionService,
     private readonly notificationService: NotificationService,
+    private readonly refundRequestService: RefundRequestService,
   ) {}
 
   // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
@@ -851,6 +853,14 @@ export class BookingService {
         `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(booking.paidAmount)}`,
         `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, cần hoàn tiền thủ công.`,
         booking.bookingId,
+      );
+      // Ghi nhận thành 1 yêu cầu hoàn tiền có cấu trúc (KAN-114) — bổ sung CHO notification
+      // ở trên (không thay thế): notification là cảnh báo tức thời, RefundRequest là bản
+      // ghi để admin theo dõi/xử lý qua trang /admin/refund-requests. Không throw ra ngoài
+      // nếu lỗi — xem RefundRequestService.createForCancelledBooking().
+      void this.refundRequestService.createForCancelledBooking(
+        booking,
+        dto.reason,
       );
     }
 

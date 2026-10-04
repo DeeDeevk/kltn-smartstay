@@ -25,6 +25,16 @@ export const chatApi = createApi({
         { type: 'Conversation', id: conversationId },
       ],
     }),
+    // Upload ảnh TRƯỚC (cùng kiểu FormData như uploadRoomTypeImage/extractLocalEventsFromFile),
+    // lấy url rồi tự gửi tin nhắn kèm attachmentUrl qua socket (xem Chatbot.jsx/
+    // StaffChatPage.jsx) — ảnh không gửi trực tiếp qua socket vì multipart cần HTTP.
+    uploadChatAttachment: builder.mutation({
+      query: (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return { url: '/chat/attachments', method: 'post', data: formData };
+      },
+    }),
   }),
 });
 
@@ -32,4 +42,5 @@ export const {
   useGetOrCreateConversationMutation,
   useGetConversationsQuery,
   useGetMessagesQuery,
+  useUploadChatAttachmentMutation,
 } = chatApi;

@@ -9,6 +9,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { UserRole } from '../common/enums/user-role.enum';
+import { MessageAttachmentType } from '../common/enums/message-attachment-type.enum';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { WsUser } from '../realtime/ws-auth.service';
 
@@ -53,7 +54,13 @@ export class ChatGateway {
   @SubscribeMessage('chat:message')
   async handleMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { conversationId: string; content: string },
+    @MessageBody()
+    body: {
+      conversationId: string;
+      content: string;
+      attachmentUrl?: string;
+      attachmentType?: MessageAttachmentType;
+    },
   ) {
     const user = this.requireUser(client);
     const conversation = await this.chatService.findConversationById(
@@ -65,6 +72,8 @@ export class ChatGateway {
       body.conversationId,
       user.userId,
       body.content,
+      body.attachmentUrl ?? null,
+      body.attachmentType ?? null,
     );
 
     this.server

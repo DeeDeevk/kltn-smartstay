@@ -133,9 +133,12 @@ const FAQS: SeedFaq[] = [
     question:
       'Đã thanh toán chuyển khoản rồi thì huỷ đơn có được hoàn tiền không?',
     answer:
-      'Quý khách vẫn có thể huỷ đơn đã thanh toán nếu chưa nhận phòng. Tuy nhiên việc hoàn ' +
-      'tiền không được thực hiện tự động trên hệ thống — quý khách vui lòng liên hệ lễ tân ' +
-      'kèm mã đặt phòng để được hỗ trợ hoàn tiền.',
+      'Quý khách vẫn có thể huỷ đơn đã thanh toán nếu chưa nhận phòng. Ngay khi huỷ đơn, ' +
+      'hệ thống sẽ TỰ ĐỘNG ghi nhận yêu cầu hoàn tiền, quý khách không cần báo thêm. Đội ngũ ' +
+      'lễ tân sẽ xử lý trong vòng 3 ngày làm việc: quý khách vui lòng vào khung chat với lễ ' +
+      'tân (biểu tượng chat ở góc màn hình) gửi ảnh chụp mã QR/thông tin tài khoản nhận tiền ' +
+      'để được xác minh, sau đó khách sạn sẽ chuyển khoản hoàn tiền thủ công. Quý khách sẽ ' +
+      'nhận được thông báo ngay khi tiền đã được hoàn.',
   },
   {
     category: 'Huỷ phòng',
