@@ -299,17 +299,27 @@ const Chatbot = () => {
                 </div>
             )}
 
-            <button
-                onPointerDown={dragHandlers.onPointerDown}
-                onPointerMove={dragHandlers.onPointerMove}
-                onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
-                style={buttonStyle}
-                title="Chat với lễ tân"
-                aria-label="Chat với lễ tân"
-                className={`fixed p-4 bg-[#1b6b50] text-white rounded-full shadow-2xl hover:bg-[#14523d] transition-shadow duration-200 z-50 cursor-grab active:cursor-grabbing select-none touch-none ${isOpen ? 'ring-4 ring-green-300' : ''}`}
-            >
-                <Headset className="w-8 h-8" />
-            </button>
+            {/* Wrapper giữ vị trí fixed (kéo-thả) — nút bên trong chỉ cần relative để
+                neo chấm trực tuyến + tooltip hover, không ảnh hưởng tới kích thước 64px
+                mà useDraggableWidget đã tính toán vị trí bảng chat dựa vào. */}
+            <div style={buttonStyle} className="group fixed z-50">
+                <button
+                    onPointerDown={dragHandlers.onPointerDown}
+                    onPointerMove={dragHandlers.onPointerMove}
+                    onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
+                    title="Chat với lễ tân"
+                    aria-label="Chat với lễ tân"
+                    className={`chat-widget-pop-in relative flex h-16 w-16 cursor-grab touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-[#1b6b50] to-[#0f4a37] text-white shadow-2xl transition-all duration-200 hover:scale-105 hover:from-[#14523d] hover:to-[#0a3a2a] active:cursor-grabbing ${isOpen ? 'ring-4 ring-green-300' : ''}`}
+                >
+                    <Headset className="w-8 h-8" />
+                    {/* Chấm "đang trực tuyến" — dùng chung animate-pulse với chấm trong
+                        header panel để 2 hiệu ứng đồng bộ. */}
+                    <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-400 animate-pulse" />
+                </button>
+                <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+                    Chat với lễ tân
+                </span>
+            </div>
 
             <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
         </>
