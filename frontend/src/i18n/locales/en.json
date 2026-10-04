@@ -375,6 +375,13 @@
       "cancelMessage": "Are you sure you want to cancel the booking for \"{{roomName}}\"?",
       "review": "Write a review",
       "viewDetail": "Details",
+      "refundPending": "Refund pending",
+      "refundCompleted": "Refunded",
+      "refundRejected": "Refund request rejected",
+      "refundRejectedReason": "Reason: {{reason}}",
+      "sendQrProof": "Send QR photo",
+      "cancelReasonInputLabel": "Reason for cancelling (optional)",
+      "cancelReasonInputPlaceholder": "Let us know why so we can help better, especially if the booking was paid and needs a refund.",
       "table": {
         "room": "Room",
         "code": "Booking code",

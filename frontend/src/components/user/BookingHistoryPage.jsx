@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { CalendarDays, CreditCard, ImageOff, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  ImageOff,
+  Loader2,
+  MessageCircle,
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
@@ -18,11 +27,64 @@ import {
 import { useSocket } from '../../context/SocketContext';
 import { useCreatePayOSLinkMutation } from '../../services/payment';
 import { useGetMyReviewsQuery } from '../../services/review';
+import { useGetMyRefundRequestsQuery } from '../../services/refundRequest';
 import formatCurrency from '../../utils/formatCurrency';
 import formatDate from '../../utils/formatDate';
 import getBookingCode from '../../utils/bookingCode';
+import openReceptionChat from '../../utils/openReceptionChat';
 
-function BookingActions({ booking, canPayNow, canCancel, canReview, isPaying, onPayNow, onCancel, onReview, onViewDetail, t }) {
+// Icon + màu riêng cho từng trạng thái RefundRequest — KHÔNG dùng pill badge như
+// booking.status/paymentStatus (StatusPill) để tránh xếp chồng 3 pill nhìn rối; đây là 1
+// dòng phụ nhỏ (12-13px) nằm ngay dưới, canh lề trái với badge trạng thái đơn.
+const REFUND_STATUS_CONFIG = {
+  PENDING: { icon: Clock, className: 'text-amber-600', labelKey: 'booking.history.refundPending' },
+  COMPLETED: {
+    icon: CheckCircle2,
+    className: 'text-green-600',
+    labelKey: 'booking.history.refundCompleted',
+  },
+  REJECTED: {
+    icon: AlertTriangle,
+    className: 'text-red-600',
+    labelKey: 'booking.history.refundRejected',
+  },
+};
+
+// Dòng phụ hiển thị trạng thái hoàn tiền cho 1 đơn đã huỷ đã thanh toán — tạo TỰ ĐỘNG khi
+// huỷ đơn (KAN-114), khách không cần tự "yêu cầu" hoàn tiền. Không có RefundRequest nào
+// (đơn huỷ nhưng chưa từng thanh toán) thì không hiện gì — refund ở đây luôn undefined/null
+// trong trường hợp đó.
+function RefundStatus({ refund, t }) {
+  const config = refund && REFUND_STATUS_CONFIG[refund.status];
+  if (!config) return null;
+  const Icon = config.icon;
+  return (
+    <div className={`mt-1.5 flex items-center gap-1 text-[12px] font-semibold ${config.className}`}>
+      <Icon size={13} className="shrink-0" />
+      <span>{t(config.labelKey)}</span>
+      {refund.status === 'REJECTED' && refund.adminNote && (
+        <span className="font-normal text-gray-400">
+          · {t('booking.history.refundRejectedReason', { reason: refund.adminNote })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function BookingActions({
+  booking,
+  canPayNow,
+  canCancel,
+  canReview,
+  showSendQr,
+  isPaying,
+  onPayNow,
+  onCancel,
+  onReview,
+  onViewDetail,
+  onSendQr,
+  t,
+}) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {canPayNow && (
@@ -53,6 +115,18 @@ function BookingActions({ booking, canPayNow, canCancel, canReview, isPaying, on
           {t('booking.history.review')}
         </button>
       )}
+      {/* Chỉ hiện khi RefundRequest đang PENDING — ẩn ngay khi admin đã COMPLETED/REJECTED
+          (xem showSendQr được tính ở nơi gọi). Kiểu outline để phân biệt với nút "Chi tiết"
+          chính (viền xám trung tính) — đây là hành động CẦN khách chú ý hơn. */}
+      {showSendQr && (
+        <button
+          type="button"
+          onClick={() => onSendQr(booking)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 px-3.5 py-2 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+        >
+          <MessageCircle size={14} /> {t('booking.history.sendQrProof')}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onViewDetail(booking)}
@@ -71,13 +145,28 @@ export default function BookingHistoryPage() {
   const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation();
   const [payingId, setPayingId] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [detailBookingId, setDetailBookingId] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
+
+  // Reset ô nhập lý do mỗi khi mở dialog huỷ cho 1 đơn khác hoặc đóng dialog lại —
+  // tránh lý do của lần huỷ trước còn sót lại khi mở dialog mới.
+  useEffect(() => {
+    setCancelReasonInput('');
+  }, [cancelTarget]);
 
   // Đánh giá khách đã viết — để ẩn nút "Đánh giá" ở những đơn đã đánh giá rồi (backend
   // cũng chặn, nhưng để nút ở đó rồi báo lỗi khi bấm thì khó chịu).
   const { data: myReviews = [] } = useGetMyReviewsQuery();
   const reviewedBookingIds = new Set(myReviews.map((r) => r.bookingId));
+
+  // Yêu cầu hoàn tiền của chính khách (tạo tự động khi huỷ đơn đã thanh toán, KAN-114) —
+  // map theo bookingId để tra nhanh khi render từng dòng.
+  const { data: myRefundRequests = [] } = useGetMyRefundRequestsQuery();
+  const refundByBookingId = useMemo(
+    () => new Map(myRefundRequests.map((r) => [r.bookingId, r])),
+    [myRefundRequests],
+  );
 
   const bookings = data?.data ?? [];
   // Lấy lại object từ danh sách mới nhất thay vì giữ 1 bản chụp tĩnh — nếu socket
@@ -97,6 +186,11 @@ export default function BookingHistoryPage() {
     return () => socket.off('booking:updated', handleBookingUpdated);
   }, [socket, dispatch]);
 
+  // "Gửi ảnh QR" chỉ cần mở đúng widget chat lễ tân — khách chỉ có DUY NHẤT 1 hội thoại
+  // đang mở tại 1 thời điểm (getOrCreateOwnConversation ở backend), nên không cần biết
+  // trước conversationId/scroll tới đoạn nào, mở ra là thấy đúng cuộc hội thoại cần gửi.
+  const handleSendQr = () => openReceptionChat();
+
   const handlePayNow = async (bookingId) => {
     setPayingId(bookingId);
     try {
@@ -110,10 +204,11 @@ export default function BookingHistoryPage() {
 
   const handleConfirmCancel = async () => {
     if (!cancelTarget) return;
+    const trimmedReason = cancelReasonInput.trim();
     try {
       await cancelBooking({
         bookingId: cancelTarget.bookingId,
-        reason: t('booking.history.cancelReason'),
+        reason: trimmedReason || t('booking.history.cancelReason'),
       }).unwrap();
       toast.success(t('booking.history.cancelSuccess'));
       setCancelTarget(null);
@@ -177,6 +272,8 @@ export default function BookingHistoryPage() {
                       const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
                       const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                       const isPaying = isRedirecting && payingId === booking.bookingId;
+                      const refund = refundByBookingId.get(booking.bookingId);
+                      const showSendQr = refund?.status === 'PENDING';
 
                       return (
                         <tr key={booking.bookingId} className="transition-colors hover:bg-gray-50/60">
@@ -228,10 +325,13 @@ export default function BookingHistoryPage() {
                               styles={BOOKING_STATUS_STYLES}
                               label={t(`booking.status.${booking.status}`, booking.status)}
                             />
+                            <RefundStatus refund={refund} t={t} />
                           </td>
                           <td className="px-6 py-4">
                             <BookingActions
                               booking={booking}
+                              showSendQr={showSendQr}
+                              onSendQr={handleSendQr}
                               canPayNow={canPayNow}
                               canCancel={canCancel}
                               canReview={canReview}
@@ -261,6 +361,8 @@ export default function BookingHistoryPage() {
                 const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
                 const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                 const isPaying = isRedirecting && payingId === booking.bookingId;
+                const refund = refundByBookingId.get(booking.bookingId);
+                const showSendQr = refund?.status === 'PENDING';
 
                 return (
                   <div key={booking.bookingId} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -299,6 +401,7 @@ export default function BookingHistoryPage() {
                             label={t(`booking.payment.${booking.paymentStatus}`, booking.paymentStatus)}
                           />
                         </div>
+                        <RefundStatus refund={refund} t={t} />
                       </div>
                     </div>
                     <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
@@ -311,6 +414,8 @@ export default function BookingHistoryPage() {
                     <div className="border-t border-gray-100 px-4 py-3">
                       <BookingActions
                         booking={booking}
+                        showSendQr={showSendQr}
+                        onSendQr={handleSendQr}
                         canPayNow={canPayNow}
                         canCancel={canCancel}
                         canReview={canReview}
@@ -340,7 +445,21 @@ export default function BookingHistoryPage() {
         loading={isCancelling}
         onConfirm={handleConfirmCancel}
         onClose={() => setCancelTarget(null)}
-      />
+      >
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-semibold text-gray-500">
+            {t('booking.history.cancelReasonInputLabel')}
+          </label>
+          <textarea
+            rows={3}
+            maxLength={500}
+            value={cancelReasonInput}
+            onChange={(e) => setCancelReasonInput(e.target.value)}
+            placeholder={t('booking.history.cancelReasonInputPlaceholder')}
+            className="w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </ConfirmModal>
 
       {detailBooking && (
         <BookingDetailModal booking={detailBooking} onClose={() => setDetailBookingId(null)} />

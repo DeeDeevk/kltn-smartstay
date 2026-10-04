@@ -375,6 +375,13 @@
       "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?",
       "review": "Đánh giá",
       "viewDetail": "Chi tiết",
+      "refundPending": "Đang chờ hoàn tiền",
+      "refundCompleted": "Đã hoàn tiền",
+      "refundRejected": "Yêu cầu bị từ chối",
+      "refundRejectedReason": "Lý do: {{reason}}",
+      "sendQrProof": "Gửi ảnh QR",
+      "cancelReasonInputLabel": "Lý do hủy (không bắt buộc)",
+      "cancelReasonInputPlaceholder": "Cho chúng tôi biết lý do để được hỗ trợ tốt hơn, đặc biệt nếu đơn đã thanh toán và cần hoàn tiền.",
       "table": {
         "room": "Phòng",
         "code": "Mã đặt",

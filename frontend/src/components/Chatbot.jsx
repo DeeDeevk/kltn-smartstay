@@ -12,6 +12,7 @@ import {
 import useDraggableWidget from '../hooks/useDraggableWidget';
 import useExclusiveChatPanel from '../hooks/useExclusiveChatPanel';
 import ImageLightbox from './common/ImageLightbox';
+import { REQUEST_OPEN_EVENT, RECEPTION_WIDGET_ID } from '../utils/openReceptionChat';
 
 // Khớp đúng giới hạn backend (ChatController.uploadAttachment) — chặn sớm ở form, backend
 // vẫn là nơi kiểm tra thật sự.
@@ -49,6 +50,16 @@ const Chatbot = () => {
     // Lễ tân/admin trả lời khách ở /admin/chat riêng — widget nổi này chỉ dành cho
     // khách hàng, không hiện khi đang đăng nhập bằng tài khoản nhân sự.
     const isStaffAccount = user?.role === 'STAFF' || user?.role === 'ADMIN';
+
+    // Cho phép nơi khác trong app (VD trang "Lịch sử đặt phòng", nhắc khách gửi ảnh QR xác
+    // minh hoàn tiền) tự mở khung chat này ra — xem utils/openReceptionChat.js.
+    useEffect(() => {
+        const handleRequestOpen = (e) => {
+            if (e.detail === RECEPTION_WIDGET_ID) setIsOpen(true);
+        };
+        window.addEventListener(REQUEST_OPEN_EVENT, handleRequestOpen);
+        return () => window.removeEventListener(REQUEST_OPEN_EVENT, handleRequestOpen);
+    }, [setIsOpen]);
 
     // Mở khung chat lần đầu (đã đăng nhập) -> lấy/tạo hội thoại của khách rồi join
     // room socket tương ứng để nhận tin nhắn real-time.

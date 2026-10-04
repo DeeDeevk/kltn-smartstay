@@ -9,6 +9,21 @@ export const refundRequestApi = createApi({
   baseQuery: axiosBaseQuery(),
   tagTypes: ['RefundRequest'],
   endpoints: (builder) => ({
+    // Khách tự xem yêu cầu hoàn tiền của CHÍNH MÌNH — trang "Lịch sử đặt phòng" dùng để
+    // hiện trạng thái (PENDING/COMPLETED/REJECTED) cho từng đơn đã huỷ.
+    getMyRefundRequests: builder.query({
+      query: () => ({ url: '/refund-requests/mine', method: 'get' }),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ refundRequestId }) => ({
+                type: 'RefundRequest',
+                id: refundRequestId,
+              })),
+              { type: 'RefundRequest', id: 'MINE' },
+            ]
+          : [{ type: 'RefundRequest', id: 'MINE' }],
+    }),
     getRefundRequests: builder.query({
       query: ({ status, page = 1, limit = 20 } = {}) => ({
         url: '/refund-requests',
@@ -63,6 +78,7 @@ export const refundRequestApi = createApi({
 });
 
 export const {
+  useGetMyRefundRequestsQuery,
   useGetRefundRequestsQuery,
   useCompleteRefundRequestMutation,
   useRejectRefundRequestMutation,

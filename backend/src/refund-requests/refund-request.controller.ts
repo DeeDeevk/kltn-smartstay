@@ -37,6 +37,20 @@ interface AuthenticatedRequest extends Request {
 export class RefundRequestController {
   constructor(private readonly refundRequestService: RefundRequestService) {}
 
+  // Khách TỰ xem được yêu cầu hoàn tiền của CHÍNH MÌNH (lọc theo userId đang đăng nhập,
+  // không phải xem của người khác) — trang "Lịch sử đặt phòng" cần hiện trạng thái này cho
+  // khách thay vì chỉ có thông báo. @Roles ở ĐÂY ghi đè @Roles(ADMIN, STAFF) của class
+  // (Reflector.getAllAndOverride ưu tiên method-level) — phải khai đủ cả 3 role, không bỏ
+  // trống @Roles vì RolesGuard fail-closed khi không có metadata nào.
+  //
+  // Đặt TRƯỚC @Get(':id') — nếu không, "/refund-requests/mine" sẽ bị hiểu nhầm thành
+  // @Get(':id') với id = "mine" vì route động khớp trước route tĩnh khai sau nó.
+  @Get('mine')
+  @Roles(UserRole.CUSTOMER, UserRole.STAFF, UserRole.ADMIN)
+  findMine(@Req() req: AuthenticatedRequest) {
+    return this.refundRequestService.findMine(req.user.userId);
+  }
+
   @Get()
   findAll(@Query() query: QueryRefundRequestDto) {
     return this.refundRequestService.findAll(query);

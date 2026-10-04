@@ -95,6 +95,27 @@ export class RefundRequestService {
     return { items, total, page, limit };
   }
 
+  // Khách tự xem yêu cầu hoàn tiền của MÌNH — trang "Lịch sử đặt phòng" dùng để hiện trạng
+  // thái (PENDING/COMPLETED/REJECTED) cho từng đơn đã huỷ, thay vì khách chỉ biết qua
+  // thông báo. Chỉ trả field cần cho khách, KHÔNG trả payerBankInfo/conversation/
+  // processedByUserId (dữ liệu nội bộ cho admin/nhân viên xử lý).
+  async findMine(userId: string) {
+    const refunds = await this.refundRequestRepo.find({
+      where: { booking: { user: { userId } } },
+      relations: { booking: true },
+      order: { createdAt: 'DESC' },
+    });
+    return refunds.map((r) => ({
+      refundRequestId: r.refundRequestId,
+      bookingId: r.booking.bookingId,
+      amount: r.amount,
+      status: r.status,
+      adminNote: r.adminNote,
+      createdAt: r.createdAt,
+      processedAt: r.processedAt,
+    }));
+  }
+
   async findById(refundRequestId: string): Promise<RefundRequest> {
     const refund = await this.refundRequestRepo.findOne({
       where: { refundRequestId },

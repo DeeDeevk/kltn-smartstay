@@ -25,12 +25,15 @@ function buildBooking(overrides?: Partial<Booking>): Booking {
 function buildService(overrides?: {
   openConversation?: Partial<Conversation> | null;
   refundRequest?: Partial<RefundRequest>;
+  mine?: Partial<RefundRequest>[];
 }) {
   const refundRequestSave = jest.fn((x: unknown) => Promise.resolve(x));
   const refundRequestCreate = jest.fn((x: unknown) => x);
+  const refundRequestFind = jest.fn().mockResolvedValue(overrides?.mine ?? []);
   const refundRequestRepo = {
     create: refundRequestCreate,
     save: refundRequestSave,
+    find: refundRequestFind,
     findOne: jest.fn().mockResolvedValue(
       overrides?.refundRequest
         ? {
@@ -67,6 +70,7 @@ function buildService(overrides?: {
     service,
     refundRequestSave,
     refundRequestCreate,
+    refundRequestFind,
     conversationRepo,
     notifyRefund,
   };
@@ -169,5 +173,50 @@ describe('RefundRequestService.complete / reject', () => {
     await expect(service.complete('refund-1', {}, 'admin-1')).rejects.toThrow(
       'đã được xử lý trước đó',
     );
+  });
+});
+
+describe('RefundRequestService.findMine', () => {
+  it('trả về field tối thiểu, KHÔNG lộ payerBankInfo/conversation/processedByUserId', async () => {
+    const { service, refundRequestFind } = buildService({
+      mine: [
+        {
+          refundRequestId: 'refund-1',
+          booking: buildBooking({ bookingId: 'booking-1' }),
+          amount: 500000,
+          status: RefundRequestStatus.PENDING,
+          adminNote: null,
+          createdAt: new Date('2026-01-01'),
+          processedAt: null,
+          payerBankInfo: { secret: 'không được lộ ra ngoài' },
+          processedByUserId: 'admin-999',
+        },
+      ],
+    });
+
+    const result = await service.findMine(BOOKING_USER_ID);
+
+    expect(refundRequestFind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { booking: { user: { userId: BOOKING_USER_ID } } },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        refundRequestId: 'refund-1',
+        bookingId: 'booking-1',
+        amount: 500000,
+        status: RefundRequestStatus.PENDING,
+        adminNote: null,
+        createdAt: new Date('2026-01-01'),
+        processedAt: null,
+      },
+    ]);
+  });
+
+  it('không có yêu cầu nào -> trả mảng rỗng', async () => {
+    const { service } = buildService({ mine: [] });
+    const result = await service.findMine(BOOKING_USER_ID);
+    expect(result).toEqual([]);
   });
 });
