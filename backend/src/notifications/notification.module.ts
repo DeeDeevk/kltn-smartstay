@@ -7,7 +7,11 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { UserModule } from '../users/user.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Notification]), RealtimeModule, UserModule],
+  imports: [
+    TypeOrmModule.forFeature([Notification]),
+    RealtimeModule,
+    UserModule,
+  ],
   controllers: [NotificationController],
   providers: [NotificationService],
   // ReservationsModule gọi NotificationService.notifyBooking() khi đơn đổi trạng thái.
