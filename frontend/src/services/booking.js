@@ -67,6 +67,17 @@ export const bookingApi = createApi({
         { type: 'Booking', id: bookingId },
       ],
     }),
+    // Xem trước mức hoàn tiền nếu huỷ ngay lúc này (KAN-117) — không huỷ/tạo gì cả, chỉ
+    // tính để hiện cảnh báo trong dialog xác nhận huỷ trước khi khách bấm xác nhận.
+    getCancellationPreview: builder.query({
+      query: (bookingId) => ({
+        url: `/bookings/${bookingId}/cancellation-preview`,
+        method: 'get',
+      }),
+      providesTags: (result, error, bookingId) => [
+        { type: 'Booking', id: bookingId },
+      ],
+    }),
     // Danh sách dịch vụ / minibar đang cung cấp (dùng ở màn Check-out).
     getServices: builder.query({
       query: (params) => ({ url: '/services', method: 'get', params }),
@@ -133,6 +144,7 @@ export const {
   useGetBookingsQuery,
   useGetBookingByIdQuery,
   useGetCheckoutPreviewQuery,
+  useGetCancellationPreviewQuery,
   useGetServicesQuery,
   useCancelBookingMutation,
   useConfirmBookingMutation,

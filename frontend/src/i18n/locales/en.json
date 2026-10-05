@@ -382,6 +382,8 @@
       "sendQrProof": "Send QR photo",
       "cancelReasonInputLabel": "Reason for cancelling (optional)",
       "cancelReasonInputPlaceholder": "Let us know why so we can help better, especially if the booking was paid and needs a refund.",
+      "cancellationPreviewFull": "You'll get a 100% refund ({{amount}}) since check-in is still {{hours}} hours away.",
+      "cancellationPreviewPartial": "Cancelling now gets you a {{percent}}% refund ({{amount}} out of {{paidAmount}} paid) since check-in is less than {{freeHours}} hours away.",
       "table": {
         "room": "Room",
         "code": "Booking code",

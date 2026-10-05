@@ -69,6 +69,16 @@ export class BookingController {
     return this.bookingService.getCheckoutPreview(id);
   }
 
+  // Xem trước mức hoàn tiền nếu huỷ ngay lúc này (KAN-117) — chủ đơn hoặc lễ tân/admin mới
+  // xem được, cùng cách kiểm tra quyền với cancel()/findOne() (assertCanView trong service).
+  @Get(':id/cancellation-preview')
+  getCancellationPreview(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.bookingService.getCancellationPreview(id, req.user);
+  }
+
   @Get(':id')
   findOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.bookingService.findById(id, req.user);

@@ -36,6 +36,12 @@ export class RefundRequest {
   @Column({ name: 'amount', type: 'int' })
   amount!: number;
 
+  // % đã áp dụng khi tạo (snapshot, KAN-117) — amount = booking.paidAmount * refundPercent /
+  // 100 tại thời điểm huỷ. Cho khách/admin biết rõ vì sao số tiền hoàn không bằng 100% nếu
+  // huỷ cận giờ nhận phòng. Dữ liệu tạo trước tính năng này luôn là 100 (xem migration).
+  @Column({ name: 'refundPercent', type: 'int', default: 100 })
+  refundPercent!: number;
+
   // Thông tin tài khoản người nhận hoàn tiền — hệ thống KHÔNG có nguồn dữ liệu nào lưu sẵn
   // (PayOS không trả thông tin người chuyển khoản qua webhook), nên luôn null lúc tạo tự
   // động. Để ngỏ cho admin tự ghi lại sau khi xác minh qua chat nếu cần, không bịa.

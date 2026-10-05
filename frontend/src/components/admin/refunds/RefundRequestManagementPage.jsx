@@ -161,6 +161,11 @@ function RefundRow({ refund }) {
                         </p>
                         <p className="mt-1 text-xl font-bold text-gray-900">
                             {refund.amount?.toLocaleString('vi-VN')}đ
+                            {typeof refund.refundPercent === 'number' && refund.refundPercent < 100 && (
+                                <span className="ml-1.5 text-sm font-semibold text-orange-500">
+                                    (hoàn {refund.refundPercent}%)
+                                </span>
+                            )}
                         </p>
                         {refund.reason && (
                             <p className="mt-1 text-sm text-gray-500">Lý do huỷ: {refund.reason}</p>
@@ -194,7 +199,12 @@ function RefundRow({ refund }) {
                             )}
                         </div>
                         {refund.status === 'PENDING' && (
-                            <div className="flex gap-1.5">
+                            <>
+                                <p className="max-w-[220px] text-right text-[11px] text-gray-400">
+                                    Lưu ý: đối chiếu tên trên ảnh QR với tên khách đặt phòng trước khi xác nhận,
+                                    tránh hoàn nhầm tài khoản.
+                                </p>
+                                <div className="flex gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => setActionModal('reject')}
@@ -209,7 +219,8 @@ function RefundRow({ refund }) {
                                 >
                                     Đánh dấu đã hoàn tiền
                                 </button>
-                            </div>
+                                </div>
+                            </>
                         )}
                         {refund.status !== 'PENDING' && refund.adminNote && (
                             <p className="max-w-[220px] text-right text-xs text-gray-400">

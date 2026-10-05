@@ -5,6 +5,7 @@ import { Conversation } from '../chat/entities/conversation.entity';
 import { RefundRequestService } from './refund-request.service';
 import { RefundRequestController } from './refund-request.controller';
 import { NotificationModule } from '../notifications/notification.module';
+import { HotelConfigModule } from '../hotel-config/hotel-config.module';
 
 // Module độc lập, KHÔNG phụ thuộc PaymentModule/ChatModule (chỉ cần entity Conversation để
 // tìm/liên kết hội thoại, không cần ChatService) — payments thuộc Khoa, bookings thuộc
@@ -14,6 +15,7 @@ import { NotificationModule } from '../notifications/notification.module';
   imports: [
     TypeOrmModule.forFeature([RefundRequest, Conversation]),
     NotificationModule,
+    HotelConfigModule,
   ],
   controllers: [RefundRequestController],
   providers: [RefundRequestService],

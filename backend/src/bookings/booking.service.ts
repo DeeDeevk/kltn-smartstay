@@ -1087,6 +1087,15 @@ export class BookingService {
     };
   }
 
+  // Xem trước mức hoàn tiền nếu huỷ NGAY LÚC NÀY, theo đúng chính sách tính ở
+  // RefundRequestService.computeRefundPreview() (KAN-117) — KHÔNG huỷ đơn, KHÔNG tạo
+  // RefundRequest, chỉ để khách/nhân viên biết trước khi xác nhận huỷ.
+  async getCancellationPreview(bookingId: string, requester: Requester) {
+    const booking = await this.findByIdRaw(bookingId);
+    this.assertCanView(booking, requester);
+    return this.refundRequestService.computeRefundPreview(booking);
+  }
+
   private async findByIdRaw(bookingId: string): Promise<Booking> {
     const booking = await this.bookingRepo.findOne({ where: { bookingId } });
     if (!booking) {

@@ -21,6 +21,14 @@ import {
   NotificationService,
   NotificationType,
 } from '../notifications/notification.service';
+import { HotelConfigService } from '../hotel-config/hotel-config.service';
+
+// Giờ nhận phòng tiêu chuẩn (giờ Việt Nam) — mốc dùng để tính "huỷ trước giờ nhận phòng bao
+// lâu" cho chính sách hoàn tiền theo thời điểm huỷ (KAN-117).
+const CHECK_IN_HOUR = 14;
+// Việt Nam không có giờ mùa hè, lệch cố định UTC+7 quanh năm — quy đổi giờ VN sang UTC
+// tuyệt đối, độc lập với timezone server (cùng cách booking.service.ts tính giờ trả phòng).
+const VIETNAM_UTC_OFFSET_HOURS = 7;
 
 @Injectable()
 export class RefundRequestService {
@@ -32,7 +40,45 @@ export class RefundRequestService {
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     private readonly notificationService: NotificationService,
+    private readonly hotelConfigService: HotelConfigService,
   ) {}
+
+  // Tính số giờ còn lại tới giờ nhận phòng + % hoàn tiền áp dụng theo chính sách huỷ đơn
+  // (freeCancellationHours/partialRefundPercent trong HotelConfig) — KHÔNG ghi gì vào DB,
+  // dùng chung cho cả lúc tạo RefundRequest thật (createForCancelledBooking) và endpoint xem
+  // trước (BookingService.getCancellationPreview).
+  async computeRefundPreview(booking: Booking): Promise<{
+    hoursUntilCheckIn: number;
+    refundPercent: number;
+    refundAmount: number;
+    freeCancellationHours: number;
+  }> {
+    const config = await this.hotelConfigService.getOrCreate();
+    const hoursUntilCheckIn = this.hoursUntilCheckIn(booking.checkInDate);
+    const refundPercent =
+      hoursUntilCheckIn <= 0
+        ? 0
+        : hoursUntilCheckIn >= config.freeCancellationHours
+          ? 100
+          : config.partialRefundPercent;
+    const refundAmount = Math.round(
+      (booking.paidAmount * refundPercent) / 100,
+    );
+    return {
+      hoursUntilCheckIn,
+      refundPercent,
+      refundAmount,
+      freeCancellationHours: config.freeCancellationHours,
+    };
+  }
+
+  private hoursUntilCheckIn(checkInDate: string): number {
+    const [year, month, day] = checkInDate.split('-').map(Number);
+    const checkInMoment = new Date(
+      Date.UTC(year, month - 1, day, CHECK_IN_HOUR - VIETNAM_UTC_OFFSET_HOURS),
+    );
+    return (checkInMoment.getTime() - Date.now()) / (60 * 60 * 1000);
+  }
 
   // Gọi từ BookingService.cancel() SAU khi đơn đã huỷ thành công — lỗi ở đây không được
   // làm hỏng việc huỷ đơn đã hoàn tất, nên bắt lỗi và chỉ log, không throw ra ngoài (cùng
@@ -41,6 +87,19 @@ export class RefundRequestService {
     booking: Booking,
     reason: string,
   ): Promise<RefundRequest | null> {
+    const { hoursUntilCheckIn, refundPercent, refundAmount } =
+      await this.computeRefundPreview(booking);
+
+    // Huỷ sau giờ nhận phòng (hoặc no-show) -> không hoàn gì, không tạo yêu cầu hoàn tiền —
+    // chỉ log lại để admin tra cứu nếu cần giải thích với khách sau này.
+    if (hoursUntilCheckIn <= 0) {
+      this.logger.warn(
+        `Không tạo RefundRequest cho booking ${booking.bookingId}: huỷ sau giờ nhận phòng ` +
+          `(hoursUntilCheckIn=${hoursUntilCheckIn.toFixed(1)}), khách không được hoàn tiền.`,
+      );
+      return null;
+    }
+
     try {
       // Best-effort: tìm hội thoại OPEN gần nhất của khách để admin xem ảnh QR ngay —
       // không bắt buộc tìm bằng mọi giá, để null nếu khách chưa từng chat.
@@ -54,7 +113,8 @@ export class RefundRequestService {
 
       const refundRequest = this.refundRequestRepo.create({
         booking,
-        amount: booking.paidAmount,
+        amount: refundAmount,
+        refundPercent,
         payerBankInfo: null,
         conversation: conversation ?? null,
         status: RefundRequestStatus.PENDING,
@@ -109,6 +169,7 @@ export class RefundRequestService {
       refundRequestId: r.refundRequestId,
       bookingId: r.booking.bookingId,
       amount: r.amount,
+      refundPercent: r.refundPercent,
       status: r.status,
       adminNote: r.adminNote,
       createdAt: r.createdAt,

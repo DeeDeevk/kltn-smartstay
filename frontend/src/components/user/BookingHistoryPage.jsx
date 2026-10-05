@@ -22,6 +22,7 @@ import { BOOKING_STATUS_STYLES, PAYMENT_STATUS_STYLES } from '../../utils/bookin
 import {
   bookingApi,
   useCancelBookingMutation,
+  useGetCancellationPreviewQuery,
   useGetMyBookingsQuery,
 } from '../../services/booking';
 import { useSocket } from '../../context/SocketContext';
@@ -154,6 +155,12 @@ export default function BookingHistoryPage() {
   useEffect(() => {
     setCancelReasonInput('');
   }, [cancelTarget]);
+
+  // Xem trước mức hoàn tiền nếu huỷ ngay lúc này (KAN-117) — chỉ cần gọi khi đơn đã thanh
+  // toán (đơn chưa thanh toán thì huỷ không có gì để hoàn, không cần hỏi backend).
+  const { data: cancellationPreview } = useGetCancellationPreviewQuery(cancelTarget?.bookingId, {
+    skip: !cancelTarget || !cancelTarget.paidAmount,
+  });
 
   // Đánh giá khách đã viết — để ẩn nút "Đánh giá" ở những đơn đã đánh giá rồi (backend
   // cũng chặn, nhưng để nút ở đó rồi báo lỗi khi bấm thì khó chịu).
@@ -446,6 +453,34 @@ export default function BookingHistoryPage() {
         onConfirm={handleConfirmCancel}
         onClose={() => setCancelTarget(null)}
       >
+        {cancellationPreview && cancellationPreview.hoursUntilCheckIn > 0 && (
+          <>
+            {cancellationPreview.refundPercent === 100 && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl bg-green-50 px-3 py-2.5 text-sm text-green-700">
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('booking.history.cancellationPreviewFull', {
+                    amount: formatCurrency(cancellationPreview.refundAmount, i18n.language),
+                    hours: Math.floor(cancellationPreview.hoursUntilCheckIn),
+                  })}
+                </span>
+              </div>
+            )}
+            {cancellationPreview.refundPercent > 0 && cancellationPreview.refundPercent < 100 && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl bg-orange-50 px-3 py-2.5 text-sm font-medium text-orange-700">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('booking.history.cancellationPreviewPartial', {
+                    percent: cancellationPreview.refundPercent,
+                    amount: formatCurrency(cancellationPreview.refundAmount, i18n.language),
+                    paidAmount: formatCurrency(cancelTarget?.paidAmount, i18n.language),
+                    freeHours: cancellationPreview.freeCancellationHours,
+                  })}
+                </span>
+              </div>
+            )}
+          </>
+        )}
         <div className="mt-3">
           <label className="mb-1 block text-xs font-semibold text-gray-500">
             {t('booking.history.cancelReasonInputLabel')}
