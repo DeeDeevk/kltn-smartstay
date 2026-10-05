@@ -87,20 +87,25 @@ export class RefundRequestService {
     booking: Booking,
     reason: string,
   ): Promise<RefundRequest | null> {
-    const { hoursUntilCheckIn, refundPercent, refundAmount } =
-      await this.computeRefundPreview(booking);
-
-    // Huỷ sau giờ nhận phòng (hoặc no-show) -> không hoàn gì, không tạo yêu cầu hoàn tiền —
-    // chỉ log lại để admin tra cứu nếu cần giải thích với khách sau này.
-    if (hoursUntilCheckIn <= 0) {
-      this.logger.warn(
-        `Không tạo RefundRequest cho booking ${booking.bookingId}: huỷ sau giờ nhận phòng ` +
-          `(hoursUntilCheckIn=${hoursUntilCheckIn.toFixed(1)}), khách không được hoàn tiền.`,
-      );
-      return null;
-    }
-
+    // Toàn bộ thân hàm nằm trong 1 try/catch duy nhất (kể cả computeRefundPreview, vốn gọi
+    // HotelConfigService -> có thể đụng DB) — lỗi ở ĐÂU trong lúc tạo cũng chỉ log, không
+    // được ném ra ngoài làm "rớt" promise mà BookingService.cancel() gọi kiểu "void" (fire-
+    // and-forget, không await/catch): throw ra khỏi hàm này sẽ thành unhandled rejection và
+    // âm thầm không tạo được RefundRequest mà không ai biết.
     try {
+      const { hoursUntilCheckIn, refundPercent, refundAmount } =
+        await this.computeRefundPreview(booking);
+
+      // Huỷ sau giờ nhận phòng (hoặc no-show) -> không hoàn gì, không tạo yêu cầu hoàn tiền —
+      // chỉ log lại để admin tra cứu nếu cần giải thích với khách sau này.
+      if (hoursUntilCheckIn <= 0) {
+        this.logger.warn(
+          `Không tạo RefundRequest cho booking ${booking.bookingId}: huỷ sau giờ nhận phòng ` +
+            `(hoursUntilCheckIn=${hoursUntilCheckIn.toFixed(1)}), khách không được hoàn tiền.`,
+        );
+        return null;
+      }
+
       // Best-effort: tìm hội thoại OPEN gần nhất của khách để admin xem ảnh QR ngay —
       // không bắt buộc tìm bằng mọi giá, để null nếu khách chưa từng chat.
       const conversation = await this.conversationRepo.findOne({
@@ -141,7 +146,15 @@ export class RefundRequestService {
       .leftJoinAndSelect('booking.roomType', 'roomType')
       .leftJoinAndSelect('booking.user', 'user')
       .leftJoinAndSelect('refund.conversation', 'conversation')
-      .orderBy(`CASE WHEN refund.status = :pending THEN 0 ELSE 1 END`, 'ASC')
+      // orderBy() với biểu thức SQL thô (không phải tên cột/alias đã SELECT) ném lỗi
+      // '"CASE WHEN refund" alias was not found' khi kết hợp với join + skip/take (TypeORM
+      // dựng subquery phân trang riêng, cần mọi ORDER BY là alias đã addSelect) — phải
+      // addSelect() biểu thức thành 1 cột ảo có alias rồi orderBy() theo alias đó.
+      .addSelect(
+        'CASE WHEN refund.status = :pending THEN 0 ELSE 1 END',
+        'pendingFirst',
+      )
+      .orderBy('pendingFirst', 'ASC')
       .addOrderBy('refund.createdAt', 'DESC')
       .setParameter('pending', RefundRequestStatus.PENDING)
       .skip((page - 1) * limit)

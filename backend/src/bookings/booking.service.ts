@@ -848,10 +848,30 @@ export class BookingService {
     if (booking.paidAmount > 0) {
       const who =
         booking.user?.userId === requester.userId ? 'Khách' : 'Nhân viên';
+      // Tính trước mức hoàn thực tế theo chính sách huỷ đơn (KAN-117) để nội dung thông báo
+      // khớp với số tiền admin thực sự cần chuyển — KHÔNG dùng thẳng booking.paidAmount nữa,
+      // vì huỷ cận giờ chỉ hoàn 1 phần, huỷ sau giờ nhận phòng thì không hoàn gì cả. Bọc
+      // .catch() vì đây vẫn là tác vụ PHỤ (thông báo) — booking đã lưu CANCELLED thành công ở
+      // trên rồi, lỗi tính toán ở đây (VD DB tạm trục trặc) không được làm hỏng cancel();
+      // fallback về đúng hành vi cũ (coi như hoàn 100% paidAmount) nếu tính lỗi.
+      const preview = await this.refundRequestService
+        .computeRefundPreview(booking)
+        .catch(() => ({
+          hoursUntilCheckIn: Number.POSITIVE_INFINITY,
+          refundPercent: 100,
+          refundAmount: booking.paidAmount,
+          freeCancellationHours: 0,
+        }));
+      const isNoRefund = preview.hoursUntilCheckIn <= 0;
       void this.notificationService.notifyAdmins(
         NotificationType.ADMIN_PAID_BOOKING_CANCELLED,
-        `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(booking.paidAmount)}`,
-        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, cần hoàn tiền thủ công.`,
+        isNoRefund
+          ? 'Đơn đã thanh toán bị huỷ sau giờ nhận phòng — không cần hoàn tiền'
+          : `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(preview.refundAmount)}`,
+        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, ` +
+          (isNoRefund
+            ? 'huỷ sau giờ nhận phòng nên theo chính sách KHÔNG cần hoàn tiền.'
+            : `cần hoàn tiền thủ công ${this.formatVnd(preview.refundAmount)}${preview.refundPercent < 100 ? ` (${preview.refundPercent}% theo chính sách huỷ đơn)` : ''}.`),
         booking.bookingId,
       );
       // Ghi nhận thành 1 yêu cầu hoàn tiền có cấu trúc (KAN-114) — bổ sung CHO notification

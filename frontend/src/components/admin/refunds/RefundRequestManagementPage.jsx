@@ -1,6 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Link2, MessageCircle, Info } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    Link2,
+    Loader2,
+    MessageCircle,
+    Info,
+    Save,
+    Settings,
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../../context/AuthContext';
 import RefundActionModal from './RefundActionModal';
@@ -10,6 +20,7 @@ import {
     useLinkRefundRequestConversationMutation,
     useRejectRefundRequestMutation,
 } from '../../../services/refundRequest';
+import { useGetHotelConfigQuery, useUpdateCancellationPolicyMutation } from '../../../services/hotelConfig';
 
 const PAGE_LIMIT = 10;
 
@@ -247,6 +258,137 @@ function RefundRow({ refund }) {
     );
 }
 
+// Chính sách hoàn tiền theo thời điểm huỷ (KAN-117) — chuyển từ trang "Vị trí khách sạn"
+// sang đây vì đây mới là nơi admin thực sự cần xem/chỉnh nó (gắn trực tiếp với luồng xử lý
+// refund), dù cả 2 nhóm field vẫn cùng nằm trên 1 bản ghi HotelConfig ở backend. Thu gọn
+// mặc định để không che nội dung chính của trang (danh sách yêu cầu) — admin ít khi cần
+// đổi chính sách này, chỉ thỉnh thoảng mới mở ra.
+function CancellationPolicyPanel() {
+    const [isOpen, setIsOpen] = useState(false);
+    const { data: config } = useGetHotelConfigQuery();
+    const [updateCancellationPolicy, { isLoading: savingPolicy }] = useUpdateCancellationPolicyMutation();
+    const [freeCancellationHours, setFreeCancellationHours] = useState(48);
+    const [partialRefundPercent, setPartialRefundPercent] = useState(50);
+
+    useEffect(() => {
+        if (!config) return;
+        setFreeCancellationHours(config.freeCancellationHours ?? 48);
+        setPartialRefundPercent(config.partialRefundPercent ?? 50);
+    }, [config]);
+
+    const isPolicyValid =
+        Number.isFinite(freeCancellationHours) &&
+        freeCancellationHours >= 0 &&
+        Number.isFinite(partialRefundPercent) &&
+        partialRefundPercent >= 0 &&
+        partialRefundPercent <= 100;
+
+    const isPolicyDirty =
+        Boolean(config) &&
+        (freeCancellationHours !== (config.freeCancellationHours ?? 48) ||
+            partialRefundPercent !== (config.partialRefundPercent ?? 50));
+
+    const handleCancelPolicy = () => {
+        setFreeCancellationHours(config?.freeCancellationHours ?? 48);
+        setPartialRefundPercent(config?.partialRefundPercent ?? 50);
+    };
+
+    const handleSavePolicy = async () => {
+        if (!isPolicyValid) {
+            toast.error('Số giờ phải >= 0 và % hoàn phải trong khoảng 0-100');
+            return;
+        }
+        try {
+            await updateCancellationPolicy({ freeCancellationHours, partialRefundPercent }).unwrap();
+            toast.success('Đã lưu chính sách hoàn tiền');
+        } catch (err) {
+            toast.error(err?.data?.message || 'Không thể lưu chính sách hoàn tiền');
+        }
+    };
+
+    return (
+        <div className="mb-5 rounded-2xl border border-gray-200 bg-white">
+            <button
+                type="button"
+                onClick={() => setIsOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+            >
+                <span className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                    <Settings size={16} className="text-gray-500" />
+                    Cấu hình chính sách hoàn tiền
+                </span>
+                <ChevronDown
+                    size={18}
+                    className={`shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                />
+            </button>
+            {isOpen && (
+                <div className="border-t border-gray-100 p-4">
+                    <p className="mb-4 text-sm text-gray-500">
+                        Áp dụng cho mọi đơn đã thanh toán bị huỷ, chung cho toàn khách sạn (không phân biệt
+                        theo loại phòng).
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <label className="text-[13px] font-bold text-gray-500">
+                                Hoàn 100% nếu huỷ trước (giờ)
+                            </label>
+                            <input
+                                type="number"
+                                min={0}
+                                value={Number.isNaN(freeCancellationHours) ? '' : freeCancellationHours}
+                                onChange={(e) =>
+                                    setFreeCancellationHours(e.target.value === '' ? NaN : Number(e.target.value))
+                                }
+                                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-400">
+                                Huỷ trước giờ nhận phòng ít nhất số giờ này thì hoàn 100% tiền đã thanh toán.
+                            </p>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[13px] font-bold text-gray-500">% hoàn nếu huỷ muộn hơn</label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={Number.isNaN(partialRefundPercent) ? '' : partialRefundPercent}
+                                onChange={(e) =>
+                                    setPartialRefundPercent(e.target.value === '' ? NaN : Number(e.target.value))
+                                }
+                                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-400">
+                                Huỷ sau mốc trên nhưng vẫn trước giờ nhận phòng thì hoàn theo % này. Huỷ sau giờ
+                                nhận phòng (no-show) thì không hoàn gì.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={handleCancelPolicy}
+                            disabled={!isPolicyDirty || savingPolicy}
+                            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Huỷ thay đổi
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSavePolicy}
+                            disabled={!isPolicyDirty || savingPolicy || !isPolicyValid}
+                            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {savingPolicy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            Lưu chính sách
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function RefundRequestManagementPage() {
     const [status, setStatus] = useState('PENDING');
     const [page, setPage] = useState(1);
@@ -270,6 +412,8 @@ export default function RefundRequestManagementPage() {
                     chuyển khoản sau khi xác minh thông tin qua chat.
                 </p>
             </div>
+
+            <CancellationPolicyPanel />
 
             <div className="mb-5 inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-white p-1">
                 {TABS.map((tab) => (

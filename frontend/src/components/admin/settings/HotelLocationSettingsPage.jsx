@@ -6,7 +6,6 @@ import useAddressAutocomplete from '../../../hooks/useAddressAutocomplete';
 import {
     useGetHotelConfigQuery,
     useUpdateHotelLocationMutation,
-    useUpdateCancellationPolicyMutation,
 } from '../../../services/hotelConfig';
 
 // Khách sạn CHƯA từng cấu hình vị trí (HotelConfig còn ở toạ độ mặc định 0,0 từ lúc
@@ -68,18 +67,6 @@ function CoordRow({ label, value, onCopy }) {
 export default function HotelLocationSettingsPage() {
     const { data: config, isLoading: loadingConfig } = useGetHotelConfigQuery();
     const [updateLocation, { isLoading: saving }] = useUpdateHotelLocationMutation();
-
-    // Chính sách hoàn tiền theo thời điểm huỷ (KAN-117) — tách riêng state/lưu với phần vị
-    // trí/bản đồ ở trên (2 nhóm cấu hình độc lập, không muốn 1 nút Lưu chung làm rối isDirty).
-    const [updateCancellationPolicy, { isLoading: savingPolicy }] = useUpdateCancellationPolicyMutation();
-    const [freeCancellationHours, setFreeCancellationHours] = useState(48);
-    const [partialRefundPercent, setPartialRefundPercent] = useState(50);
-
-    useEffect(() => {
-        if (!config) return;
-        setFreeCancellationHours(config.freeCancellationHours ?? 48);
-        setPartialRefundPercent(config.partialRefundPercent ?? 50);
-    }, [config]);
 
     const [address, setAddress] = useState('');
     const [position, setPosition] = useState(null); // { lat, lng } | null
@@ -352,36 +339,6 @@ export default function HotelLocationSettingsPage() {
         }
     };
 
-    const isPolicyValid =
-        Number.isFinite(freeCancellationHours) &&
-        freeCancellationHours >= 0 &&
-        Number.isFinite(partialRefundPercent) &&
-        partialRefundPercent >= 0 &&
-        partialRefundPercent <= 100;
-
-    const isPolicyDirty =
-        Boolean(config) &&
-        (freeCancellationHours !== (config.freeCancellationHours ?? 48) ||
-            partialRefundPercent !== (config.partialRefundPercent ?? 50));
-
-    const handleCancelPolicy = () => {
-        setFreeCancellationHours(config?.freeCancellationHours ?? 48);
-        setPartialRefundPercent(config?.partialRefundPercent ?? 50);
-    };
-
-    const handleSavePolicy = async () => {
-        if (!isPolicyValid) {
-            toast.error('Số giờ phải >= 0 và % hoàn phải trong khoảng 0-100');
-            return;
-        }
-        try {
-            await updateCancellationPolicy({ freeCancellationHours, partialRefundPercent }).unwrap();
-            toast.success('Đã lưu chính sách hoàn tiền');
-        } catch (err) {
-            toast.error(err?.data?.message || 'Không thể lưu chính sách hoàn tiền');
-        }
-    };
-
     return (
         <>
             <h1 className="mb-1 text-2xl font-bold text-[#1C1B29]">Cài đặt vị trí khách sạn</h1>
@@ -570,65 +527,6 @@ export default function HotelLocationSettingsPage() {
                             </>
                         )}
                     </div>
-                </div>
-            </div>
-
-            <div className="mt-5 rounded-[20px] border border-[#E7E9F1] bg-white p-5 shadow-sm">
-                <h2 className="text-base font-bold text-[#1C1B29]">Chính sách hoàn tiền khi huỷ đơn</h2>
-                <p className="mt-1 mb-4 text-sm text-[#6B7280]">
-                    Áp dụng cho mọi đơn đã thanh toán bị huỷ, chung cho toàn khách sạn (không phân biệt
-                    theo loại phòng).
-                </p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                        <label className="text-[13px] font-bold text-[#6B7280]">
-                            Hoàn 100% nếu huỷ trước (giờ)
-                        </label>
-                        <input
-                            type="number"
-                            min={0}
-                            value={freeCancellationHours}
-                            onChange={(e) => setFreeCancellationHours(Number(e.target.value))}
-                            className="w-full rounded-xl border border-[#E7E9F1] px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#4F46E5]"
-                        />
-                        <p className="text-xs text-[#9AA0B4]">
-                            Huỷ trước giờ nhận phòng ít nhất số giờ này thì hoàn 100% tiền đã thanh toán.
-                        </p>
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[13px] font-bold text-[#6B7280]">% hoàn nếu huỷ muộn hơn</label>
-                        <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={partialRefundPercent}
-                            onChange={(e) => setPartialRefundPercent(Number(e.target.value))}
-                            className="w-full rounded-xl border border-[#E7E9F1] px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#4F46E5]"
-                        />
-                        <p className="text-xs text-[#9AA0B4]">
-                            Huỷ sau mốc trên nhưng vẫn trước giờ nhận phòng thì hoàn theo % này. Huỷ sau giờ
-                            nhận phòng (no-show) thì không hoàn gì.
-                        </p>
-                    </div>
-                </div>
-                <div className="mt-4 flex justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={handleCancelPolicy}
-                        disabled={!isPolicyDirty || savingPolicy}
-                        className="rounded-xl border border-[#E7E9F1] px-4 py-2.5 text-sm font-semibold text-[#6B7280] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        Huỷ thay đổi
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleSavePolicy}
-                        disabled={!isPolicyDirty || savingPolicy || !isPolicyValid}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-[#4F46E5] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#4338CA] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {savingPolicy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        Lưu chính sách
-                    </button>
                 </div>
             </div>
         </>
