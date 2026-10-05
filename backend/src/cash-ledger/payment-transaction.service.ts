@@ -9,6 +9,10 @@ export interface RecordPaymentInput {
   amount: number;
   method: PaymentMethod;
   collectedByUserId: string | null;
+  // Thông tin tài khoản người chuyển trích từ PayOS, nếu có (xem PaymentService). Optional —
+  // không truyền thì lưu null, giữ đúng hành vi mặc định cho mọi lượt record() khác (thu
+  // tiền mặt, check-out...) không thay đổi gì.
+  payerBankInfo?: Record<string, string> | null;
 }
 
 export interface CollectionTotals {
@@ -49,8 +53,21 @@ export class PaymentTransactionService {
         collectedBy: input.collectedByUserId
           ? { userId: input.collectedByUserId }
           : null,
+        payerBankInfo: input.payerBankInfo ?? null,
       }),
     );
+  }
+
+  // Dùng bởi RefundRequestService.createForCancelledBooking để lấy thông tin tài khoản
+  // người chuyển (nếu PayOS có trả) khi tạo yêu cầu hoàn tiền — null nếu chưa từng có giao
+  // dịch nào hoặc PayOS không trả dữ liệu đó.
+  async findLatestForBooking(
+    bookingId: string,
+  ): Promise<PaymentTransaction | null> {
+    return this.transactionRepo.findOne({
+      where: { booking: { bookingId } },
+      order: { collectedAt: 'DESC' },
+    });
   }
 
   async findCollectedByStaff(staffId: string, from: Date, to: Date) {

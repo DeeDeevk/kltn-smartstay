@@ -8,6 +8,7 @@ import {
 } from '../chat/entities/conversation.entity';
 import { NotificationService } from '../notifications/notification.service';
 import { HotelConfigService } from '../hotel-config/hotel-config.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 import { RefundRequestStatus } from '../common/enums/refund-request-status.enum';
 
 const BOOKING_USER_ID = 'user-1';
@@ -34,6 +35,7 @@ function buildService(overrides?: {
   refundRequest?: Partial<RefundRequest>;
   mine?: Partial<RefundRequest>[];
   hotelConfig?: { freeCancellationHours?: number; partialRefundPercent?: number };
+  latestPaymentTransaction?: { payerBankInfo: Record<string, string> | null } | null;
 }) {
   const refundRequestSave = jest.fn((x: unknown) => Promise.resolve(x));
   const refundRequestCreate = jest.fn((x: unknown) => x);
@@ -78,11 +80,19 @@ function buildService(overrides?: {
     getOrCreate: hotelConfigGetOrCreate,
   } as unknown as HotelConfigService;
 
+  const findLatestForBooking = jest
+    .fn()
+    .mockResolvedValue(overrides?.latestPaymentTransaction ?? null);
+  const paymentTransactionService = {
+    findLatestForBooking,
+  } as unknown as PaymentTransactionService;
+
   const service = new RefundRequestService(
     refundRequestRepo,
     conversationRepo,
     notificationService,
     hotelConfigService,
+    paymentTransactionService,
   );
   return {
     service,
@@ -92,6 +102,7 @@ function buildService(overrides?: {
     conversationRepo,
     notifyRefund,
     hotelConfigGetOrCreate,
+    findLatestForBooking,
   };
 }
 
@@ -213,6 +224,35 @@ describe('RefundRequestService — chính sách hoàn tiền theo thời điểm
     expect(result).toBeNull();
     expect(refundRequestCreate).not.toHaveBeenCalled();
     expect(refundRequestSave).not.toHaveBeenCalled();
+  });
+
+  it('createForCancelledBooking(): có PaymentTransaction gần nhất với payerBankInfo -> lấy đúng giá trị đó thay vì null', async () => {
+    const { service, refundRequestCreate, findLatestForBooking } = buildService({
+      latestPaymentTransaction: {
+        payerBankInfo: { 'Tên người chuyển': 'Nguyen Van A', 'Số tài khoản': '0123456789' },
+      },
+    });
+    const booking = buildBooking();
+
+    await service.createForCancelledBooking(booking, 'Đổi lịch');
+
+    expect(findLatestForBooking).toHaveBeenCalledWith('booking-1');
+    expect(refundRequestCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payerBankInfo: { 'Tên người chuyển': 'Nguyen Van A', 'Số tài khoản': '0123456789' },
+      }),
+    );
+  });
+
+  it('createForCancelledBooking(): không có PaymentTransaction nào (hoặc PayOS không trả) -> payerBankInfo null', async () => {
+    const { service, refundRequestCreate } = buildService();
+    const booking = buildBooking();
+
+    await service.createForCancelledBooking(booking, 'Đổi lịch');
+
+    expect(refundRequestCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ payerBankInfo: null }),
+    );
   });
 });
 

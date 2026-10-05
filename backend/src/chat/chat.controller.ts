@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ChatService } from './chat.service';
+import { RefundRequestService } from '../refund-requests/refund-request.service';
 import { UploadService } from '../uploads/upload.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -33,6 +34,7 @@ const CHAT_ATTACHMENT_KEY_PREFIX = 'vikahotel/chat';
 export class ChatController {
   constructor(
     private readonly chatService: ChatService,
+    private readonly refundRequestService: RefundRequestService,
     private readonly uploadService: UploadService,
   ) {}
 
@@ -77,5 +79,18 @@ export class ChatController {
     const conversation = await this.chatService.findConversationById(id);
     this.chatService.assertCanAccess(conversation, req.user);
     return this.chatService.getMessages(id);
+  }
+
+  // Lễ tân gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở, thay vì ADMIN
+  // phải gõ tay conversationId (ADMIN không có quyền xem nội dung chat — không nới ranh
+  // giới đó, xem assertCanAccess()).
+  @Get('conversations/:id/refund-requests')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF)
+  async getUnlinkedRefundRequests(@Param('id') id: string) {
+    const conversation = await this.chatService.findConversationById(id);
+    return this.refundRequestService.findUnlinkedPendingForCustomer(
+      conversation.customer.userId,
+    );
   }
 }

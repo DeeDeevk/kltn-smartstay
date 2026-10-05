@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { RefundRequest } from './entities/refund-request.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import {
@@ -22,6 +22,7 @@ import {
   NotificationType,
 } from '../notifications/notification.service';
 import { HotelConfigService } from '../hotel-config/hotel-config.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 
 // Giờ nhận phòng tiêu chuẩn (giờ Việt Nam) — mốc dùng để tính "huỷ trước giờ nhận phòng bao
 // lâu" cho chính sách hoàn tiền theo thời điểm huỷ (KAN-117).
@@ -41,6 +42,7 @@ export class RefundRequestService {
     private readonly conversationRepo: Repository<Conversation>,
     private readonly notificationService: NotificationService,
     private readonly hotelConfigService: HotelConfigService,
+    private readonly paymentTransactionService: PaymentTransactionService,
   ) {}
 
   // Tính số giờ còn lại tới giờ nhận phòng + % hoàn tiền áp dụng theo chính sách huỷ đơn
@@ -116,11 +118,20 @@ export class RefundRequestService {
         order: { createdAt: 'DESC' },
       });
 
+      // Thử lấy payerBankInfo từ giao dịch PayOS gần nhất của đơn (nếu PayOS có trả thông
+      // tin người chuyển lúc thanh toán — xem PaymentService.extractPayerBankInfo). Vẫn có
+      // thể là null (PayOS không trả, hoặc đơn trả tiền mặt) — chấp nhận được, giữ đúng
+      // thông báo "Chưa có thông tin tài khoản" ở UI cho trường hợp đó.
+      const latestTransaction =
+        await this.paymentTransactionService.findLatestForBooking(
+          booking.bookingId,
+        );
+
       const refundRequest = this.refundRequestRepo.create({
         booking,
         amount: refundAmount,
         refundPercent,
-        payerBankInfo: null,
+        payerBankInfo: latestTransaction?.payerBankInfo ?? null,
         conversation: conversation ?? null,
         status: RefundRequestStatus.PENDING,
         reason,
@@ -187,6 +198,29 @@ export class RefundRequestService {
       adminNote: r.adminNote,
       createdAt: r.createdAt,
       processedAt: r.processedAt,
+    }));
+  }
+
+  // Dùng bởi ChatController (GET /chat/conversations/:id/refund-requests, STAFF-only) để
+  // lễ tân tự chọn gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở, thay vì
+  // ADMIN phải gõ tay conversationId — chỉ liệt kê yêu cầu đang PENDING và CHƯA gắn hội
+  // thoại nào (đã gắn rồi thì không cần hiện lại trong danh sách để gắn lần 2).
+  async findUnlinkedPendingForCustomer(userId: string) {
+    const refunds = await this.refundRequestRepo.find({
+      where: {
+        status: RefundRequestStatus.PENDING,
+        conversation: IsNull(),
+        booking: { user: { userId } },
+      },
+      relations: { booking: { roomType: true } },
+      order: { createdAt: 'DESC' },
+    });
+    return refunds.map((r) => ({
+      refundRequestId: r.refundRequestId,
+      bookingId: r.booking.bookingId,
+      roomTypeName: r.booking.roomType?.name ?? null,
+      amount: r.amount,
+      createdAt: r.createdAt,
     }));
   }
 

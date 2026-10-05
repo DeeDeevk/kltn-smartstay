@@ -14,6 +14,29 @@ interface Requester {
 // PENDING/PROCESSING/UNDERPAID vốn vẫn đang chờ, chưa nên báo thất bại cho khách.
 const FAILED_PAYOS_STATUSES = ['CANCELLED', 'EXPIRED', 'FAILED'];
 
+// Field tên người/tài khoản chuyển khoản — có trong CẢ WebhookData (payos.webhooks.verify)
+// lẫn Transaction (payos.paymentRequests.get().transactions), đúng tên field theo type
+// definition của @payos/node (lib/resources/webhooks/webhook.d.ts và
+// lib/resources/v2/payment-requests/payment-requests.d.ts) — đã kiểm tra, không đoán mò.
+interface PayosCounterAccountFields {
+  counterAccountBankName?: string | null;
+  counterAccountName?: string | null;
+  counterAccountNumber?: string | null;
+}
+
+// Chỉ giữ field THẬT SỰ có giá trị (SDK khai optional/nullable) — trả null nếu không field
+// nào có dữ liệu, KHÔNG bịa cấu trúc giả. Bỏ counterAccountBankId (mã ngân hàng nội bộ,
+// không cần để nhân viên đối chiếu tên trên ảnh QR).
+function extractPayerBankInfo(
+  data: PayosCounterAccountFields,
+): Record<string, string> | null {
+  const info: Record<string, string> = {};
+  if (data.counterAccountName) info['Tên người chuyển'] = data.counterAccountName;
+  if (data.counterAccountNumber) info['Số tài khoản'] = data.counterAccountNumber;
+  if (data.counterAccountBankName) info['Ngân hàng'] = data.counterAccountBankName;
+  return Object.keys(info).length > 0 ? info : null;
+}
+
 @Injectable()
 export class PaymentService {
   private readonly payos: PayOS;
@@ -179,7 +202,17 @@ export class PaymentService {
     try {
       const info = await this.payos.paymentRequests.get(orderCode);
       if (info.status === 'PAID') {
-        await this.bookingService.markPaidByOrderCode(orderCode);
+        // Giao dịch mới nhất (nếu có nhiều, VD khách chuyển thiếu rồi chuyển bù) là giao
+        // dịch đáng tin nhất để biết ai vừa chuyển tiền.
+        const latestTransaction = [...(info.transactions ?? [])].sort(
+          (a, b) =>
+            new Date(b.transactionDateTime).getTime() -
+            new Date(a.transactionDateTime).getTime(),
+        )[0];
+        const payerBankInfo = latestTransaction
+          ? extractPayerBankInfo(latestTransaction)
+          : null;
+        await this.bookingService.markPaidByOrderCode(orderCode, payerBankInfo);
         return this.bookingService.findById(bookingId, requester);
       }
       if (FAILED_PAYOS_STATUSES.includes(info.status)) {
@@ -200,7 +233,10 @@ export class PaymentService {
         body as Parameters<typeof this.payos.webhooks.verify>[0],
       );
       if (verified?.orderCode && verified.code === '00') {
-        await this.bookingService.markPaidByOrderCode(verified.orderCode);
+        await this.bookingService.markPaidByOrderCode(
+          verified.orderCode,
+          extractPayerBankInfo(verified),
+        );
       }
       return { success: true };
     } catch {

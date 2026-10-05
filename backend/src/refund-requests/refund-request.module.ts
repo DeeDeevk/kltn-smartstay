@@ -6,6 +6,7 @@ import { RefundRequestService } from './refund-request.service';
 import { RefundRequestController } from './refund-request.controller';
 import { NotificationModule } from '../notifications/notification.module';
 import { HotelConfigModule } from '../hotel-config/hotel-config.module';
+import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
 
 // Module độc lập, KHÔNG phụ thuộc PaymentModule/ChatModule (chỉ cần entity Conversation để
 // tìm/liên kết hội thoại, không cần ChatService) — payments thuộc Khoa, bookings thuộc
@@ -16,6 +17,9 @@ import { HotelConfigModule } from '../hotel-config/hotel-config.module';
     TypeOrmModule.forFeature([RefundRequest, Conversation]),
     NotificationModule,
     HotelConfigModule,
+    // Để createForCancelledBooking() đọc payerBankInfo từ PaymentTransaction gần nhất của
+    // booking (KAN-117) — CashLedgerModule độc lập, không phụ thuộc ngược lại module nào.
+    CashLedgerModule,
   ],
   controllers: [RefundRequestController],
   providers: [RefundRequestService],

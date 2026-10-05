@@ -4,7 +4,6 @@ import {
     ChevronDown,
     ChevronLeft,
     ChevronRight,
-    Link2,
     Loader2,
     MessageCircle,
     Info,
@@ -17,7 +16,6 @@ import RefundActionModal from './RefundActionModal';
 import {
     useCompleteRefundRequestMutation,
     useGetRefundRequestsQuery,
-    useLinkRefundRequestConversationMutation,
     useRejectRefundRequestMutation,
 } from '../../../services/refundRequest';
 import { useGetHotelConfigQuery, useUpdateCancellationPolicyMutation } from '../../../services/hotelConfig';
@@ -85,47 +83,6 @@ function PayerBankInfo({ value }) {
         );
     }
     return <p className="text-xs text-gray-600">{String(value)}</p>;
-}
-
-// Admin không tham gia chat trực tiếp (GET /chat/conversations chỉ dành cho STAFF — xem
-// chat.controller.ts) nên không dựng được dropdown chọn hội thoại ở đây; cho nhập tay ID
-// đã có qua kênh khác (lễ tân cung cấp) — đơn giản, không phá ranh giới quyền đã thiết lập
-// của hệ thống chat.
-function LinkConversationInline({ refundRequestId }) {
-    const [value, setValue] = useState('');
-    const [linkConversation, { isLoading }] = useLinkRefundRequestConversationMutation();
-
-    const handleLink = async () => {
-        const conversationId = value.trim();
-        if (!conversationId) return;
-        try {
-            await linkConversation({ refundRequestId, conversationId }).unwrap();
-            toast.success('Đã gắn hội thoại');
-            setValue('');
-        } catch (err) {
-            toast.error(err?.data?.message || 'Không gắn được hội thoại, kiểm tra lại ID.');
-        }
-    };
-
-    return (
-        <div className="flex items-center gap-1.5">
-            <input
-                type="text"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Dán ID hội thoại..."
-                className="w-40 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-                type="button"
-                onClick={handleLink}
-                disabled={!value.trim() || isLoading}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-                <Link2 size={12} /> Gắn
-            </button>
-        </div>
-    );
 }
 
 function RefundRow({ refund }) {
@@ -198,7 +155,12 @@ function RefundRow({ refund }) {
                                         <MessageCircle size={13} /> Xem hội thoại
                                     </button>
                                 ) : (
-                                    <LinkConversationInline refundRequestId={refund.refundRequestId} />
+                                    // Gắn hội thoại giờ làm trong khung chat (StaffChatPage), không còn thao
+                                    // tác gắn ở trang này nữa — chỉ hiện trạng thái.
+                                    <span className="inline-flex items-center gap-1.5 text-xs italic text-gray-400">
+                                        <Info size={13} />
+                                        Chưa gắn hội thoại — gắn trong khung chat
+                                    </span>
                                 )
                             ) : (
                                 // Admin không xem được nội dung chat (chỉ STAFF) — chỉ báo trạng thái liên
@@ -210,12 +172,7 @@ function RefundRow({ refund }) {
                             )}
                         </div>
                         {refund.status === 'PENDING' && (
-                            <>
-                                <p className="max-w-[220px] text-right text-[11px] text-gray-400">
-                                    Lưu ý: đối chiếu tên trên ảnh QR với tên khách đặt phòng trước khi xác nhận,
-                                    tránh hoàn nhầm tài khoản.
-                                </p>
-                                <div className="flex gap-1.5">
+                            <div className="flex gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => setActionModal('reject')}
@@ -230,8 +187,7 @@ function RefundRow({ refund }) {
                                 >
                                     Đánh dấu đã hoàn tiền
                                 </button>
-                                </div>
-                            </>
+                            </div>
                         )}
                         {refund.status !== 'PENDING' && refund.adminNote && (
                             <p className="max-w-[220px] text-right text-xs text-gray-400">
@@ -429,6 +385,16 @@ export default function RefundRequestManagementPage() {
                     </button>
                 ))}
             </div>
+
+            {status === 'PENDING' && !isLoading && items.length > 0 && (
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    <Info size={16} className="mt-0.5 shrink-0" />
+                    <p>
+                        Trước khi đánh dấu đã hoàn tiền, hãy đối chiếu tên trên ảnh QR khách gửi với tên
+                        người đặt phòng để tránh hoàn nhầm tài khoản.
+                    </p>
+                </div>
+            )}
 
             {isLoading ? (
                 <div className="space-y-3">

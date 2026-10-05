@@ -899,7 +899,10 @@ export class BookingService {
   // Dùng chung bởi webhook PayOS và endpoint đồng bộ trạng thái thủ công
   // (localhost không nhận được webhook thật từ PayOS nên PaymentService gọi
   // trực tiếp payos.paymentRequests.get() rồi gọi lại hàm này để cập nhật).
-  async markPaidByOrderCode(orderCode: number): Promise<Booking | null> {
+  async markPaidByOrderCode(
+    orderCode: number,
+    payerBankInfo: Record<string, string> | null = null,
+  ): Promise<Booking | null> {
     const booking = await this.bookingRepo.findOne({
       where: { payosOrderCode: String(orderCode) },
     });
@@ -920,6 +923,7 @@ export class BookingService {
       amount: collected,
       method: PaymentMethod.PAYOS,
       collectedByUserId: null,
+      payerBankInfo,
     });
     this.realtimeGateway.emitBookingPaid({
       bookingId: saved.bookingId,

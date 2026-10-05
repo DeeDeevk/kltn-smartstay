@@ -1,0 +1,124 @@
+import { Repository } from 'typeorm';
+import { BookingService } from './booking.service';
+import { Booking } from './entities/booking.entity';
+import { PaymentStatus } from '../common/enums/payment-status.enum';
+import { BookingStatus } from '../common/enums/booking-status.enum';
+import { PaymentMethod } from '../common/enums/payment-method.enum';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import { NotificationService } from '../notifications/notification.service';
+
+// Chỉ test markPaidByOrderCode() — hàm duy nhất đổi hành vi trong KAN-117 (thêm tham số
+// payerBankInfo). Các dependency khác của BookingService không được hàm này gọi tới, nên
+// chỉ cần stub rỗng để constructor không ném lỗi.
+function buildService(overrides?: {
+  booking?: Partial<Booking> | null;
+}) {
+  const booking: Booking | null =
+    overrides?.booking === undefined
+      ? ({
+          bookingId: 'booking-1',
+          payosOrderCode: '123456',
+          paymentStatus: PaymentStatus.UNPAID,
+          status: BookingStatus.PENDING,
+          paidAmount: 0,
+          roomAmount: 500000,
+          lateCheckoutFee: 0,
+          discountAmount: 0,
+          serviceItems: [],
+          user: { userId: 'user-1' },
+          roomType: { name: 'Deluxe' },
+          guestInfo: { fullName: 'Khách A' },
+        } as unknown as Booking)
+      : (overrides.booking as Booking | null);
+
+  const bookingSave = jest.fn((x: Booking) => Promise.resolve(x));
+  const bookingRepo = {
+    findOne: jest.fn().mockResolvedValue(booking),
+    save: bookingSave,
+  } as unknown as Repository<Booking>;
+
+  const record = jest.fn().mockResolvedValue(undefined);
+  const paymentTransactionService = {
+    record,
+  } as unknown as PaymentTransactionService;
+
+  const realtimeGateway = {
+    emitBookingPaid: jest.fn(),
+    emitBookingUpdatedForCustomer: jest.fn(),
+  } as unknown as RealtimeGateway;
+
+  const notificationService = {
+    notifyBooking: jest.fn().mockResolvedValue(undefined),
+  } as unknown as NotificationService;
+
+  const service = new BookingService(
+    bookingRepo,
+    {} as never, // bookingServiceItemRepo
+    {} as never, // roomRepo
+    {} as never, // redisClient
+    {} as never, // roomTypeService
+    {} as never, // serviceService
+    {} as never, // promotionService
+    {} as never, // userService
+    realtimeGateway,
+    {} as never, // shiftAssignmentService
+    paymentTransactionService,
+    notificationService,
+    {} as never, // refundRequestService
+  );
+
+  return { service, bookingRepo, bookingSave, record, realtimeGateway };
+}
+
+describe('BookingService.markPaidByOrderCode', () => {
+  it('có truyền payerBankInfo -> PaymentTransactionService.record() nhận đúng giá trị đó', async () => {
+    const { service, record } = buildService();
+    const payerBankInfo = { 'Tên người chuyển': 'Nguyen Van A', 'Số tài khoản': '0123456789' };
+
+    await service.markPaidByOrderCode(123456, payerBankInfo);
+
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: 'booking-1',
+        method: PaymentMethod.PAYOS,
+        payerBankInfo,
+      }),
+    );
+  });
+
+  it('không truyền payerBankInfo -> PaymentTransactionService.record() nhận null', async () => {
+    const { service, record } = buildService();
+
+    await service.markPaidByOrderCode(123456);
+
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ payerBankInfo: null }),
+    );
+  });
+
+  it('đơn không tồn tại (sai orderCode) -> trả null, không gọi record()', async () => {
+    const { service, record } = buildService({ booking: null });
+
+    const result = await service.markPaidByOrderCode(999999);
+
+    expect(result).toBeNull();
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('đơn đã PAID từ trước -> trả luôn booking hiện có, không ghi thêm giao dịch mới', async () => {
+    const { service, record, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.PAID,
+      } as Booking,
+    });
+
+    const result = await service.markPaidByOrderCode(123456, { a: 'b' });
+
+    expect(result?.paymentStatus).toBe(PaymentStatus.PAID);
+    expect(bookingSave).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
+});
