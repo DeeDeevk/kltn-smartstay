@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'react-toastify'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
-// import Chatbot from '../components/Chatbot' // tạm ẩn, xem ghi chú ở nơi render bên dưới
+import Chatbot from '../components/Chatbot'
 import AiChatbot from '../components/AiChatbot'
 import HeroSection from '../components/homepage/HeroSection'
 import FeaturedRooms from '../components/homepage/FeaturedRooms'
@@ -59,6 +59,7 @@ const LocalPlacesSettingsPage = lazy(() => import('../components/admin/settings/
 const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
 const PromotionManagementPage = lazy(() => import('../components/admin/promotions/PromotionManagementPage'))
 const ReviewManagementPage = lazy(() => import('../components/admin/reviews/ReviewManagementPage'))
+const RefundRequestManagementPage = lazy(() => import('../components/admin/refunds/RefundRequestManagementPage'))
 const AdminNotificationsPage = lazy(() => import('../components/admin/notifications/AdminNotificationsPage'))
 const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
 const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
@@ -823,10 +824,8 @@ export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      {/* Tạm ẩn nút chat với lễ tân theo yêu cầu, chỉ để lại trợ lý AI — bật lại bằng
-          cách bỏ comment dòng import ở trên và dòng <Chatbot /> dưới đây. Khi bật lại,
-          2 khung chat tự loại trừ nhau (useExclusiveChatPanel). */}
-      {/* <Chatbot /> */}
+      {/* 2 khung chat (lễ tân + AI) tự loại trừ nhau khi mở, xem useExclusiveChatPanel. */}
+      <Chatbot />
       <AiChatbot />
       <Suspense fallback={<PageLoader className="min-h-screen" />}>
       <RouteFade>
@@ -1012,6 +1011,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN']}>
                 <ReviewManagementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="refund-requests"
+            element={
+              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+                <RefundRequestManagementPage />
               </ProtectedRoute>
             }
           />

@@ -40,6 +40,7 @@ import {
   NotificationService,
   NotificationType,
 } from '../notifications/notification.service';
+import { RefundRequestService } from '../refund-requests/refund-request.service';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -78,6 +79,7 @@ export class BookingService {
     private readonly shiftAssignmentService: ShiftAssignmentService,
     private readonly paymentTransactionService: PaymentTransactionService,
     private readonly notificationService: NotificationService,
+    private readonly refundRequestService: RefundRequestService,
   ) {}
 
   // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
@@ -846,11 +848,39 @@ export class BookingService {
     if (booking.paidAmount > 0) {
       const who =
         booking.user?.userId === requester.userId ? 'Khách' : 'Nhân viên';
+      // Tính trước mức hoàn thực tế theo chính sách huỷ đơn (KAN-117) để nội dung thông báo
+      // khớp với số tiền admin thực sự cần chuyển — KHÔNG dùng thẳng booking.paidAmount nữa,
+      // vì huỷ cận giờ chỉ hoàn 1 phần, huỷ sau giờ nhận phòng thì không hoàn gì cả. Bọc
+      // .catch() vì đây vẫn là tác vụ PHỤ (thông báo) — booking đã lưu CANCELLED thành công ở
+      // trên rồi, lỗi tính toán ở đây (VD DB tạm trục trặc) không được làm hỏng cancel();
+      // fallback về đúng hành vi cũ (coi như hoàn 100% paidAmount) nếu tính lỗi.
+      const preview = await this.refundRequestService
+        .computeRefundPreview(booking)
+        .catch(() => ({
+          hoursUntilCheckIn: Number.POSITIVE_INFINITY,
+          refundPercent: 100,
+          refundAmount: booking.paidAmount,
+          freeCancellationHours: 0,
+        }));
+      const isNoRefund = preview.hoursUntilCheckIn <= 0;
       void this.notificationService.notifyAdmins(
         NotificationType.ADMIN_PAID_BOOKING_CANCELLED,
-        `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(booking.paidAmount)}`,
-        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, cần hoàn tiền thủ công.`,
+        isNoRefund
+          ? 'Đơn đã thanh toán bị huỷ sau giờ nhận phòng — không cần hoàn tiền'
+          : `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(preview.refundAmount)}`,
+        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, ` +
+          (isNoRefund
+            ? 'huỷ sau giờ nhận phòng nên theo chính sách KHÔNG cần hoàn tiền.'
+            : `cần hoàn tiền thủ công ${this.formatVnd(preview.refundAmount)}${preview.refundPercent < 100 ? ` (${preview.refundPercent}% theo chính sách huỷ đơn)` : ''}.`),
         booking.bookingId,
+      );
+      // Ghi nhận thành 1 yêu cầu hoàn tiền có cấu trúc (KAN-114) — bổ sung CHO notification
+      // ở trên (không thay thế): notification là cảnh báo tức thời, RefundRequest là bản
+      // ghi để admin theo dõi/xử lý qua trang /admin/refund-requests. Không throw ra ngoài
+      // nếu lỗi — xem RefundRequestService.createForCancelledBooking().
+      void this.refundRequestService.createForCancelledBooking(
+        booking,
+        dto.reason,
       );
     }
 
@@ -1075,6 +1105,15 @@ export class BookingService {
         dueAmount: Math.max(0, totalAmount - booking.paidAmount),
       },
     };
+  }
+
+  // Xem trước mức hoàn tiền nếu huỷ NGAY LÚC NÀY, theo đúng chính sách tính ở
+  // RefundRequestService.computeRefundPreview() (KAN-117) — KHÔNG huỷ đơn, KHÔNG tạo
+  // RefundRequest, chỉ để khách/nhân viên biết trước khi xác nhận huỷ.
+  async getCancellationPreview(bookingId: string, requester: Requester) {
+    const booking = await this.findByIdRaw(bookingId);
+    this.assertCanView(booking, requester);
+    return this.refundRequestService.computeRefundPreview(booking);
   }
 
   private async findByIdRaw(bookingId: string): Promise<Booking> {

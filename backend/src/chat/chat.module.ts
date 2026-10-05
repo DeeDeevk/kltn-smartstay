@@ -7,12 +7,14 @@ import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { UserModule } from '../users/user.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { UploadModule } from '../uploads/upload.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Conversation, Message]),
     UserModule,
     RealtimeModule,
+    UploadModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],

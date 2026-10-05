@@ -25,7 +25,11 @@ import { NotificationModule } from './notifications/notification.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 30 }]),
+    // Giới hạn mặc định cho MỌI endpoint chưa có @Throttle riêng (auth/AI/extract đã tự
+    // siết chặt hơn, không đổi). 30 req/phút quá thấp cho 1 SPA admin bình thường — nhất là
+    // dev mode StrictMode gọi useEffect 2 lần — nên nâng lên 120, đủ chịu điều hướng/refresh
+    // dồn dập mà vẫn chặn được lạm dụng rõ ràng.
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
     ScheduleModule.forRoot(),
     RedisModule,
     TypeOrmModule.forRootAsync({

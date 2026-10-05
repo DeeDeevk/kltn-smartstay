@@ -12,6 +12,7 @@ import {
 import { Message } from './entities/message.entity';
 import { UserService } from '../users/user.service';
 import { UserRole } from '../common/enums/user-role.enum';
+import { MessageAttachmentType } from '../common/enums/message-attachment-type.enum';
 
 interface Requester {
   userId: string;
@@ -93,25 +94,40 @@ export class ChatService {
       senderName: message.sender.fullName,
       senderRole: message.sender.role,
       content: message.content,
+      attachmentUrl: message.attachmentUrl,
+      attachmentType: message.attachmentType,
       createdAt: message.createdAt,
     };
   }
 
+  // attachmentUrl/attachmentType: ảnh đã được upload TRƯỚC qua POST /chat/attachments
+  // (xem ChatController.uploadAttachment) — ở đây chỉ nhận URL đã có, không nhận file.
   async saveMessage(
     conversationId: string,
     senderId: string,
     rawContent: string,
+    attachmentUrl: string | null = null,
+    attachmentType: MessageAttachmentType | null = null,
   ): Promise<Message> {
     const content = rawContent.trim().slice(0, MAX_MESSAGE_LENGTH);
-    if (!content) {
-      throw new ForbiddenException('Nội dung tin nhắn không được để trống');
+    // Tin nhắn chỉ có ảnh (content rỗng) vẫn hợp lệ — chỉ từ chối khi CẢ HAI đều rỗng.
+    if (!content && !attachmentUrl) {
+      throw new ForbiddenException(
+        'Tin nhắn cần có nội dung hoặc ảnh đính kèm',
+      );
     }
 
     const conversation = await this.findConversationById(conversationId);
     const sender = await this.userService.findById(senderId);
 
     const message = await this.messageRepo.save(
-      this.messageRepo.create({ conversation, sender, content }),
+      this.messageRepo.create({
+        conversation,
+        sender,
+        content,
+        attachmentUrl,
+        attachmentType,
+      }),
     );
 
     conversation.lastMessageAt = message.createdAt;

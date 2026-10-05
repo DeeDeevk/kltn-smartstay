@@ -2,6 +2,7 @@ import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { HotelConfigService } from './hotel-config.service';
 import { PlacesService } from './places.service';
 import { UpdateHotelLocationDto } from './dto/update-hotel-location.dto';
+import { UpdateCancellationPolicyDto } from './dto/update-cancellation-policy.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
@@ -30,5 +31,10 @@ export class HotelConfigController {
     // Vị trí đổi -> địa điểm gần đây đã cache (tính từ toạ độ cũ) không còn đúng nữa.
     await this.placesService.invalidateNearbyCache();
     return config;
+  }
+
+  @Patch('cancellation-policy')
+  updateCancellationPolicy(@Body() dto: UpdateCancellationPolicyDto) {
+    return this.hotelConfigService.updateCancellationPolicy(dto);
   }
 }

@@ -16,6 +16,12 @@ export const hotelConfigApi = createApi({
       query: (data) => ({ url: '/hotel-config/location', method: 'patch', data }),
       invalidatesTags: ['HotelConfig'],
     }),
+    // Chính sách hoàn tiền theo thời điểm huỷ (KAN-117) — xem RefundRequestService.
+    // computeRefundPreview() ở backend.
+    updateCancellationPolicy: builder.mutation({
+      query: (data) => ({ url: '/hotel-config/cancellation-policy', method: 'patch', data }),
+      invalidatesTags: ['HotelConfig'],
+    }),
     getLocalEvents: builder.query({
       query: () => ({ url: '/local-events', method: 'get' }),
       providesTags: (result) =>
@@ -154,6 +160,7 @@ export const hotelConfigApi = createApi({
 export const {
   useGetHotelConfigQuery,
   useUpdateHotelLocationMutation,
+  useUpdateCancellationPolicyMutation,
   useGetLocalEventsQuery,
   useCreateLocalEventMutation,
   useUpdateLocalEventMutation,

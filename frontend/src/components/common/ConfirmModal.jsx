@@ -12,6 +12,7 @@ export default function ConfirmModal({
   loading = false,
   onConfirm,
   onClose,
+  children,
 }) {
   const { t } = useTranslation();
   return (
@@ -43,6 +44,7 @@ export default function ConfirmModal({
       }
     >
       <p className="text-sm leading-6 text-gray-600">{message}</p>
+      {children}
     </Modal>
   );
 }

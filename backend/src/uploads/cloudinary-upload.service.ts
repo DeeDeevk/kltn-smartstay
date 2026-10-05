@@ -11,6 +11,10 @@ export class CloudinaryUploadService {
     @Inject(CLOUDINARY) private readonly cloudinary: typeof CloudinaryType,
   ) {}
 
+  // Không nhận keyPrefix như UploadService (R2) — luôn lưu vào "room-types" bất kể nơi
+  // gọi. Chấp nhận được vì đây chỉ là lớp dự phòng rollback, hiếm khi bật lại; nếu có
+  // rollback khi đã dùng keyPrefix riêng cho ảnh chat (KAN-112), ảnh chat sẽ bị lưu lẫn
+  // vào thư mục room-types cho tới khi cập nhật lại class này.
   uploadImage(file: Express.Multer.File): Promise<UploadedImage> {
     return new Promise((resolve, reject) => {
       const stream = this.cloudinary.uploader.upload_stream(
