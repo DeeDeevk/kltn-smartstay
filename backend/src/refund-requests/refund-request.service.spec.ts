@@ -34,7 +34,11 @@ function buildService(overrides?: {
   openConversation?: Partial<Conversation> | null;
   refundRequest?: Partial<RefundRequest>;
   mine?: Partial<RefundRequest>[];
-  hotelConfig?: { freeCancellationHours?: number; partialRefundPercent?: number };
+  hotelConfig?: {
+    freeCancellationHours?: number;
+    partialRefundPercent?: number;
+    refundProcessingSlaHours?: number;
+  };
   latestPaymentTransaction?: { payerBankInfo: Record<string, string> | null } | null;
 }) {
   const refundRequestSave = jest.fn((x: unknown) => Promise.resolve(x));
@@ -74,6 +78,7 @@ function buildService(overrides?: {
   const hotelConfigGetOrCreate = jest.fn().mockResolvedValue({
     freeCancellationHours: 48,
     partialRefundPercent: 50,
+    refundProcessingSlaHours: 24,
     ...overrides?.hotelConfig,
   });
   const hotelConfigService = {
@@ -279,6 +284,36 @@ describe('RefundRequestService.complete / reject', () => {
     );
   });
 
+  it('complete(): có kèm proofImageUrl -> lưu đúng URL đó', async () => {
+    const { service } = buildService({ refundRequest: {} });
+
+    const result = await service.complete(
+      'refund-1',
+      {
+        adminNote: 'Đã chuyển khoản',
+        proofImageUrl: 'https://cdn.example.com/vikahotel/refund-proof/abc.webp',
+      },
+      'admin-1',
+    );
+
+    expect(result.proofImageUrl).toBe(
+      'https://cdn.example.com/vikahotel/refund-proof/abc.webp',
+    );
+  });
+
+  it('complete(): không kèm proofImageUrl -> lưu null, vẫn hoàn tất bình thường', async () => {
+    const { service } = buildService({ refundRequest: {} });
+
+    const result = await service.complete(
+      'refund-1',
+      { adminNote: 'Đã chuyển khoản' },
+      'admin-1',
+    );
+
+    expect(result.proofImageUrl).toBeNull();
+    expect(result.status).toBe(RefundRequestStatus.COMPLETED);
+  });
+
   it('reject(): đổi status REJECTED, bắt buộc có adminNote, gửi thông báo kèm lý do', async () => {
     const { service, notifyRefund } = buildService({ refundRequest: {} });
 
@@ -345,6 +380,7 @@ describe('RefundRequestService.findMine', () => {
         adminNote: null,
         createdAt: new Date('2026-01-01'),
         processedAt: null,
+        refundProcessingSlaHours: 24,
       },
     ]);
   });
@@ -353,5 +389,114 @@ describe('RefundRequestService.findMine', () => {
     const { service } = buildService({ mine: [] });
     const result = await service.findMine(BOOKING_USER_ID);
     expect(result).toEqual([]);
+  });
+});
+
+describe('RefundRequestService.findByBookingId', () => {
+  it('có RefundRequest -> trả đúng các field cần cho modal chi tiết đơn (KAN-121)', async () => {
+    const { service } = buildService({
+      refundRequest: {
+        refundRequestId: 'refund-1',
+        amount: 1620,
+        refundPercent: 50,
+        status: RefundRequestStatus.COMPLETED,
+        reason: 'Khách đổi lịch',
+        adminNote: 'Đã chuyển khoản',
+        proofImageUrl: 'https://cdn.example.com/proof.webp',
+      },
+    });
+
+    const result = await service.findByBookingId('booking-1');
+
+    expect(result).toEqual({
+      refundRequestId: 'refund-1',
+      status: RefundRequestStatus.COMPLETED,
+      amount: 1620,
+      refundPercent: 50,
+      reason: 'Khách đổi lịch',
+      adminNote: 'Đã chuyển khoản',
+      proofImageUrl: 'https://cdn.example.com/proof.webp',
+      refundProcessingSlaHours: 24,
+      qrImageUrl: null,
+    });
+  });
+
+  it('không có RefundRequest nào (đơn chưa huỷ/chưa thanh toán) -> trả null', async () => {
+    const { service } = buildService({ refundRequest: undefined });
+
+    const result = await service.findByBookingId('booking-2');
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('RefundRequestService.getRefundProcessingSlaHours', () => {
+  it('đọc đúng giá trị đã cấu hình trong HotelConfig (KAN-122)', async () => {
+    const { service } = buildService({
+      hotelConfig: { refundProcessingSlaHours: 6 },
+    });
+
+    const result = await service.getRefundProcessingSlaHours();
+
+    expect(result).toBe(6);
+  });
+});
+
+describe('RefundRequestService.buildQrImageUrl', () => {
+  it('có đủ bankBin + accountNumber -> dựng đúng URL Quick Link VietQR', () => {
+    const { service } = buildService();
+    // UUID thật luôn chỉ gồm hex ở 8 ký tự đầu (không có dấu "-" cho tới vị trí thứ 9) —
+    // dùng 1 bookingId dạng UUID thật để addInfo không dính ký tự đặc biệt, đúng thực tế
+    // production (khác buildBooking() mặc định 'booking-1' chỉ để test các phần khác).
+    const refund = {
+      amount: 1620,
+      booking: buildBooking({ bookingId: 'a1b2c3d4-e556-43d3-8f50-960dae7d8cfa' }),
+      payerBankInfo: {
+        'Tên người chuyển': 'Nguyen Van A',
+        'Số tài khoản': '0123456789',
+        'Ngân hàng': 'TPBank',
+        bankBin: '970423',
+      },
+    } as unknown as RefundRequest;
+
+    const url = service.buildQrImageUrl(refund);
+
+    expect(url).toContain('https://img.vietqr.io/image/970423-0123456789-compact2.png');
+    expect(url).toContain('amount=1620');
+    expect(url).toContain('addInfo=Hoan+tien+A1B2C3D4');
+    expect(url).toContain('accountName=Nguyen+Van+A');
+  });
+
+  it('thiếu bankBin -> trả null', () => {
+    const { service } = buildService();
+    const refund = {
+      amount: 1620,
+      booking: buildBooking(),
+      payerBankInfo: { 'Số tài khoản': '0123456789' },
+    } as unknown as RefundRequest;
+
+    expect(service.buildQrImageUrl(refund)).toBeNull();
+  });
+
+  it('thiếu accountNumber -> trả null', () => {
+    const { service } = buildService();
+    const refund = {
+      amount: 1620,
+      booking: buildBooking(),
+      payerBankInfo: { bankBin: '970423' },
+    } as unknown as RefundRequest;
+
+    expect(service.buildQrImageUrl(refund)).toBeNull();
+  });
+
+  it('payerBankInfo = null -> trả null', () => {
+    const { service } = buildService();
+    const refund = {
+      amount: 1620,
+      booking: buildBooking(),
+      payerBankInfo: null,
+    } as unknown as RefundRequest;
+
+    expect(service.buildQrImageUrl(refund)).toBeNull();
   });
 });

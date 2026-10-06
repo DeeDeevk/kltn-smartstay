@@ -476,10 +476,17 @@ export class BookingService {
     return this.paginate(qb, page, limit);
   }
 
+  // Chỉ endpoint chi tiết 1 đơn (GET /bookings/:id) mới đính kèm refundRequest — query riêng
+  // theo bookingId (KAN-121), KHÔNG join sẵn vào toDetailResponse() (dùng chung bởi nhiều
+  // chỗ khác như create()/checkIn()/checkOut()...) để tránh tốn thêm 1 query cho mọi lần đó
+  // trong khi phần lớn không cần tới dữ liệu này.
   async findById(bookingId: string, requester: Requester) {
     const booking = await this.findByIdRaw(bookingId);
     this.assertCanView(booking, requester);
-    return this.toDetailResponse(booking);
+    const refundRequest = await this.refundRequestService.findByBookingId(
+      bookingId,
+    );
+    return { ...this.toDetailResponse(booking), refundRequest };
   }
 
   // Tra cứu đơn của MỘT ngày cụ thể, dùng cho trợ lý AI trả lời "hôm nay có bao nhiêu

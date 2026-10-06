@@ -41,11 +41,20 @@ export const refundRequestApi = createApi({
             ]
           : [{ type: 'RefundRequest', id: 'LIST' }],
     }),
+    // Ảnh biên lai/QR chuyển khoản (không bắt buộc) — upload trước lấy URL, rồi gửi kèm
+    // adminNote vào completeRefundRequest bên dưới. Cùng pattern useUploadChatAttachmentMutation.
+    uploadRefundProof: builder.mutation({
+      query: (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return { url: '/refund-requests/attachments', method: 'post', data: formData };
+      },
+    }),
     completeRefundRequest: builder.mutation({
-      query: ({ refundRequestId, adminNote }) => ({
+      query: ({ refundRequestId, adminNote, proofImageUrl }) => ({
         url: `/refund-requests/${refundRequestId}/complete`,
         method: 'patch',
-        data: { adminNote },
+        data: { adminNote, proofImageUrl },
       }),
       invalidatesTags: (result, error, { refundRequestId }) => [
         { type: 'RefundRequest', id: refundRequestId },
@@ -80,6 +89,7 @@ export const refundRequestApi = createApi({
 export const {
   useGetMyRefundRequestsQuery,
   useGetRefundRequestsQuery,
+  useUploadRefundProofMutation,
   useCompleteRefundRequestMutation,
   useRejectRefundRequestMutation,
   useLinkRefundRequestConversationMutation,

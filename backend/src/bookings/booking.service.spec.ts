@@ -7,12 +7,14 @@ import { PaymentMethod } from '../common/enums/payment-method.enum';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 import { NotificationService } from '../notifications/notification.service';
+import { RefundRequestService } from '../refund-requests/refund-request.service';
 
-// Chỉ test markPaidByOrderCode() — hàm duy nhất đổi hành vi trong KAN-117 (thêm tham số
-// payerBankInfo). Các dependency khác của BookingService không được hàm này gọi tới, nên
-// chỉ cần stub rỗng để constructor không ném lỗi.
+// Chỉ test markPaidByOrderCode() và findById() — 2 hàm duy nhất đổi hành vi trong KAN-117/
+// KAN-121. Các dependency khác của BookingService không được 2 hàm này gọi tới, nên chỉ
+// cần stub rỗng để constructor không ném lỗi.
 function buildService(overrides?: {
   booking?: Partial<Booking> | null;
+  refundRequestByBookingId?: Record<string, unknown> | null;
 }) {
   const booking: Booking | null =
     overrides?.booking === undefined
@@ -52,6 +54,13 @@ function buildService(overrides?: {
     notifyBooking: jest.fn().mockResolvedValue(undefined),
   } as unknown as NotificationService;
 
+  const findByBookingId = jest
+    .fn()
+    .mockResolvedValue(overrides?.refundRequestByBookingId ?? null);
+  const refundRequestService = {
+    findByBookingId,
+  } as unknown as RefundRequestService;
+
   const service = new BookingService(
     bookingRepo,
     {} as never, // bookingServiceItemRepo
@@ -65,10 +74,10 @@ function buildService(overrides?: {
     {} as never, // shiftAssignmentService
     paymentTransactionService,
     notificationService,
-    {} as never, // refundRequestService
+    refundRequestService,
   );
 
-  return { service, bookingRepo, bookingSave, record, realtimeGateway };
+  return { service, bookingRepo, bookingSave, record, realtimeGateway, findByBookingId };
 }
 
 describe('BookingService.markPaidByOrderCode', () => {
@@ -120,5 +129,35 @@ describe('BookingService.markPaidByOrderCode', () => {
     expect(result?.paymentStatus).toBe(PaymentStatus.PAID);
     expect(bookingSave).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookingService.findById', () => {
+  const requester = { userId: 'user-1', role: 'CUSTOMER' };
+
+  it('đơn có RefundRequest -> đính kèm field refundRequest vào response', async () => {
+    const refundRequestByBookingId = {
+      refundRequestId: 'refund-1',
+      status: 'COMPLETED',
+      amount: 250000,
+      refundPercent: 50,
+      reason: 'Khách đổi lịch',
+      adminNote: 'Đã chuyển khoản',
+      proofImageUrl: 'https://cdn.example.com/proof.webp',
+    };
+    const { service, findByBookingId } = buildService({ refundRequestByBookingId });
+
+    const result = await service.findById('booking-1', requester);
+
+    expect(findByBookingId).toHaveBeenCalledWith('booking-1');
+    expect(result.refundRequest).toEqual(refundRequestByBookingId);
+  });
+
+  it('đơn không có RefundRequest nào (chưa huỷ/chưa thanh toán) -> refundRequest = null', async () => {
+    const { service } = buildService();
+
+    const result = await service.findById('booking-1', requester);
+
+    expect(result.refundRequest).toBeNull();
   });
 });

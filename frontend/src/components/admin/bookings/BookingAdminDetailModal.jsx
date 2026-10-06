@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { CheckCircle2, DoorOpen, Loader2, LogIn, LogOut, XCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  DoorOpen,
+  Loader2,
+  LogIn,
+  LogOut,
+  XCircle,
+} from 'lucide-react';
 import Modal from '../../common/Modal';
+import ImageLightbox from '../../common/ImageLightbox';
 import StatusPill from '../../booking/StatusPill';
 import AvailableRoomPicker from '../../booking/AvailableRoomPicker';
 import {
@@ -16,6 +24,7 @@ import {
   useConfirmBookingMutation,
   useCancelBookingMutation,
   useCheckInMutation,
+  useGetBookingByIdQuery,
 } from '../../../services/booking';
 
 const BOOKING_STATUS_LABELS = {
@@ -30,14 +39,31 @@ const PAYMENT_STATUS_LABELS = {
   PAID: 'Đã thanh toán',
   FAILED: 'Thanh toán lỗi',
 };
+// Nhãn/màu riêng cho trạng thái RefundRequest trong khối "Hoàn tiền" (KAN-121) — khác chữ
+// dùng ở trang /admin/refund-requests (VD "Đang chờ xử lý") vì ngữ cảnh ở đây là 1 dòng phụ
+// trong modal chi tiết đơn, cần rõ ràng ngay là "đang chờ HOÀN TIỀN".
+const REFUND_STATUS_META = {
+  PENDING: { label: 'Đang chờ hoàn tiền', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  COMPLETED: { label: 'Đã hoàn tiền', className: 'border-green-200 bg-green-50 text-green-700' },
+  REJECTED: { label: 'Đã từ chối', className: 'border-red-200 bg-red-50 text-red-700' },
+};
 
-export default function BookingAdminDetailModal({ booking, onClose, onChanged }) {
+export default function BookingAdminDetailModal({ booking: bookingProp, onClose, onChanged }) {
   const navigate = useNavigate();
   const [confirmBooking, { isLoading: confirming }] = useConfirmBookingMutation();
   const [cancelBooking, { isLoading: cancelling }] = useCancelBookingMutation();
   const [checkIn, { isLoading: checkingIn }] = useCheckInMutation();
   const [cancelMode, setCancelMode] = useState(false);
   const [reason, setReason] = useState('');
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  // Trang cha chỉ truyền lại đúng dòng đã có từ danh sách (GET /bookings — cố tình KHÔNG
+  // kèm refundRequest ở đó để khỏi tốn 1 query phụ cho mọi dòng danh sách, xem KAN-121 ở
+  // backend). Tự gọi riêng GET /bookings/:id khi modal mở để lấy thêm refundRequest, đè lên
+  // bookingProp — các field khác vẫn khớp vì cùng 1 nguồn dữ liệu.
+  const { data: detail } = useGetBookingByIdQuery(bookingProp?.bookingId, {
+    skip: !bookingProp?.bookingId,
+  });
+  const booking = detail ?? bookingProp;
   // Bước chọn phòng của luồng nhận phòng — mở ngay trong modal này thay vì điều hướng
   // sang Sơ đồ phòng: đơn đặt online luôn chưa gán phòng (khách chỉ chọn LOẠI phòng),
   // nên nếu chỉ navigate thì nhân viên rơi vào sơ đồ trống trơn và phải tự mò phòng.
@@ -52,6 +78,7 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
     setSelectedRoomId(null);
     setCancelMode(false);
     setReason('');
+    setLightboxSrc(null);
   }, [booking?.bookingId]);
 
   if (!booking) return null;
@@ -104,6 +131,7 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
   };
 
   return (
+    <>
     <Modal open={Boolean(booking)} onClose={onClose} title="Chi tiết đặt phòng" size="lg">
       <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
         <Info label="Mã đặt phòng">
@@ -139,6 +167,81 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
           {booking.paymentMethod === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản (PayOS)'}
         </Info>
       </div>
+
+      {/* Chỉ đọc — xử lý hoàn tiền (đánh dấu đã hoàn/từ chối) tập trung ở đúng 1 nơi là
+          trang /admin/refund-requests + RefundActionModal, tránh trùng logic 2 chỗ. */}
+      {booking.refundRequest && (
+        <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Hoàn tiền
+            </h4>
+            <span
+              className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                REFUND_STATUS_META[booking.refundRequest.status]?.className ??
+                'border-gray-200 bg-gray-50 text-gray-600'
+              }`}
+            >
+              {REFUND_STATUS_META[booking.refundRequest.status]?.label ?? booking.refundRequest.status}
+            </span>
+          </div>
+          <div className="space-y-1.5 text-sm text-gray-700">
+            <p>
+              Số tiền hoàn:{' '}
+              <span className="font-semibold">{formatCurrency(booking.refundRequest.amount)}</span>
+              {booking.refundRequest.refundPercent !== 100 && (
+                <span className="text-gray-500">
+                  {' '}
+                  ({booking.refundRequest.refundPercent}% — huỷ cận giờ nhận phòng)
+                </span>
+              )}
+            </p>
+            {booking.refundRequest.reason && <p>Lý do huỷ: {booking.refundRequest.reason}</p>}
+            {booking.refundRequest.adminNote && (
+              <p>Ghi chú admin: {booking.refundRequest.adminNote}</p>
+            )}
+            {booking.refundRequest.proofImageUrl && (
+              <button
+                type="button"
+                onClick={() => setLightboxSrc(booking.refundRequest.proofImageUrl)}
+                className="pt-1"
+              >
+                <img
+                  src={booking.refundRequest.proofImageUrl}
+                  alt="Ảnh biên lai chuyển khoản"
+                  className="h-16 w-16 cursor-zoom-in rounded-lg border border-gray-200 object-cover"
+                />
+              </button>
+            )}
+            {/* Ảnh VietQR thật (KAN-123) — chỉ hiện khi tra được đủ bankBin + accountNumber
+                từ payerBankInfo, không kèm phần text chi tiết tài khoản (đã có đủ ở trang
+                /admin/refund-requests, modal này chỉ cần tiện cho admin quét nhanh). */}
+            {booking.refundRequest.qrImageUrl && (
+              <div className="w-[200px] pt-2">
+                <img
+                  src={booking.refundRequest.qrImageUrl}
+                  alt="Mã VietQR chuyển khoản"
+                  width={200}
+                  height={240}
+                  className="rounded-lg border border-gray-200"
+                />
+                <p className="mt-1.5 text-[11px] leading-snug text-amber-600">
+                  QR này ứng với tài khoản đã thanh toán — nếu khách yêu cầu nhận vào tài khoản
+                  khác, vui lòng dùng ảnh QR khách gửi qua chat (nếu có) và đối chiếu kỹ trước khi
+                  quét.
+                </p>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/refund-requests')}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+          >
+            Quản lý tại trang Yêu cầu hoàn tiền →
+          </button>
+        </div>
+      )}
 
       <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4">
         <div className="space-y-1.5 text-sm">
@@ -279,6 +382,8 @@ export default function BookingAdminDetailModal({ booking, onClose, onChanged })
           ))}
       </div>
     </Modal>
+    <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+    </>
   );
 }
 

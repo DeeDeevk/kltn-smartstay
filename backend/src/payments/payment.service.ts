@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PayOS } from '@payos/node';
 import { BookingService } from '../bookings/booking.service';
+import { VietqrBankService } from './vietqr-bank.service';
 import { PaymentMethod } from '../common/enums/payment-method.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
 
@@ -14,28 +15,24 @@ interface Requester {
 // PENDING/PROCESSING/UNDERPAID vốn vẫn đang chờ, chưa nên báo thất bại cho khách.
 const FAILED_PAYOS_STATUSES = ['CANCELLED', 'EXPIRED', 'FAILED'];
 
-// Field tên người/tài khoản chuyển khoản — có trong CẢ WebhookData (payos.webhooks.verify)
-// lẫn Transaction (payos.paymentRequests.get().transactions), đúng tên field theo type
-// definition của @payos/node (lib/resources/webhooks/webhook.d.ts và
+// Field tên người/tài khoản/mã ngân hàng chuyển khoản — có trong CẢ WebhookData
+// (payos.webhooks.verify) lẫn Transaction (payos.paymentRequests.get().transactions), đúng
+// tên field theo type definition của @payos/node (lib/resources/webhooks/webhook.d.ts và
 // lib/resources/v2/payment-requests/payment-requests.d.ts) — đã kiểm tra, không đoán mò.
+// counterAccountBankId: SDK có khai field này (kiểu string|null) nhưng KHÔNG có tài liệu
+// (README/CHANGELOG/JSDoc) nào xác nhận chắc chắn đây là mã BIN theo chuẩn NAPAS hay 1 ID
+// nội bộ khác của PayOS — xem comment ở resolveBankBin() về cách xử lý an toàn cho việc này.
 interface PayosCounterAccountFields {
+  counterAccountBankId?: string | null;
   counterAccountBankName?: string | null;
   counterAccountName?: string | null;
   counterAccountNumber?: string | null;
 }
 
-// Chỉ giữ field THẬT SỰ có giá trị (SDK khai optional/nullable) — trả null nếu không field
-// nào có dữ liệu, KHÔNG bịa cấu trúc giả. Bỏ counterAccountBankId (mã ngân hàng nội bộ,
-// không cần để nhân viên đối chiếu tên trên ảnh QR).
-function extractPayerBankInfo(
-  data: PayosCounterAccountFields,
-): Record<string, string> | null {
-  const info: Record<string, string> = {};
-  if (data.counterAccountName) info['Tên người chuyển'] = data.counterAccountName;
-  if (data.counterAccountNumber) info['Số tài khoản'] = data.counterAccountNumber;
-  if (data.counterAccountBankName) info['Ngân hàng'] = data.counterAccountBankName;
-  return Object.keys(info).length > 0 ? info : null;
-}
+// Mã BIN NAPAS luôn đúng 6 chữ số; mã viết tắt NAPAS (VCB, BIDV, ICB...) quan sát được dài
+// 2-6 chữ cái hoa. counterAccountBankId chỉ được tin dùng thẳng nếu khớp 1 trong 2 dạng này
+// — không khớp thì coi như không tin cậy, chuyển sang tra theo tên (xem resolveBankBin()).
+const VALID_BANK_ID_PATTERN = /^(\d{6}|[A-Z]{2,6})$/;
 
 @Injectable()
 export class PaymentService {
@@ -45,6 +42,7 @@ export class PaymentService {
   constructor(
     private readonly config: ConfigService,
     private readonly bookingService: BookingService,
+    private readonly vietqrBankService: VietqrBankService,
   ) {
     this.payos = new PayOS({
       clientId: this.config.get<string>('PAYOS_CLIENT_ID')!,
@@ -210,7 +208,7 @@ export class PaymentService {
             new Date(a.transactionDateTime).getTime(),
         )[0];
         const payerBankInfo = latestTransaction
-          ? extractPayerBankInfo(latestTransaction)
+          ? await this.extractPayerBankInfo(latestTransaction)
           : null;
         await this.bookingService.markPaidByOrderCode(orderCode, payerBankInfo);
         return this.bookingService.findById(bookingId, requester);
@@ -235,12 +233,47 @@ export class PaymentService {
       if (verified?.orderCode && verified.code === '00') {
         await this.bookingService.markPaidByOrderCode(
           verified.orderCode,
-          extractPayerBankInfo(verified),
+          await this.extractPayerBankInfo(verified),
         );
       }
       return { success: true };
     } catch {
       return { success: false };
     }
+  }
+
+  // Chỉ giữ field THẬT SỰ có giá trị (SDK khai optional/nullable) — trả null nếu không field
+  // nào có dữ liệu, KHÔNG bịa cấu trúc giả. bankBin (KAN-123) chỉ thêm vào nếu tra được —
+  // dùng để dựng ảnh VietQR thật sau này (xem RefundRequestService.buildQrImageUrl), KHÔNG
+  // phải thông tin cần nhân viên đọc trực tiếp nên đặt tên field thuần (không phải nhãn
+  // tiếng Việt như 3 field còn lại).
+  private async extractPayerBankInfo(
+    data: PayosCounterAccountFields,
+  ): Promise<Record<string, string> | null> {
+    const info: Record<string, string> = {};
+    if (data.counterAccountName) info['Tên người chuyển'] = data.counterAccountName;
+    if (data.counterAccountNumber) info['Số tài khoản'] = data.counterAccountNumber;
+    if (data.counterAccountBankName) info['Ngân hàng'] = data.counterAccountBankName;
+
+    const bankBin = await this.resolveBankBin(data);
+    if (bankBin) info.bankBin = bankBin;
+
+    return Object.keys(info).length > 0 ? info : null;
+  }
+
+  // Ưu tiên counterAccountBankId nếu SDK có trả VÀ giá trị khớp định dạng mã BIN/mã viết
+  // tắt NAPAS hợp lệ (xem VALID_BANK_ID_PATTERN — SDK không có tài liệu xác nhận chắc chắn
+  // đây là BIN NAPAS nên vẫn kiểm định dạng trước khi tin, không dùng thẳng vô điều kiện).
+  // Không có/không khớp định dạng -> tra theo tên (counterAccountBankName) qua danh sách
+  // công khai VietQR. Không chắc chắn trường hợp nào -> null, KHÔNG đoán đại (rủi ro chuyển
+  // nhầm ngân hàng khi dùng tạo QR chuyển khoản thật).
+  private async resolveBankBin(
+    data: PayosCounterAccountFields,
+  ): Promise<string | null> {
+    const rawId = data.counterAccountBankId?.trim();
+    if (rawId && VALID_BANK_ID_PATTERN.test(rawId)) {
+      return rawId;
+    }
+    return this.vietqrBankService.findBinByName(data.counterAccountBankName);
   }
 }
