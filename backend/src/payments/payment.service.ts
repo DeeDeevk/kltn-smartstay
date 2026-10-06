@@ -109,7 +109,18 @@ export class PaymentService {
       // lại") — lấy thông tin link cũ và tự dựng lại checkoutUrl theo mẫu chuẩn của PayOS.
       const existing = await this.payos.paymentRequests.get(orderCode);
       if (existing.status === 'PAID') {
-        await this.bookingService.markPaidByOrderCode(orderCode);
+        // Lấy payerBankInfo giống hệt syncStatus() — tránh để PaymentTransaction của
+        // nhánh fallback này thiếu thông tin ngân hàng, khiến RefundRequest tạo sau này
+        // (nếu đơn bị huỷ) không tự dựng được ảnh VietQR (KAN-123).
+        const latestTransaction = [...(existing.transactions ?? [])].sort(
+          (a, b) =>
+            new Date(b.transactionDateTime).getTime() -
+            new Date(a.transactionDateTime).getTime(),
+        )[0];
+        const payerBankInfo = latestTransaction
+          ? await this.extractPayerBankInfo(latestTransaction)
+          : null;
+        await this.bookingService.markPaidByOrderCode(orderCode, payerBankInfo);
         throw new BadRequestException('Đơn đặt phòng đã được thanh toán');
       }
       return {

@@ -58,6 +58,12 @@ export class UploadService {
     }
   }
 
+  // Cho nơi gọi khác (VD ChatGateway) kiểm tra 1 URL có thực sự trỏ vào đúng bucket R2 của
+  // hệ thống hay không, trước khi tin và lưu nó (chặn giả mạo attachmentUrl qua socket).
+  getPublicBaseUrl(): string {
+    return this.publicBaseUrl;
+  }
+
   // keyPrefix tuỳ chọn để nơi gọi khác (VD ảnh đính kèm chat, KAN-112) không bị lẫn chung
   // thư mục "room-types" trong bucket — mặc định giữ nguyên hành vi cũ (ảnh phòng/avatar)
   // khi không truyền.
