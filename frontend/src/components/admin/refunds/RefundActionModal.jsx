@@ -29,7 +29,19 @@ export default function RefundActionModal({ open, mode, refund, loading, onConfi
 
     if (!refund) return null;
     const isReject = mode === 'reject';
-    const isValid = isReject ? adminNote.trim().length > 0 : true;
+    // Ảnh biên lai BẮT BUỘC khi đánh dấu đã hoàn tiền (trước đây tuỳ chọn) — reject() không
+    // cần ảnh, chỉ cần adminNote như cũ.
+    const isValid = isReject ? adminNote.trim().length > 0 : Boolean(proofImageUrl);
+
+    const handleConfirmClick = () => {
+        // Chặn thêm ở đây phòng trường hợp nút disable bị bypass (VD devtools) — disabled
+        // trên nút đã đủ cho luồng bình thường, đây chỉ là lớp bảo vệ thứ 2.
+        if (!isReject && !proofImageUrl) {
+            toast.error('Vui lòng đính kèm ảnh biên lai trước khi xác nhận.');
+            return;
+        }
+        onConfirm({ adminNote: adminNote.trim(), proofImageUrl });
+    };
 
     const handleSelectProof = async (e) => {
         const file = e.target.files?.[0];
@@ -68,7 +80,7 @@ export default function RefundActionModal({ open, mode, refund, loading, onConfi
                     </button>
                     <button
                         type="button"
-                        onClick={() => onConfirm({ adminNote: adminNote.trim(), proofImageUrl })}
+                        onClick={handleConfirmClick}
                         disabled={loading || !isValid || isUploading}
                         className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
                             isReject ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
@@ -108,7 +120,7 @@ export default function RefundActionModal({ open, mode, refund, loading, onConfi
                 {!isReject && (
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">
-                            Ảnh biên lai/QR chuyển khoản (không bắt buộc)
+                            Ảnh biên lai/QR chuyển khoản <span className="text-red-500">(bắt buộc)</span>
                         </label>
                         <input
                             ref={fileInputRef}

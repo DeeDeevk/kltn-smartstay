@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CompleteRefundRequestDto {
   // Không bắt buộc: admin có thể đánh dấu đã hoàn tiền mà không ghi chú gì thêm, nhưng nên
@@ -9,8 +9,10 @@ export class CompleteRefundRequestDto {
   adminNote?: string;
 
   // URL ảnh biên lai/QR chuyển khoản (đã upload trước qua POST /refund-requests/attachments)
-  // — KHÔNG bắt buộc, không validate định dạng ngoài là string.
-  @IsOptional()
+  // — BẮT BUỘC (trước đây optional, đổi theo yêu cầu mới: mọi lần đánh dấu hoàn tiền phải
+  // có bằng chứng ảnh). Chỉ validate ở tầng ứng dụng, KHÔNG đổi cột DB (vẫn nullable) để
+  // không phá dữ liệu COMPLETED cũ chưa có ảnh.
+  @IsNotEmpty({ message: 'Vui lòng đính kèm ảnh biên lai trước khi xác nhận' })
   @IsString()
-  proofImageUrl?: string;
+  proofImageUrl!: string;
 }

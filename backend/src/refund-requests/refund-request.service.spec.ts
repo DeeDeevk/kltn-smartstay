@@ -269,7 +269,10 @@ describe('RefundRequestService.complete / reject', () => {
 
     const result = await service.complete(
       'refund-1',
-      { adminNote: 'Đã chuyển khoản, mã GD 123' },
+      {
+        adminNote: 'Đã chuyển khoản, mã GD 123',
+        proofImageUrl: 'https://cdn.example.com/vikahotel/refund-proof/abc.webp',
+      },
       'admin-1',
     );
 
@@ -301,18 +304,10 @@ describe('RefundRequestService.complete / reject', () => {
     );
   });
 
-  it('complete(): không kèm proofImageUrl -> lưu null, vẫn hoàn tất bình thường', async () => {
-    const { service } = buildService({ refundRequest: {} });
-
-    const result = await service.complete(
-      'refund-1',
-      { adminNote: 'Đã chuyển khoản' },
-      'admin-1',
-    );
-
-    expect(result.proofImageUrl).toBeNull();
-    expect(result.status).toBe(RefundRequestStatus.COMPLETED);
-  });
+  // proofImageUrl giờ BẮT BUỘC (đổi từ optional) — việc chặn thiếu ảnh xảy ra ở tầng DTO/
+  // ValidationPipe TRƯỚC KHI tới service (xem complete-refund-request.dto.spec.ts), nên
+  // không còn test "service nhận thiếu proofImageUrl" ở đây nữa — service luôn nhận DTO đã
+  // qua validate, không tự kiểm tra lại.
 
   it('reject(): đổi status REJECTED, bắt buộc có adminNote, gửi thông báo kèm lý do', async () => {
     const { service, notifyRefund } = buildService({ refundRequest: {} });
@@ -338,9 +333,13 @@ describe('RefundRequestService.complete / reject', () => {
       refundRequest: { status: RefundRequestStatus.COMPLETED },
     });
 
-    await expect(service.complete('refund-1', {}, 'admin-1')).rejects.toThrow(
-      'đã được xử lý trước đó',
-    );
+    await expect(
+      service.complete(
+        'refund-1',
+        { proofImageUrl: 'https://cdn.example.com/vikahotel/refund-proof/abc.webp' },
+        'admin-1',
+      ),
+    ).rejects.toThrow('đã được xử lý trước đó');
   });
 });
 
