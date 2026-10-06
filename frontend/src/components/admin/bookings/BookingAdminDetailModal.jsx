@@ -63,7 +63,15 @@ export default function BookingAdminDetailModal({ booking: bookingProp, onClose,
   const { data: detail } = useGetBookingByIdQuery(bookingProp?.bookingId, {
     skip: !bookingProp?.bookingId,
   });
-  const booking = detail ?? bookingProp;
+  // bookingProp === null nghĩa là trang cha đã đóng modal (setDetail(null)) — PHẢI ưu tiên
+  // đóng ngay, không được để `detail` (RTK Query) "che" mất ý định đó: khi skip chuyển
+  // thành true, hook không trả undefined ngay trong CÙNG lần render mà còn giữ nguyên data
+  // cũ của bookingId trước đó thêm vài lần render nữa — nếu viết `detail ?? bookingProp`,
+  // `booking` vẫn còn giá trị cũ (khác null) trong lúc đó, khiến `if (!booking) return null`
+  // bên dưới KHÔNG BAO GIỜ chạy -> Modal không unmount -> nút X/"Đóng" bấm không có tác
+  // dụng (bug đã xác nhận bằng Playwright, xảy ra với MỌI đơn, không riêng đơn có
+  // RefundRequest — chỉ là dễ gặp hơn vì fetch đã kịp trả dữ liệu).
+  const booking = bookingProp ? (detail ?? bookingProp) : null;
   // Bước chọn phòng của luồng nhận phòng — mở ngay trong modal này thay vì điều hướng
   // sang Sơ đồ phòng: đơn đặt online luôn chưa gán phòng (khách chỉ chọn LOẠI phòng),
   // nên nếu chỉ navigate thì nhân viên rơi vào sơ đồ trống trơn và phải tự mò phòng.
