@@ -56,6 +56,22 @@ export class HotelConfig {
   })
   googlePlaceId!: string | null;
 
+  // Chính sách hoàn tiền theo thời điểm huỷ (KAN-117) — áp dụng chung toàn khách sạn, xem
+  // RefundRequestService.computeRefundPreview(). Huỷ trước giờ nhận phòng ít nhất
+  // freeCancellationHours giờ thì hoàn 100%; huỷ muộn hơn (nhưng còn trước giờ nhận phòng)
+  // thì hoàn partialRefundPercent%; huỷ sau giờ nhận phòng (no-show) thì không hoàn gì.
+  @Column({ name: 'freeCancellationHours', type: 'int', default: 48 })
+  freeCancellationHours!: number;
+
+  @Column({ name: 'partialRefundPercent', type: 'int', default: 50 })
+  partialRefundPercent!: number;
+
+  // Thời hạn xử lý 1 RefundRequest PENDING trước khi FE hiện nút "Liên hệ lễ tân" cho khách
+  // (KAN-122) — trước mốc này chỉ hiện badge trạng thái, tránh làm phiền khách khi yêu cầu
+  // còn mới.
+  @Column({ name: 'refundProcessingSlaHours', type: 'int', default: 24 })
+  refundProcessingSlaHours!: number;
+
   @CreateDateColumn({ name: 'createdAt' })
   createdAt!: Date;
 

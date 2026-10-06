@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -39,6 +40,7 @@ import {
   NotificationService,
   NotificationType,
 } from '../notifications/notification.service';
+import { RefundRequestService } from '../refund-requests/refund-request.service';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -59,6 +61,8 @@ interface Requester {
 
 @Injectable()
 export class BookingService {
+  private readonly logger = new Logger(BookingService.name);
+
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
@@ -75,6 +79,7 @@ export class BookingService {
     private readonly shiftAssignmentService: ShiftAssignmentService,
     private readonly paymentTransactionService: PaymentTransactionService,
     private readonly notificationService: NotificationService,
+    private readonly refundRequestService: RefundRequestService,
   ) {}
 
   // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
@@ -194,6 +199,13 @@ export class BookingService {
       this.realtimeGateway.emitBookingCreated({
         bookingId: detail.bookingId,
         guestName: dto.guestInfo?.fullName,
+        checkIn: dto.checkIn,
+        checkOut: dto.checkOut,
+      });
+      void this.notifyStaffOfNewBooking(userId, {
+        bookingId: detail.bookingId,
+        guestName: dto.guestInfo?.fullName,
+        roomTypeName: roomType.name,
         checkIn: dto.checkIn,
         checkOut: dto.checkOut,
       });
@@ -464,10 +476,17 @@ export class BookingService {
     return this.paginate(qb, page, limit);
   }
 
+  // Chỉ endpoint chi tiết 1 đơn (GET /bookings/:id) mới đính kèm refundRequest — query riêng
+  // theo bookingId (KAN-121), KHÔNG join sẵn vào toDetailResponse() (dùng chung bởi nhiều
+  // chỗ khác như create()/checkIn()/checkOut()...) để tránh tốn thêm 1 query cho mọi lần đó
+  // trong khi phần lớn không cần tới dữ liệu này.
   async findById(bookingId: string, requester: Requester) {
     const booking = await this.findByIdRaw(bookingId);
     this.assertCanView(booking, requester);
-    return this.toDetailResponse(booking);
+    const refundRequest = await this.refundRequestService.findByBookingId(
+      bookingId,
+    );
+    return { ...this.toDetailResponse(booking), refundRequest };
   }
 
   // Tra cứu đơn của MỘT ngày cụ thể, dùng cho trợ lý AI trả lời "hôm nay có bao nhiêu
@@ -830,6 +849,48 @@ export class BookingService {
       },
     );
 
+    // Đơn đã có tiền (khách trả trước qua PayOS) mà bị huỷ: hệ thống KHÔNG có luồng hoàn
+    // tiền tự động, nên phải báo admin xử lý hoàn tay — không thì tiền của khách bị treo
+    // và dễ thành khiếu nại.
+    if (booking.paidAmount > 0) {
+      const who =
+        booking.user?.userId === requester.userId ? 'Khách' : 'Nhân viên';
+      // Tính trước mức hoàn thực tế theo chính sách huỷ đơn (KAN-117) để nội dung thông báo
+      // khớp với số tiền admin thực sự cần chuyển — KHÔNG dùng thẳng booking.paidAmount nữa,
+      // vì huỷ cận giờ chỉ hoàn 1 phần, huỷ sau giờ nhận phòng thì không hoàn gì cả. Bọc
+      // .catch() vì đây vẫn là tác vụ PHỤ (thông báo) — booking đã lưu CANCELLED thành công ở
+      // trên rồi, lỗi tính toán ở đây (VD DB tạm trục trặc) không được làm hỏng cancel();
+      // fallback về đúng hành vi cũ (coi như hoàn 100% paidAmount) nếu tính lỗi.
+      const preview = await this.refundRequestService
+        .computeRefundPreview(booking)
+        .catch(() => ({
+          hoursUntilCheckIn: Number.POSITIVE_INFINITY,
+          refundPercent: 100,
+          refundAmount: booking.paidAmount,
+          freeCancellationHours: 0,
+        }));
+      const isNoRefund = preview.hoursUntilCheckIn <= 0;
+      void this.notificationService.notifyAdmins(
+        NotificationType.ADMIN_PAID_BOOKING_CANCELLED,
+        isNoRefund
+          ? 'Đơn đã thanh toán bị huỷ sau giờ nhận phòng — không cần hoàn tiền'
+          : `Đơn đã thanh toán bị huỷ — cần hoàn ${this.formatVnd(preview.refundAmount)}`,
+        `${who} đã huỷ đơn của ${booking.guestInfo?.fullName ?? 'khách'} (${booking.roomType?.name ?? 'phòng'}, nhận phòng ${booking.checkInDate}). Lý do: ${dto.reason}. Khách đã trả ${this.formatVnd(booking.paidAmount)}, ` +
+          (isNoRefund
+            ? 'huỷ sau giờ nhận phòng nên theo chính sách KHÔNG cần hoàn tiền.'
+            : `cần hoàn tiền thủ công ${this.formatVnd(preview.refundAmount)}${preview.refundPercent < 100 ? ` (${preview.refundPercent}% theo chính sách huỷ đơn)` : ''}.`),
+        booking.bookingId,
+      );
+      // Ghi nhận thành 1 yêu cầu hoàn tiền có cấu trúc (KAN-114) — bổ sung CHO notification
+      // ở trên (không thay thế): notification là cảnh báo tức thời, RefundRequest là bản
+      // ghi để admin theo dõi/xử lý qua trang /admin/refund-requests. Không throw ra ngoài
+      // nếu lỗi — xem RefundRequestService.createForCancelledBooking().
+      void this.refundRequestService.createForCancelledBooking(
+        booking,
+        dto.reason,
+      );
+    }
+
     if (booking.room) {
       booking.room.status = RoomStatus.AVAILABLE;
       await this.roomRepo.save(booking.room);
@@ -845,7 +906,10 @@ export class BookingService {
   // Dùng chung bởi webhook PayOS và endpoint đồng bộ trạng thái thủ công
   // (localhost không nhận được webhook thật từ PayOS nên PaymentService gọi
   // trực tiếp payos.paymentRequests.get() rồi gọi lại hàm này để cập nhật).
-  async markPaidByOrderCode(orderCode: number): Promise<Booking | null> {
+  async markPaidByOrderCode(
+    orderCode: number,
+    payerBankInfo: Record<string, string> | null = null,
+  ): Promise<Booking | null> {
     const booking = await this.bookingRepo.findOne({
       where: { payosOrderCode: String(orderCode) },
     });
@@ -866,6 +930,7 @@ export class BookingService {
       amount: collected,
       method: PaymentMethod.PAYOS,
       collectedByUserId: null,
+      payerBankInfo,
     });
     this.realtimeGateway.emitBookingPaid({
       bookingId: saved.bookingId,
@@ -1053,6 +1118,15 @@ export class BookingService {
     };
   }
 
+  // Xem trước mức hoàn tiền nếu huỷ NGAY LÚC NÀY, theo đúng chính sách tính ở
+  // RefundRequestService.computeRefundPreview() (KAN-117) — KHÔNG huỷ đơn, KHÔNG tạo
+  // RefundRequest, chỉ để khách/nhân viên biết trước khi xác nhận huỷ.
+  async getCancellationPreview(bookingId: string, requester: Requester) {
+    const booking = await this.findByIdRaw(bookingId);
+    this.assertCanView(booking, requester);
+    return this.refundRequestService.computeRefundPreview(booking);
+  }
+
   private async findByIdRaw(bookingId: string): Promise<Booking> {
     const booking = await this.bookingRepo.findOne({ where: { bookingId } });
     if (!booking) {
@@ -1179,6 +1253,38 @@ export class BookingService {
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
+
+  // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Chỉ báo cho nhân viên
+  // lễ tân (người xác nhận đơn), không báo admin. Đơn walk-in do chính lễ tân tạo nên
+  // không báo. Bỏ qua người vừa đặt nếu họ cũng là nhân viên (tự đặt
+  // phòng cho mình thì không cần tự báo cho mình). Lỗi ở đây không được làm hỏng việc
+  // đặt phòng — đơn đã tạo xong rồi.
+  private async notifyStaffOfNewBooking(
+    bookerUserId: string,
+    booking: {
+      bookingId: string;
+      guestName?: string | null;
+      roomTypeName?: string | null;
+      checkIn: string;
+      checkOut: string;
+    },
+  ): Promise<void> {
+    try {
+      const staffIds = (await this.userService.findActiveStaffIds()).filter(
+        (id) => id !== bookerUserId,
+      );
+      await this.notificationService.notifyStaffNewBooking(staffIds, booking);
+    } catch (error) {
+      this.logger.warn(
+        `Không báo được đơn mới ${booking.bookingId} cho nhân viên: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  // "1234567" -> "1.234.567đ" cho nội dung thông báo.
+  private formatVnd(amount: number): string {
+    return `${String(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+  }
 
   private getStayDates(checkIn: string, checkOut: string): string[] {
     const dates: string[] = [];

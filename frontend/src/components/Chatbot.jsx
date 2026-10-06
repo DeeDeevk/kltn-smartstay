@@ -1,14 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Headset, X, Send, Loader2, LogIn } from 'lucide-react';
+import { Headset, X, Send, Loader2, LogIn, Paperclip } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import {
     useGetOrCreateConversationMutation,
     useGetMessagesQuery,
+    useUploadChatAttachmentMutation,
 } from '../services/chat';
 import useDraggableWidget from '../hooks/useDraggableWidget';
 import useExclusiveChatPanel from '../hooks/useExclusiveChatPanel';
+import ImageLightbox from './common/ImageLightbox';
+import { REQUEST_OPEN_EVENT, RECEPTION_WIDGET_ID } from '../utils/openReceptionChat';
+
+// Khớp đúng giới hạn backend (ChatController.uploadAttachment) — chặn sớm ở form, backend
+// vẫn là nơi kiểm tra thật sự.
+const MAX_ATTACHMENT_SIZE_MB = 5;
+const ACCEPTED_ATTACHMENT_TYPES = 'image/jpeg,image/png,image/webp';
 
 // Chat thật 2 chiều với lễ tân (trước đây là bot giả echo lại tin nhắn). Chỉ
 // khách đã đăng nhập mới chat được — khách vãng lai được mời đăng nhập trước.
@@ -21,13 +30,17 @@ const Chatbot = () => {
     const [conversationId, setConversationId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [inputStr, setInputStr] = useState('');
+    const [pendingAttachment, setPendingAttachment] = useState(null); // { file, previewUrl } | null
+    const [lightboxSrc, setLightboxSrc] = useState(null);
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     const [getOrCreateConversation, { isLoading: isStarting }] =
         useGetOrCreateConversationMutation();
     const { data: history } = useGetMessagesQuery(conversationId, {
         skip: !conversationId,
     });
+    const [uploadAttachment, { isLoading: isUploading }] = useUploadChatAttachmentMutation();
 
     const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
         initialBottom: 24,
@@ -37,6 +50,16 @@ const Chatbot = () => {
     // Lễ tân/admin trả lời khách ở /admin/chat riêng — widget nổi này chỉ dành cho
     // khách hàng, không hiện khi đang đăng nhập bằng tài khoản nhân sự.
     const isStaffAccount = user?.role === 'STAFF' || user?.role === 'ADMIN';
+
+    // Cho phép nơi khác trong app (VD trang "Lịch sử đặt phòng", nhắc khách gửi ảnh QR xác
+    // minh hoàn tiền) tự mở khung chat này ra — xem utils/openReceptionChat.js.
+    useEffect(() => {
+        const handleRequestOpen = (e) => {
+            if (e.detail === RECEPTION_WIDGET_ID) setIsOpen(true);
+        };
+        window.addEventListener(REQUEST_OPEN_EVENT, handleRequestOpen);
+        return () => window.removeEventListener(REQUEST_OPEN_EVENT, handleRequestOpen);
+    }, [setIsOpen]);
 
     // Mở khung chat lần đầu (đã đăng nhập) -> lấy/tạo hội thoại của khách rồi join
     // room socket tương ứng để nhận tin nhắn real-time.
@@ -68,12 +91,56 @@ const Chatbot = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const handleSend = (e) => {
+    // Dọn URL preview tạm (object URL) khi đổi ảnh khác hoặc unmount — không dọn thì rò
+    // rỉ bộ nhớ vì trình duyệt giữ blob cho tới khi tự revoke.
+    useEffect(() => {
+        return () => {
+            if (pendingAttachment?.previewUrl) {
+                URL.revokeObjectURL(pendingAttachment.previewUrl);
+            }
+        };
+    }, [pendingAttachment]);
+
+    const handleSelectFile = (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // cho chọn lại đúng file đó lần nữa nếu cần
+        if (!file) return;
+        if (!ACCEPTED_ATTACHMENT_TYPES.split(',').includes(file.type)) {
+            toast.error('Chỉ nhận ảnh định dạng JPG, PNG hoặc WEBP.');
+            return;
+        }
+        if (file.size > MAX_ATTACHMENT_SIZE_MB * 1024 * 1024) {
+            toast.error(`Ảnh vượt quá dung lượng cho phép (tối đa ${MAX_ATTACHMENT_SIZE_MB}MB).`);
+            return;
+        }
+        setPendingAttachment({ file, previewUrl: URL.createObjectURL(file) });
+    };
+
+    const handleRemoveAttachment = () => {
+        setPendingAttachment(null);
+    };
+
+    const handleSend = async (e) => {
         e.preventDefault();
         const content = inputStr.trim();
-        if (!content || !conversationId) return;
-        socket.emit('chat:message', { conversationId, content });
+        if ((!content && !pendingAttachment) || !conversationId || isUploading) return;
+
+        let attachmentUrl;
+        let attachmentType;
+        if (pendingAttachment) {
+            try {
+                const result = await uploadAttachment(pendingAttachment.file).unwrap();
+                attachmentUrl = result.url;
+                attachmentType = result.type;
+            } catch (err) {
+                toast.error(err?.data?.message || 'Không gửi được ảnh, vui lòng thử lại.');
+                return;
+            }
+        }
+
+        socket.emit('chat:message', { conversationId, content, attachmentUrl, attachmentType });
         setInputStr('');
+        setPendingAttachment(null);
     };
 
     if (isStaffAccount) return null;
@@ -146,9 +213,19 @@ const Chatbot = () => {
                                                         Nhân viên hỗ trợ
                                                     </p>
                                                 )}
-                                                <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                                                    {msg.content}
-                                                </p>
+                                                {msg.attachmentUrl && (
+                                                    <img
+                                                        src={msg.attachmentUrl}
+                                                        alt="Ảnh đính kèm"
+                                                        onClick={() => setLightboxSrc(msg.attachmentUrl)}
+                                                        className={`max-h-48 max-w-full cursor-zoom-in rounded-xl object-cover ${msg.content ? 'mb-2' : ''}`}
+                                                    />
+                                                )}
+                                                {msg.content && (
+                                                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                                                        {msg.content}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -156,42 +233,95 @@ const Chatbot = () => {
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            <form
-                                onSubmit={handleSend}
-                                className="p-3 bg-white border-t border-gray-100 flex items-center gap-2"
-                            >
-                                <input
-                                    type="text"
-                                    value={inputStr}
-                                    onChange={(e) => setInputStr(e.target.value)}
-                                    placeholder="Nhập tin nhắn..."
-                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1b6b50] focus:border-transparent transition-all"
-                                    disabled={!conversationId}
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={!inputStr.trim() || !conversationId}
-                                    className="p-3 bg-[#1b6b50] text-white rounded-full hover:bg-[#14523d] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
-                                >
-                                    <Send className="w-5 h-5 ml-0.5" />
-                                </button>
-                            </form>
+                            <div className="border-t border-gray-100 bg-white">
+                                {pendingAttachment && (
+                                    <div className="flex items-center gap-2 px-3 pt-3">
+                                        <div className="relative">
+                                            <img
+                                                src={pendingAttachment.previewUrl}
+                                                alt="Ảnh sắp gửi"
+                                                className="h-14 w-14 rounded-lg object-cover"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleRemoveAttachment}
+                                                aria-label="Bỏ ảnh"
+                                                className="absolute -right-1.5 -top-1.5 rounded-full bg-gray-800 p-0.5 text-white shadow"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                        {isUploading && (
+                                            <Loader2 size={16} className="animate-spin text-gray-400" />
+                                        )}
+                                    </div>
+                                )}
+                                <form onSubmit={handleSend} className="flex items-center gap-2 p-3">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept={ACCEPTED_ATTACHMENT_TYPES}
+                                        onChange={handleSelectFile}
+                                        className="hidden"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={!conversationId || isUploading}
+                                        aria-label="Đính kèm ảnh"
+                                        className="shrink-0 rounded-full p-2.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#1b6b50] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <Paperclip className="h-5 w-5" />
+                                    </button>
+                                    <input
+                                        type="text"
+                                        value={inputStr}
+                                        onChange={(e) => setInputStr(e.target.value)}
+                                        placeholder="Nhập tin nhắn..."
+                                        className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1b6b50] focus:border-transparent transition-all"
+                                        disabled={!conversationId}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={(!inputStr.trim() && !pendingAttachment) || !conversationId || isUploading}
+                                        className="p-3 bg-[#1b6b50] text-white rounded-full hover:bg-[#14523d] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+                                    >
+                                        {isUploading ? (
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <Send className="w-5 h-5 ml-0.5" />
+                                        )}
+                                    </button>
+                                </form>
+                            </div>
                         </>
                     )}
                 </div>
             )}
 
-            <button
-                onPointerDown={dragHandlers.onPointerDown}
-                onPointerMove={dragHandlers.onPointerMove}
-                onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
-                style={buttonStyle}
-                title="Chat với lễ tân"
-                aria-label="Chat với lễ tân"
-                className={`fixed p-4 bg-[#1b6b50] text-white rounded-full shadow-2xl hover:bg-[#14523d] transition-shadow duration-200 z-50 cursor-grab active:cursor-grabbing select-none touch-none ${isOpen ? 'ring-4 ring-green-300' : ''}`}
-            >
-                <Headset className="w-8 h-8" />
-            </button>
+            {/* Wrapper giữ vị trí fixed (kéo-thả) — nút bên trong chỉ cần relative để
+                neo chấm trực tuyến + tooltip hover, không ảnh hưởng tới kích thước 64px
+                mà useDraggableWidget đã tính toán vị trí bảng chat dựa vào. */}
+            <div style={buttonStyle} className="group fixed z-50">
+                <button
+                    onPointerDown={dragHandlers.onPointerDown}
+                    onPointerMove={dragHandlers.onPointerMove}
+                    onPointerUp={(e) => dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))}
+                    title="Chat với lễ tân"
+                    aria-label="Chat với lễ tân"
+                    className={`chat-widget-pop-in relative flex h-16 w-16 cursor-grab touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-[#1b6b50] to-[#0f4a37] text-white shadow-2xl transition-all duration-200 hover:scale-105 hover:from-[#14523d] hover:to-[#0a3a2a] active:cursor-grabbing ${isOpen ? 'ring-4 ring-green-300' : ''}`}
+                >
+                    <Headset className="w-8 h-8" />
+                    {/* Chấm "đang trực tuyến" — dùng chung animate-pulse với chấm trong
+                        header panel để 2 hiệu ứng đồng bộ. */}
+                    <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-400 animate-pulse" />
+                </button>
+                <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+                    Chat với lễ tân
+                </span>
+            </div>
+
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
         </>
     );
 };

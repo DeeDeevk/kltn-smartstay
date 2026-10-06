@@ -11,6 +11,7 @@ import {
 } from '../../services/notification';
 import {
   TYPE_DOT_CLASSES,
+  formatNotificationBody,
   timeAgo,
   useOpenNotification,
 } from '../notification/notificationUtils';
@@ -18,7 +19,9 @@ import {
 // Chuông chỉ xem nhanh vài thông báo mới nhất, đầy đủ thì bấm "Xem tất cả".
 const PREVIEW_COUNT = 8;
 
-export default function NotificationBell() {
+// viewAllPath = null để ẩn nút "Xem tất cả" — trang /user/notifications là trang của
+// khách (dùng header/footer của khách), không hợp để mở từ giao diện admin.
+export default function NotificationBell({ viewAllPath = '/user/notifications' }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const socket = useSocket();
@@ -124,7 +127,7 @@ export default function NotificationBell() {
                     {item.title}
                   </span>
                   <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">
-                    {item.body}
+                    {formatNotificationBody(item.body)}
                   </span>
                   <span className="mt-1 block text-[11px] text-gray-400">
                     {timeAgo(item.createdAt)}
@@ -134,16 +137,18 @@ export default function NotificationBell() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              navigate('/user/notifications');
-            }}
-            className="block w-full border-t border-gray-100 py-2.5 text-center text-sm font-semibold text-blue-600 transition-colors hover:bg-gray-50"
-          >
-            Xem tất cả
-          </button>
+          {viewAllPath && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                navigate(viewAllPath);
+              }}
+              className="block w-full border-t border-gray-100 py-2.5 text-center text-sm font-semibold text-blue-600 transition-colors hover:bg-gray-50"
+            >
+              Xem tất cả
+            </button>
+          )}
         </div>
       )}
     </div>

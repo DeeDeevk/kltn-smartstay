@@ -13,7 +13,13 @@ export default function useAdminOverviewStats() {
       const res = await apiClient.get('/dashboard/overview');
       setStats(res.data);
     } catch (err) {
-      setError(err.message || 'Không thể tải số liệu tổng quan');
+      // Don't leak the raw backend exception name (e.g. "ThrottlerException: Too Many
+      // Requests") to the admin UI — show a friendly message instead for 429s.
+      if (err.response?.status === 429) {
+        setError('Hệ thống đang xử lý nhiều yêu cầu, vui lòng thử lại sau ít phút.');
+      } else {
+        setError(err.message || 'Không thể tải số liệu tổng quan');
+      }
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { HotelConfig } from './entities/hotel-config.entity';
 import { UpdateHotelLocationDto } from './dto/update-hotel-location.dto';
+import { UpdateCancellationPolicyDto } from './dto/update-cancellation-policy.dto';
 
 // ID cố định cho bản ghi singleton — thay vì "find 1 dòng bất kỳ rồi tạo mới nếu rỗng"
 // (2 request đồng thời lúc bảng còn rỗng có thể cùng thấy rỗng và cùng tạo, ra 2 dòng),
@@ -58,6 +59,16 @@ export class HotelConfigService {
     config.latitude = dto.latitude;
     config.longitude = dto.longitude;
     config.googlePlaceId = dto.googlePlaceId ?? null;
+    return this.hotelConfigRepo.save(config);
+  }
+
+  async updateCancellationPolicy(
+    dto: UpdateCancellationPolicyDto,
+  ): Promise<HotelConfig> {
+    const config = await this.getOrCreate();
+    config.freeCancellationHours = dto.freeCancellationHours;
+    config.partialRefundPercent = dto.partialRefundPercent;
+    config.refundProcessingSlaHours = dto.refundProcessingSlaHours;
     return this.hotelConfigRepo.save(config);
   }
 }

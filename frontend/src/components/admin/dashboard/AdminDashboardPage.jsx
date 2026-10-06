@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
   Users,
@@ -15,6 +16,10 @@ import { useAuth } from '../../../context/AuthContext';
 import useAdminOverviewStats from './useAdminOverviewStats';
 import AnimatedNumber from '../../common/AnimatedNumber';
 import { stagger } from '../../../utils/motion';
+
+// Short cooldown after each "Làm mới" click, on top of the existing loading-state disable —
+// stops rapid repeat clicks from firing extra requests right after one finishes loading.
+const REFRESH_COOLDOWN_MS = 2500;
 
 const BOOKING_STATUS_META = {
   PENDING: { label: 'Chờ xác nhận', dot: 'bg-amber-400' },
@@ -164,6 +169,17 @@ export default function AdminDashboardPage() {
 function AdminOverview() {
   const { user } = useAuth();
   const { stats, loading, error, reload } = useAdminOverviewStats();
+  const [cooldown, setCooldown] = useState(false);
+  const cooldownTimerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(cooldownTimerRef.current), []);
+
+  const handleReload = () => {
+    if (loading || cooldown) return;
+    reload();
+    setCooldown(true);
+    cooldownTimerRef.current = setTimeout(() => setCooldown(false), REFRESH_COOLDOWN_MS);
+  };
 
   const bookingSegments = Object.entries(BOOKING_STATUS_META).map(([key, meta]) => ({
     label: meta.label,
@@ -194,9 +210,9 @@ function AdminOverview() {
         </div>
         <button
           type="button"
-          onClick={reload}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
+          onClick={handleReload}
+          disabled={loading || cooldown}
+          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           Làm mới

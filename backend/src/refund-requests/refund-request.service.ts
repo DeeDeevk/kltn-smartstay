@@ -1,0 +1,394 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, Repository } from 'typeorm';
+import { RefundRequest } from './entities/refund-request.entity';
+import { Booking } from '../bookings/entities/booking.entity';
+import {
+  Conversation,
+  ConversationStatus,
+} from '../chat/entities/conversation.entity';
+import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
+import { CompleteRefundRequestDto } from './dto/complete-refund-request.dto';
+import { RejectRefundRequestDto } from './dto/reject-refund-request.dto';
+import { LinkConversationDto } from './dto/link-conversation.dto';
+import { RefundRequestStatus } from '../common/enums/refund-request-status.enum';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notifications/notification.service';
+import { HotelConfigService } from '../hotel-config/hotel-config.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+
+// Giờ nhận phòng tiêu chuẩn (giờ Việt Nam) — mốc dùng để tính "huỷ trước giờ nhận phòng bao
+// lâu" cho chính sách hoàn tiền theo thời điểm huỷ (KAN-117).
+const CHECK_IN_HOUR = 14;
+// Việt Nam không có giờ mùa hè, lệch cố định UTC+7 quanh năm — quy đổi giờ VN sang UTC
+// tuyệt đối, độc lập với timezone server (cùng cách booking.service.ts tính giờ trả phòng).
+const VIETNAM_UTC_OFFSET_HOURS = 7;
+
+@Injectable()
+export class RefundRequestService {
+  private readonly logger = new Logger(RefundRequestService.name);
+
+  constructor(
+    @InjectRepository(RefundRequest)
+    private readonly refundRequestRepo: Repository<RefundRequest>,
+    @InjectRepository(Conversation)
+    private readonly conversationRepo: Repository<Conversation>,
+    private readonly notificationService: NotificationService,
+    private readonly hotelConfigService: HotelConfigService,
+    private readonly paymentTransactionService: PaymentTransactionService,
+  ) {}
+
+  // Tính số giờ còn lại tới giờ nhận phòng + % hoàn tiền áp dụng theo chính sách huỷ đơn
+  // (freeCancellationHours/partialRefundPercent trong HotelConfig) — KHÔNG ghi gì vào DB,
+  // dùng chung cho cả lúc tạo RefundRequest thật (createForCancelledBooking) và endpoint xem
+  // trước (BookingService.getCancellationPreview).
+  async computeRefundPreview(booking: Booking): Promise<{
+    hoursUntilCheckIn: number;
+    refundPercent: number;
+    refundAmount: number;
+    freeCancellationHours: number;
+  }> {
+    const config = await this.hotelConfigService.getOrCreate();
+    const hoursUntilCheckIn = this.hoursUntilCheckIn(booking.checkInDate);
+    const refundPercent =
+      hoursUntilCheckIn <= 0
+        ? 0
+        : hoursUntilCheckIn >= config.freeCancellationHours
+          ? 100
+          : config.partialRefundPercent;
+    const refundAmount = Math.round(
+      (booking.paidAmount * refundPercent) / 100,
+    );
+    return {
+      hoursUntilCheckIn,
+      refundPercent,
+      refundAmount,
+      freeCancellationHours: config.freeCancellationHours,
+    };
+  }
+
+  // Dùng ở nhiều response trả cho FE (findAll/findMine/findByBookingId, và GET
+  // /refund-requests/:id ở controller) để FE tự tính "đã quá hạn xử lý chưa" từ
+  // refund.createdAt, không cần gọi thêm API riêng (KAN-122).
+  async getRefundProcessingSlaHours(): Promise<number> {
+    const config = await this.hotelConfigService.getOrCreate();
+    return config.refundProcessingSlaHours;
+  }
+
+  private hoursUntilCheckIn(checkInDate: string): number {
+    const [year, month, day] = checkInDate.split('-').map(Number);
+    const checkInMoment = new Date(
+      Date.UTC(year, month - 1, day, CHECK_IN_HOUR - VIETNAM_UTC_OFFSET_HOURS),
+    );
+    return (checkInMoment.getTime() - Date.now()) / (60 * 60 * 1000);
+  }
+
+  // Gọi từ BookingService.cancel() SAU khi đơn đã huỷ thành công — lỗi ở đây không được
+  // làm hỏng việc huỷ đơn đã hoàn tất, nên bắt lỗi và chỉ log, không throw ra ngoài (cùng
+  // triết lý "tác vụ phụ không phá nghiệp vụ chính" như NotificationService).
+  async createForCancelledBooking(
+    booking: Booking,
+    reason: string,
+  ): Promise<RefundRequest | null> {
+    // Toàn bộ thân hàm nằm trong 1 try/catch duy nhất (kể cả computeRefundPreview, vốn gọi
+    // HotelConfigService -> có thể đụng DB) — lỗi ở ĐÂU trong lúc tạo cũng chỉ log, không
+    // được ném ra ngoài làm "rớt" promise mà BookingService.cancel() gọi kiểu "void" (fire-
+    // and-forget, không await/catch): throw ra khỏi hàm này sẽ thành unhandled rejection và
+    // âm thầm không tạo được RefundRequest mà không ai biết.
+    try {
+      const { hoursUntilCheckIn, refundPercent, refundAmount } =
+        await this.computeRefundPreview(booking);
+
+      // Huỷ sau giờ nhận phòng (hoặc no-show) -> không hoàn gì, không tạo yêu cầu hoàn tiền —
+      // chỉ log lại để admin tra cứu nếu cần giải thích với khách sau này.
+      if (hoursUntilCheckIn <= 0) {
+        this.logger.warn(
+          `Không tạo RefundRequest cho booking ${booking.bookingId}: huỷ sau giờ nhận phòng ` +
+            `(hoursUntilCheckIn=${hoursUntilCheckIn.toFixed(1)}), khách không được hoàn tiền.`,
+        );
+        return null;
+      }
+
+      // Best-effort: tìm hội thoại OPEN gần nhất của khách để admin xem ảnh QR ngay —
+      // không bắt buộc tìm bằng mọi giá, để null nếu khách chưa từng chat.
+      const conversation = await this.conversationRepo.findOne({
+        where: {
+          customer: { userId: booking.user.userId },
+          status: ConversationStatus.OPEN,
+        },
+        order: { createdAt: 'DESC' },
+      });
+
+      // Thử lấy payerBankInfo từ giao dịch PayOS gần nhất của đơn (nếu PayOS có trả thông
+      // tin người chuyển lúc thanh toán — xem PaymentService.extractPayerBankInfo). Vẫn có
+      // thể là null (PayOS không trả, hoặc đơn trả tiền mặt) — chấp nhận được, giữ đúng
+      // thông báo "Chưa có thông tin tài khoản" ở UI cho trường hợp đó.
+      const latestTransaction =
+        await this.paymentTransactionService.findLatestForBooking(
+          booking.bookingId,
+        );
+
+      const refundRequest = this.refundRequestRepo.create({
+        booking,
+        amount: refundAmount,
+        refundPercent,
+        payerBankInfo: latestTransaction?.payerBankInfo ?? null,
+        conversation: conversation ?? null,
+        status: RefundRequestStatus.PENDING,
+        reason,
+      });
+      return await this.refundRequestRepo.save(refundRequest);
+    } catch (error) {
+      this.logger.warn(
+        `Không tạo được RefundRequest cho booking ${booking.bookingId}: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  // Mặc định PENDING luôn lên trước (ORDER BY status = 'PENDING' DESC trước, rồi mới tới
+  // createdAt) — admin cần thấy ngay việc đang chờ xử lý, bất kể lọc theo status nào hay
+  // không.
+  async findAll(query: QueryRefundRequestDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const qb = this.refundRequestRepo
+      .createQueryBuilder('refund')
+      .leftJoinAndSelect('refund.booking', 'booking')
+      .leftJoinAndSelect('booking.roomType', 'roomType')
+      .leftJoinAndSelect('booking.user', 'user')
+      .leftJoinAndSelect('refund.conversation', 'conversation')
+      // orderBy() với biểu thức SQL thô (không phải tên cột/alias đã SELECT) ném lỗi
+      // '"CASE WHEN refund" alias was not found' khi kết hợp với join + skip/take (TypeORM
+      // dựng subquery phân trang riêng, cần mọi ORDER BY là alias đã addSelect) — phải
+      // addSelect() biểu thức thành 1 cột ảo có alias rồi orderBy() theo alias đó.
+      .addSelect(
+        'CASE WHEN refund.status = :pending THEN 0 ELSE 1 END',
+        'pendingFirst',
+      )
+      .orderBy('pendingFirst', 'ASC')
+      .addOrderBy('refund.createdAt', 'DESC')
+      .setParameter('pending', RefundRequestStatus.PENDING)
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.status) {
+      qb.andWhere('refund.status = :status', { status: query.status });
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+    const refundProcessingSlaHours = await this.getRefundProcessingSlaHours();
+    return {
+      items: items.map((r) => ({ ...r, qrImageUrl: this.buildQrImageUrl(r) })),
+      total,
+      page,
+      limit,
+      refundProcessingSlaHours,
+    };
+  }
+
+  // Field ẢO (không lưu DB, tính lúc trả response) — ảnh VietQR Quick Link thật, quét được
+  // bằng app ngân hàng, dựng từ bankBin + accountNumber đã có sẵn trong payerBankInfo
+  // (KAN-123). API Quick Link của VietQR công khai, không cần API key — xem
+  // https://img.vietqr.io. Template "compact2" (có QR + thông tin để đối chiếu bằng mắt).
+  // Thiếu bankBin hoặc accountNumber (PayOS không trả hoặc tra tên không ra) -> null, KHÔNG
+  // suy diễn/đoán đại — admin vẫn còn luồng khách tự gửi ảnh QR qua chat (KAN-112/113).
+  buildQrImageUrl(refund: RefundRequest): string | null {
+    const info = refund.payerBankInfo as Record<string, string> | null;
+    const bankBin = info?.bankBin;
+    const accountNumber = info?.['Số tài khoản'];
+    if (!bankBin || !accountNumber) return null;
+
+    const accountName = info?.['Tên người chuyển'];
+    // Mã đơn rút gọn (8 ký tự đầu bookingId, cùng cách BookingHistoryPage.jsx/
+    // RefundRequestManagementPage.jsx đang hiện "mã đơn" cho khách/admin) — addInfo tối đa
+    // 50 ký tự theo giới hạn Quick Link API, "Hoan tien " + 8 ký tự còn rất xa mốc đó.
+    const shortCode = refund.booking.bookingId.slice(0, 8).toUpperCase();
+    const amount = Math.max(0, Math.round(refund.amount));
+    const base = `https://img.vietqr.io/image/${encodeURIComponent(bankBin)}-${encodeURIComponent(accountNumber)}-compact2.png`;
+    const params = new URLSearchParams({
+      amount: String(amount),
+      addInfo: `Hoan tien ${shortCode}`,
+    });
+    if (accountName) params.set('accountName', accountName);
+    return `${base}?${params.toString()}`;
+  }
+
+  // Dùng bởi BookingService.findById() (GET /bookings/:id) để đính kèm thông tin hoàn tiền
+  // ngay trong modal chi tiết đơn ở /admin/bookings, khỏi phải mở riêng trang /admin/
+  // refund-requests — chỉ gọi đúng lúc đó (query riêng theo bookingId), không join sẵn vào
+  // mọi lần query Booking khác. Trả null nếu đơn chưa huỷ/chưa từng có RefundRequest nào.
+  async findByBookingId(bookingId: string): Promise<{
+    refundRequestId: string;
+    status: RefundRequestStatus;
+    amount: number;
+    refundPercent: number;
+    reason: string | null;
+    adminNote: string | null;
+    proofImageUrl: string | null;
+    refundProcessingSlaHours: number;
+    qrImageUrl: string | null;
+  } | null> {
+    const refund = await this.refundRequestRepo.findOne({
+      where: { booking: { bookingId } },
+      order: { createdAt: 'DESC' },
+    });
+    if (!refund) return null;
+    return {
+      refundRequestId: refund.refundRequestId,
+      status: refund.status,
+      amount: refund.amount,
+      refundPercent: refund.refundPercent,
+      reason: refund.reason,
+      adminNote: refund.adminNote,
+      proofImageUrl: refund.proofImageUrl,
+      refundProcessingSlaHours: await this.getRefundProcessingSlaHours(),
+      qrImageUrl: this.buildQrImageUrl(refund),
+    };
+  }
+
+  // Khách tự xem yêu cầu hoàn tiền của MÌNH — trang "Lịch sử đặt phòng" dùng để hiện trạng
+  // thái (PENDING/COMPLETED/REJECTED) cho từng đơn đã huỷ, thay vì khách chỉ biết qua
+  // thông báo. Chỉ trả field cần cho khách, KHÔNG trả payerBankInfo/conversation/
+  // processedByUserId (dữ liệu nội bộ cho admin/nhân viên xử lý).
+  async findMine(userId: string) {
+    const refunds = await this.refundRequestRepo.find({
+      where: { booking: { user: { userId } } },
+      relations: { booking: true },
+      order: { createdAt: 'DESC' },
+    });
+    // Trả kèm refundProcessingSlaHours trên MỖI item (thay vì bọc thêm 1 field top-level)
+    // để giữ nguyên shape mảng phẳng — BookingHistoryPage.jsx (KAN-122) đang dùng thẳng kết
+    // quả này làm mảng, đổi sang {items, ...} sẽ phá hành vi hiện có của nơi gọi.
+    const refundProcessingSlaHours = await this.getRefundProcessingSlaHours();
+    return refunds.map((r) => ({
+      refundRequestId: r.refundRequestId,
+      bookingId: r.booking.bookingId,
+      amount: r.amount,
+      refundPercent: r.refundPercent,
+      status: r.status,
+      adminNote: r.adminNote,
+      createdAt: r.createdAt,
+      processedAt: r.processedAt,
+      refundProcessingSlaHours,
+    }));
+  }
+
+  // Dùng bởi ChatController (GET /chat/conversations/:id/refund-requests, STAFF-only) để
+  // lễ tân tự chọn gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở, thay vì
+  // ADMIN phải gõ tay conversationId — chỉ liệt kê yêu cầu đang PENDING và CHƯA gắn hội
+  // thoại nào (đã gắn rồi thì không cần hiện lại trong danh sách để gắn lần 2).
+  async findUnlinkedPendingForCustomer(userId: string) {
+    const refunds = await this.refundRequestRepo.find({
+      where: {
+        status: RefundRequestStatus.PENDING,
+        conversation: IsNull(),
+        booking: { user: { userId } },
+      },
+      relations: { booking: { roomType: true } },
+      order: { createdAt: 'DESC' },
+    });
+    return refunds.map((r) => ({
+      refundRequestId: r.refundRequestId,
+      bookingId: r.booking.bookingId,
+      roomTypeName: r.booking.roomType?.name ?? null,
+      amount: r.amount,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async findById(refundRequestId: string): Promise<RefundRequest> {
+    const refund = await this.refundRequestRepo.findOne({
+      where: { refundRequestId },
+    });
+    if (!refund) {
+      throw new NotFoundException('Không tìm thấy yêu cầu hoàn tiền');
+    }
+    return refund;
+  }
+
+  async complete(
+    refundRequestId: string,
+    dto: CompleteRefundRequestDto,
+    processedByUserId: string,
+  ): Promise<RefundRequest> {
+    const refund = await this.assertPending(refundRequestId);
+    refund.status = RefundRequestStatus.COMPLETED;
+    refund.adminNote = dto.adminNote?.trim() || null;
+    refund.proofImageUrl = dto.proofImageUrl?.trim() || null;
+    refund.processedByUserId = processedByUserId;
+    refund.processedAt = new Date();
+    const saved = await this.refundRequestRepo.save(refund);
+
+    void this.notificationService.notifyRefund(
+      refund.booking.user.userId,
+      NotificationType.REFUND_COMPLETED,
+      {
+        bookingId: refund.booking.bookingId,
+        roomTypeName: refund.booking.roomType?.name,
+        adminNote: refund.adminNote,
+      },
+    );
+    return saved;
+  }
+
+  async reject(
+    refundRequestId: string,
+    dto: RejectRefundRequestDto,
+    processedByUserId: string,
+  ): Promise<RefundRequest> {
+    const refund = await this.assertPending(refundRequestId);
+    refund.status = RefundRequestStatus.REJECTED;
+    refund.adminNote = dto.adminNote.trim();
+    refund.processedByUserId = processedByUserId;
+    refund.processedAt = new Date();
+    const saved = await this.refundRequestRepo.save(refund);
+
+    void this.notificationService.notifyRefund(
+      refund.booking.user.userId,
+      NotificationType.REFUND_REJECTED,
+      {
+        bookingId: refund.booking.bookingId,
+        roomTypeName: refund.booking.roomType?.name,
+        adminNote: refund.adminNote,
+      },
+    );
+    return saved;
+  }
+
+  // Admin tự gắn/đổi hội thoại liên kết — dùng khi tạo tự động không tìm được (khách chưa
+  // từng chat, hoặc hội thoại không ở trạng thái OPEN lúc huỷ đơn).
+  async linkConversation(
+    refundRequestId: string,
+    dto: LinkConversationDto,
+  ): Promise<RefundRequest> {
+    const refund = await this.findById(refundRequestId);
+    const conversation = await this.conversationRepo.findOne({
+      where: { conversationId: dto.conversationId },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Không tìm thấy hội thoại');
+    }
+    refund.conversation = conversation;
+    return this.refundRequestRepo.save(refund);
+  }
+
+  // complete()/reject() chỉ áp dụng được cho yêu cầu đang PENDING — tránh xử lý 2 lần (VD
+  // admin bấm "Đánh dấu đã hoàn tiền" rồi lại bấm "Từ chối" trên cùng 1 yêu cầu).
+  private async assertPending(refundRequestId: string): Promise<RefundRequest> {
+    const refund = await this.findById(refundRequestId);
+    if (refund.status !== RefundRequestStatus.PENDING) {
+      throw new BadRequestException(
+        'Yêu cầu hoàn tiền này đã được xử lý trước đó',
+      );
+    }
+    return refund;
+  }
+}

@@ -14,6 +14,7 @@ import { BookingService } from '../bookings/booking.service';
 import { PromotionService } from '../promotions/promotion.service';
 import { ReviewService } from '../reviews/review.service';
 import { ReviewAnalysisService } from '../reviews/review-analysis.service';
+import { RoomTypeReviewSummaryService } from '../room-types/room-type-review-summary.service';
 
 import { RoomController } from '../rooms/room.controller';
 import { RoomTypeController } from '../room-types/room-type.controller';
@@ -28,6 +29,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { ShiftModule } from '../shifts/shift.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
 import { NotificationModule } from '../notifications/notification.module';
+import { RefundRequestModule } from '../refund-requests/refund-request.module';
 // Cung cấp GeminiProvider cho ReviewAnalysisService — module riêng nên import được
 // mà không tạo vòng lặp với AiAgentModule (HotelConfigModule cũng dùng cách này).
 import { LlmModule } from '../ai-agent/llm/llm.module';
@@ -58,6 +60,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     ShiftModule,
     CashLedgerModule,
     NotificationModule,
+    RefundRequestModule,
     LlmModule,
   ],
   controllers: [
@@ -74,6 +77,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     PromotionService,
     ReviewService,
     ReviewAnalysisService,
+    RoomTypeReviewSummaryService,
   ],
   exports: [RoomService, RoomTypeService, BookingService, PromotionService],
 })

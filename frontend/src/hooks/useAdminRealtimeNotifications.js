@@ -14,8 +14,9 @@ export default function useAdminRealtimeNotifications() {
     const refreshBookingList = () =>
       dispatch(bookingApi.util.invalidateTags([{ type: 'Booking', id: 'STAFF_LIST' }]));
 
+    // Đơn mới không bật toast nữa — chuông thông báo trên header đã báo (nhảy số chưa
+    // đọc). Vẫn làm mới danh sách để trang Đặt phòng đang mở thấy đơn ngay.
     const handleBookingCreated = () => {
-      toast.info('Có đơn đặt phòng mới!');
       refreshBookingList();
     };
     const handleBookingPaid = (payload) => {

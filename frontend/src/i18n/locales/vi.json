@@ -277,7 +277,12 @@
       "submitting": "Đang gửi...",
       "submit": "Gửi đánh giá",
       "submitSuccess": "Cảm ơn bạn đã để lại đánh giá!",
-      "submitError": "Không thể gửi đánh giá. Vui lòng thử lại."
+      "submitError": "Không thể gửi đánh giá. Vui lòng thử lại.",
+      "aiSummaryTitle": "AI tóm tắt đánh giá",
+      "aiSummaryBadge": "Tổng hợp bởi AI",
+      "aiSummaryPositives": "Khách khen",
+      "aiSummaryNegatives": "Khách chê",
+      "aiSummaryNoNegatives": "Chưa có ý kiến chê đáng kể nào."
     }
   },
   "checkout": {
@@ -370,6 +375,16 @@
       "cancelMessage": "Bạn có chắc muốn hủy đơn đặt phòng \"{{roomName}}\"?",
       "review": "Đánh giá",
       "viewDetail": "Chi tiết",
+      "refundPending": "Đang chờ hoàn tiền",
+      "refundOverdue": "Chưa nhận được tiền",
+      "refundCompleted": "Đã hoàn tiền",
+      "refundRejected": "Yêu cầu bị từ chối",
+      "refundRejectedReason": "Lý do: {{reason}}",
+      "contactReception": "Liên hệ lễ tân",
+      "cancelReasonInputLabel": "Lý do hủy (không bắt buộc)",
+      "cancelReasonInputPlaceholder": "Cho chúng tôi biết lý do để được hỗ trợ tốt hơn, đặc biệt nếu đơn đã thanh toán và cần hoàn tiền.",
+      "cancellationPreviewFull": "Bạn sẽ được hoàn 100% ({{amount}}) vì còn {{hours}} giờ tới giờ nhận phòng.",
+      "cancellationPreviewPartial": "Huỷ lúc này, bạn sẽ được hoàn {{percent}}% ({{amount}} trên tổng {{paidAmount}} đã thanh toán) vì còn dưới {{freeHours}} giờ tới giờ nhận phòng.",
       "table": {
         "room": "Phòng",
         "code": "Mã đặt",

@@ -1,13 +1,87 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { MessageCircle, Send } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { MessageCircle, Send, Paperclip, X, Loader2, Link2 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
 import {
   chatApi,
   useGetConversationsQuery,
   useGetMessagesQuery,
+  useGetUnlinkedRefundRequestsQuery,
+  useUploadChatAttachmentMutation,
 } from '../../../services/chat';
+import { useLinkRefundRequestConversationMutation } from '../../../services/refundRequest';
+import ImageLightbox from '../../common/ImageLightbox';
+
+// Khớp đúng giới hạn backend (ChatController.uploadAttachment).
+const MAX_ATTACHMENT_SIZE_MB = 5;
+const ACCEPTED_ATTACHMENT_TYPES = 'image/jpeg,image/png,image/webp';
+
+// Lễ tân tự chọn gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở (KAN-117) —
+// thay cho việc ADMIN phải gõ tay conversationId (ADMIN không có quyền xem nội dung chat).
+function LinkRefundRequestPopover({ conversationId }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: refunds = [], isFetching } = useGetUnlinkedRefundRequestsQuery(conversationId, {
+    skip: !isOpen,
+  });
+  const [linkConversation, { isLoading: linking }] = useLinkRefundRequestConversationMutation();
+
+  const handleLink = async (refundRequestId) => {
+    try {
+      await linkConversation({ refundRequestId, conversationId }).unwrap();
+      toast.success('Đã gắn hội thoại vào yêu cầu hoàn tiền');
+      setIsOpen(false);
+    } catch (err) {
+      toast.error(err?.data?.message || 'Không gắn được, vui lòng thử lại.');
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+      >
+        <Link2 size={13} /> Gắn yêu cầu hoàn tiền
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+          {isFetching ? (
+            <div className="flex items-center justify-center py-4 text-gray-400">
+              <Loader2 size={16} className="animate-spin" />
+            </div>
+          ) : refunds.length === 0 ? (
+            <p className="px-2 py-3 text-center text-xs text-gray-400">
+              Không có yêu cầu hoàn tiền nào đang chờ gắn.
+            </p>
+          ) : (
+            <ul className="max-h-60 space-y-1 overflow-y-auto">
+              {refunds.map((r) => (
+                <li key={r.refundRequestId}>
+                  <button
+                    type="button"
+                    onClick={() => handleLink(r.refundRequestId)}
+                    disabled={linking}
+                    className="flex w-full flex-col items-start rounded-lg px-2 py-2 text-left text-xs transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="font-semibold text-gray-900">{r.roomTypeName || 'Phòng'}</span>
+                    <span className="text-gray-500">
+                      {r.amount?.toLocaleString('vi-VN')}đ ·{' '}
+                      {new Date(r.createdAt).toLocaleDateString('vi-VN')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Danh sách hội thoại đang mở (trái) + khung chat (phải) để lễ tân/admin trả lời
 // khách hàng real-time — đối xứng với widget Chatbot.jsx phía khách.
@@ -15,12 +89,29 @@ export default function StaffChatPage() {
   const { user } = useAuth();
   const socket = useSocket();
   const dispatch = useDispatch();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: conversations = [] } = useGetConversationsQuery();
-  const [selectedId, setSelectedId] = useState(null);
+  // Nút "Xem hội thoại" từ trang /admin/refund-requests điều hướng tới
+  // /admin/chat?conversationId=... — mở sẵn đúng hội thoại đó thay vì để lễ tân tự tìm
+  // trong danh sách bên trái.
+  const [selectedId, setSelectedId] = useState(() => searchParams.get('conversationId'));
   const [messages, setMessages] = useState([]);
   const [inputStr, setInputStr] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState(null); // { file, previewUrl } | null
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [uploadAttachment, { isLoading: isUploading }] = useUploadChatAttachmentMutation();
+
+  // Đã áp dụng xong conversationId từ URL -> xoá khỏi URL, không để link cũ ghi đè lựa
+  // chọn thủ công sau này của lễ tân khi quay lại trang (VD bấm Back).
+  useEffect(() => {
+    if (searchParams.get('conversationId')) {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedConversation = useMemo(
     () => conversations.find((c) => c.conversationId === selectedId) ?? null,
@@ -58,12 +149,50 @@ export default function StaffChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = (e) => {
+  useEffect(() => {
+    return () => {
+      if (pendingAttachment?.previewUrl) {
+        URL.revokeObjectURL(pendingAttachment.previewUrl);
+      }
+    };
+  }, [pendingAttachment]);
+
+  const handleSelectFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!ACCEPTED_ATTACHMENT_TYPES.split(',').includes(file.type)) {
+      toast.error('Chỉ nhận ảnh định dạng JPG, PNG hoặc WEBP.');
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE_MB * 1024 * 1024) {
+      toast.error(`Ảnh vượt quá dung lượng cho phép (tối đa ${MAX_ATTACHMENT_SIZE_MB}MB).`);
+      return;
+    }
+    setPendingAttachment({ file, previewUrl: URL.createObjectURL(file) });
+  };
+
+  const handleSend = async (e) => {
     e.preventDefault();
     const content = inputStr.trim();
-    if (!content || !selectedId) return;
-    socket.emit('chat:message', { conversationId: selectedId, content });
+    if ((!content && !pendingAttachment) || !selectedId || isUploading) return;
+
+    let attachmentUrl;
+    let attachmentType;
+    if (pendingAttachment) {
+      try {
+        const result = await uploadAttachment(pendingAttachment.file).unwrap();
+        attachmentUrl = result.url;
+        attachmentType = result.type;
+      } catch (err) {
+        toast.error(err?.data?.message || 'Không gửi được ảnh, vui lòng thử lại.');
+        return;
+      }
+    }
+
+    socket.emit('chat:message', { conversationId: selectedId, content, attachmentUrl, attachmentType });
     setInputStr('');
+    setPendingAttachment(null);
   };
 
   return (
@@ -106,11 +235,14 @@ export default function StaffChatPage() {
           </div>
         ) : (
           <>
-            <div className="border-b border-gray-100 p-4">
-              <p className="font-bold text-gray-900">
-                {selectedConversation.customer?.fullName || 'Khách hàng'}
-              </p>
-              <p className="text-xs text-gray-400">{selectedConversation.customer?.email}</p>
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 p-4">
+              <div>
+                <p className="font-bold text-gray-900">
+                  {selectedConversation.customer?.fullName || 'Khách hàng'}
+                </p>
+                <p className="text-xs text-gray-400">{selectedConversation.customer?.email}</p>
+              </div>
+              <LinkRefundRequestPopover conversationId={selectedId} />
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -128,7 +260,17 @@ export default function StaffChatPage() {
                       {!isMine && (
                         <p className="mb-0.5 text-[11px] font-bold text-[#1b6b50]">{msg.senderName}</p>
                       )}
-                      <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                      {msg.attachmentUrl && (
+                        <img
+                          src={msg.attachmentUrl}
+                          alt="Ảnh đính kèm"
+                          onClick={() => setLightboxSrc(msg.attachmentUrl)}
+                          className={`max-h-56 max-w-full cursor-zoom-in rounded-xl object-cover ${msg.content ? 'mb-2' : ''}`}
+                        />
+                      )}
+                      {msg.content && (
+                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                      )}
                     </div>
                   </div>
                 );
@@ -136,7 +278,47 @@ export default function StaffChatPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-gray-100 p-3">
+            {pendingAttachment && (
+              <div className="flex items-center gap-2 border-t border-gray-100 px-4 pt-3">
+                <div className="relative">
+                  <img
+                    src={pendingAttachment.previewUrl}
+                    alt="Ảnh sắp gửi"
+                    className="h-14 w-14 rounded-lg object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPendingAttachment(null)}
+                    aria-label="Bỏ ảnh"
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-gray-800 p-0.5 text-white shadow"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                {isUploading && <Loader2 size={16} className="animate-spin text-gray-400" />}
+              </div>
+            )}
+
+            <form
+              onSubmit={handleSend}
+              className={`flex items-center gap-2 p-3 ${pendingAttachment ? '' : 'border-t border-gray-100'}`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_ATTACHMENT_TYPES}
+                onChange={handleSelectFile}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                aria-label="Đính kèm ảnh"
+                className="shrink-0 rounded-full p-2.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#1b6b50] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Paperclip className="h-5 w-5" />
+              </button>
               <input
                 type="text"
                 value={inputStr}
@@ -146,7 +328,7 @@ export default function StaffChatPage() {
               />
               <button
                 type="submit"
-                disabled={!inputStr.trim()}
+                disabled={(!inputStr.trim() && !pendingAttachment) || isUploading}
                 className="rounded-full bg-[#1b6b50] p-3 text-white transition-colors hover:bg-[#14523d] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="ml-0.5 h-5 w-5" />
@@ -155,6 +337,8 @@ export default function StaffChatPage() {
           </>
         )}
       </section>
+
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 }

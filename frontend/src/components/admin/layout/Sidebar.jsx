@@ -13,6 +13,7 @@ import {
   Wallet,
   UserRoundCheck,
   MessageCircle,
+  Undo2,
   MapPin,
   CircleHelp,
   Star,
@@ -39,6 +40,7 @@ const MENU_ITEMS = [
   { icon: BarChart3, label: 'Tổng quan', path: '/admin', roles: ['ADMIN'] },
   { icon: BedDouble, label: 'Sơ đồ phòng', path: '/admin/rooms', roles: ['ADMIN', 'STAFF'] },
   { icon: MessageCircle, label: 'Chat với khách', path: '/admin/chat', roles: ['STAFF'] },
+  { icon: Undo2, label: 'Yêu cầu hoàn tiền', path: '/admin/refund-requests', roles: ['ADMIN', 'STAFF'] },
   { icon: CalendarRange, label: 'Đặt phòng', path: '/admin/bookings', roles: ['ADMIN', 'STAFF'] },
   { icon: CalendarDays, label: 'Lịch làm việc', path: '/admin/schedule/me', roles: ['STAFF'] },
   {

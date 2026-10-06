@@ -277,7 +277,12 @@
       "submitting": "Submitting...",
       "submit": "Submit review",
       "submitSuccess": "Thanks for leaving a review!",
-      "submitError": "Could not submit your review. Please try again."
+      "submitError": "Could not submit your review. Please try again.",
+      "aiSummaryTitle": "AI Review Summary",
+      "aiSummaryBadge": "Summarized by AI",
+      "aiSummaryPositives": "Guests liked",
+      "aiSummaryNegatives": "Guests mentioned",
+      "aiSummaryNoNegatives": "No notable complaints yet."
     }
   },
   "checkout": {
@@ -370,6 +375,16 @@
       "cancelMessage": "Are you sure you want to cancel the booking for \"{{roomName}}\"?",
       "review": "Write a review",
       "viewDetail": "Details",
+      "refundPending": "Refund pending",
+      "refundOverdue": "Refund not received yet",
+      "refundCompleted": "Refunded",
+      "refundRejected": "Refund request rejected",
+      "refundRejectedReason": "Reason: {{reason}}",
+      "contactReception": "Contact reception",
+      "cancelReasonInputLabel": "Reason for cancelling (optional)",
+      "cancelReasonInputPlaceholder": "Let us know why so we can help better, especially if the booking was paid and needs a refund.",
+      "cancellationPreviewFull": "You'll get a 100% refund ({{amount}}) since check-in is still {{hours}} hours away.",
+      "cancellationPreviewPartial": "Cancelling now gets you a {{percent}}% refund ({{amount}} out of {{paidAmount}} paid) since check-in is less than {{freeHours}} hours away.",
       "table": {
         "room": "Room",
         "code": "Booking code",

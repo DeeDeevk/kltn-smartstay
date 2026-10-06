@@ -1,4 +1,5 @@
 import { RoomTypeStatus } from 'src/common/enums/room-type-status.enum';
+import { RoomTypeReviewSummary } from '../room-type-review-summary.types';
 import {
   Column,
   CreateDateColumn,
@@ -37,6 +38,13 @@ export class RoomType {
     default: RoomTypeStatus.ACTIVE,
   })
   status!: RoomTypeStatus;
+
+  // Cache kết quả AI tổng hợp đánh giá (xem RoomTypeReviewSummaryService) — null = chưa
+  // từng tổng hợp (loại phòng mới, hoặc chưa đủ đánh giá). Tính LẠI (lazy, lúc khách tải
+  // trang chi tiết phòng) khi reviewCount lưu trong đây khác với tổng số đánh giá hiện tại,
+  // không cần cron/job riêng.
+  @Column({ name: 'reviewSummary', type: 'jsonb', nullable: true })
+  reviewSummary!: RoomTypeReviewSummary | null;
 
   @CreateDateColumn({ name: 'createdAt' })
   createdAt!: Date;

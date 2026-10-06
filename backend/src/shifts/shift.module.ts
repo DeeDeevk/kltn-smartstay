@@ -9,12 +9,14 @@ import { ShiftAssignmentController } from './shift-assignment.controller';
 import { ShiftAutoCloseJob } from './shift-auto-close.job';
 import { UserModule } from '../users/user.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ShiftType, ShiftAssignment]),
     UserModule,
     CashLedgerModule,
+    NotificationModule,
   ],
   controllers: [ShiftTypeController, ShiftAssignmentController],
   providers: [ShiftTypeService, ShiftAssignmentService, ShiftAutoCloseJob],
