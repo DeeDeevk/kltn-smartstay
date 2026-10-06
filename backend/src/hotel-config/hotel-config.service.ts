@@ -68,6 +68,7 @@ export class HotelConfigService {
     const config = await this.getOrCreate();
     config.freeCancellationHours = dto.freeCancellationHours;
     config.partialRefundPercent = dto.partialRefundPercent;
+    config.refundProcessingSlaHours = dto.refundProcessingSlaHours;
     return this.hotelConfigRepo.save(config);
   }
 }

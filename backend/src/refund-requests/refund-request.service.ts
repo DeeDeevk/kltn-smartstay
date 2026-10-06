@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { RefundRequest } from './entities/refund-request.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import {
@@ -22,6 +22,7 @@ import {
   NotificationType,
 } from '../notifications/notification.service';
 import { HotelConfigService } from '../hotel-config/hotel-config.service';
+import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
 
 // Giờ nhận phòng tiêu chuẩn (giờ Việt Nam) — mốc dùng để tính "huỷ trước giờ nhận phòng bao
 // lâu" cho chính sách hoàn tiền theo thời điểm huỷ (KAN-117).
@@ -41,6 +42,7 @@ export class RefundRequestService {
     private readonly conversationRepo: Repository<Conversation>,
     private readonly notificationService: NotificationService,
     private readonly hotelConfigService: HotelConfigService,
+    private readonly paymentTransactionService: PaymentTransactionService,
   ) {}
 
   // Tính số giờ còn lại tới giờ nhận phòng + % hoàn tiền áp dụng theo chính sách huỷ đơn
@@ -70,6 +72,14 @@ export class RefundRequestService {
       refundAmount,
       freeCancellationHours: config.freeCancellationHours,
     };
+  }
+
+  // Dùng ở nhiều response trả cho FE (findAll/findMine/findByBookingId, và GET
+  // /refund-requests/:id ở controller) để FE tự tính "đã quá hạn xử lý chưa" từ
+  // refund.createdAt, không cần gọi thêm API riêng (KAN-122).
+  async getRefundProcessingSlaHours(): Promise<number> {
+    const config = await this.hotelConfigService.getOrCreate();
+    return config.refundProcessingSlaHours;
   }
 
   private hoursUntilCheckIn(checkInDate: string): number {
@@ -116,11 +126,20 @@ export class RefundRequestService {
         order: { createdAt: 'DESC' },
       });
 
+      // Thử lấy payerBankInfo từ giao dịch PayOS gần nhất của đơn (nếu PayOS có trả thông
+      // tin người chuyển lúc thanh toán — xem PaymentService.extractPayerBankInfo). Vẫn có
+      // thể là null (PayOS không trả, hoặc đơn trả tiền mặt) — chấp nhận được, giữ đúng
+      // thông báo "Chưa có thông tin tài khoản" ở UI cho trường hợp đó.
+      const latestTransaction =
+        await this.paymentTransactionService.findLatestForBooking(
+          booking.bookingId,
+        );
+
       const refundRequest = this.refundRequestRepo.create({
         booking,
         amount: refundAmount,
         refundPercent,
-        payerBankInfo: null,
+        payerBankInfo: latestTransaction?.payerBankInfo ?? null,
         conversation: conversation ?? null,
         status: RefundRequestStatus.PENDING,
         reason,
@@ -165,7 +184,74 @@ export class RefundRequestService {
     }
 
     const [items, total] = await qb.getManyAndCount();
-    return { items, total, page, limit };
+    const refundProcessingSlaHours = await this.getRefundProcessingSlaHours();
+    return {
+      items: items.map((r) => ({ ...r, qrImageUrl: this.buildQrImageUrl(r) })),
+      total,
+      page,
+      limit,
+      refundProcessingSlaHours,
+    };
+  }
+
+  // Field ẢO (không lưu DB, tính lúc trả response) — ảnh VietQR Quick Link thật, quét được
+  // bằng app ngân hàng, dựng từ bankBin + accountNumber đã có sẵn trong payerBankInfo
+  // (KAN-123). API Quick Link của VietQR công khai, không cần API key — xem
+  // https://img.vietqr.io. Template "compact2" (có QR + thông tin để đối chiếu bằng mắt).
+  // Thiếu bankBin hoặc accountNumber (PayOS không trả hoặc tra tên không ra) -> null, KHÔNG
+  // suy diễn/đoán đại — admin vẫn còn luồng khách tự gửi ảnh QR qua chat (KAN-112/113).
+  buildQrImageUrl(refund: RefundRequest): string | null {
+    const info = refund.payerBankInfo as Record<string, string> | null;
+    const bankBin = info?.bankBin;
+    const accountNumber = info?.['Số tài khoản'];
+    if (!bankBin || !accountNumber) return null;
+
+    const accountName = info?.['Tên người chuyển'];
+    // Mã đơn rút gọn (8 ký tự đầu bookingId, cùng cách BookingHistoryPage.jsx/
+    // RefundRequestManagementPage.jsx đang hiện "mã đơn" cho khách/admin) — addInfo tối đa
+    // 50 ký tự theo giới hạn Quick Link API, "Hoan tien " + 8 ký tự còn rất xa mốc đó.
+    const shortCode = refund.booking.bookingId.slice(0, 8).toUpperCase();
+    const amount = Math.max(0, Math.round(refund.amount));
+    const base = `https://img.vietqr.io/image/${encodeURIComponent(bankBin)}-${encodeURIComponent(accountNumber)}-compact2.png`;
+    const params = new URLSearchParams({
+      amount: String(amount),
+      addInfo: `Hoan tien ${shortCode}`,
+    });
+    if (accountName) params.set('accountName', accountName);
+    return `${base}?${params.toString()}`;
+  }
+
+  // Dùng bởi BookingService.findById() (GET /bookings/:id) để đính kèm thông tin hoàn tiền
+  // ngay trong modal chi tiết đơn ở /admin/bookings, khỏi phải mở riêng trang /admin/
+  // refund-requests — chỉ gọi đúng lúc đó (query riêng theo bookingId), không join sẵn vào
+  // mọi lần query Booking khác. Trả null nếu đơn chưa huỷ/chưa từng có RefundRequest nào.
+  async findByBookingId(bookingId: string): Promise<{
+    refundRequestId: string;
+    status: RefundRequestStatus;
+    amount: number;
+    refundPercent: number;
+    reason: string | null;
+    adminNote: string | null;
+    proofImageUrl: string | null;
+    refundProcessingSlaHours: number;
+    qrImageUrl: string | null;
+  } | null> {
+    const refund = await this.refundRequestRepo.findOne({
+      where: { booking: { bookingId } },
+      order: { createdAt: 'DESC' },
+    });
+    if (!refund) return null;
+    return {
+      refundRequestId: refund.refundRequestId,
+      status: refund.status,
+      amount: refund.amount,
+      refundPercent: refund.refundPercent,
+      reason: refund.reason,
+      adminNote: refund.adminNote,
+      proofImageUrl: refund.proofImageUrl,
+      refundProcessingSlaHours: await this.getRefundProcessingSlaHours(),
+      qrImageUrl: this.buildQrImageUrl(refund),
+    };
   }
 
   // Khách tự xem yêu cầu hoàn tiền của MÌNH — trang "Lịch sử đặt phòng" dùng để hiện trạng
@@ -178,6 +264,10 @@ export class RefundRequestService {
       relations: { booking: true },
       order: { createdAt: 'DESC' },
     });
+    // Trả kèm refundProcessingSlaHours trên MỖI item (thay vì bọc thêm 1 field top-level)
+    // để giữ nguyên shape mảng phẳng — BookingHistoryPage.jsx (KAN-122) đang dùng thẳng kết
+    // quả này làm mảng, đổi sang {items, ...} sẽ phá hành vi hiện có của nơi gọi.
+    const refundProcessingSlaHours = await this.getRefundProcessingSlaHours();
     return refunds.map((r) => ({
       refundRequestId: r.refundRequestId,
       bookingId: r.booking.bookingId,
@@ -187,6 +277,30 @@ export class RefundRequestService {
       adminNote: r.adminNote,
       createdAt: r.createdAt,
       processedAt: r.processedAt,
+      refundProcessingSlaHours,
+    }));
+  }
+
+  // Dùng bởi ChatController (GET /chat/conversations/:id/refund-requests, STAFF-only) để
+  // lễ tân tự chọn gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở, thay vì
+  // ADMIN phải gõ tay conversationId — chỉ liệt kê yêu cầu đang PENDING và CHƯA gắn hội
+  // thoại nào (đã gắn rồi thì không cần hiện lại trong danh sách để gắn lần 2).
+  async findUnlinkedPendingForCustomer(userId: string) {
+    const refunds = await this.refundRequestRepo.find({
+      where: {
+        status: RefundRequestStatus.PENDING,
+        conversation: IsNull(),
+        booking: { user: { userId } },
+      },
+      relations: { booking: { roomType: true } },
+      order: { createdAt: 'DESC' },
+    });
+    return refunds.map((r) => ({
+      refundRequestId: r.refundRequestId,
+      bookingId: r.booking.bookingId,
+      roomTypeName: r.booking.roomType?.name ?? null,
+      amount: r.amount,
+      createdAt: r.createdAt,
     }));
   }
 
@@ -208,6 +322,7 @@ export class RefundRequestService {
     const refund = await this.assertPending(refundRequestId);
     refund.status = RefundRequestStatus.COMPLETED;
     refund.adminNote = dto.adminNote?.trim() || null;
+    refund.proofImageUrl = dto.proofImageUrl?.trim() || null;
     refund.processedByUserId = processedByUserId;
     refund.processedAt = new Date();
     const saved = await this.refundRequestRepo.save(refund);

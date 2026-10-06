@@ -4,7 +4,7 @@ import {
     ChevronDown,
     ChevronLeft,
     ChevronRight,
-    Link2,
+    ImageIcon,
     Loader2,
     MessageCircle,
     Info,
@@ -14,10 +14,11 @@ import {
 import { toast } from 'react-toastify';
 import { useAuth } from '../../../context/AuthContext';
 import RefundActionModal from './RefundActionModal';
+import RefundPayerBankInfo from './RefundPayerBankInfo';
+import ImageLightbox from '../../common/ImageLightbox';
 import {
     useCompleteRefundRequestMutation,
     useGetRefundRequestsQuery,
-    useLinkRefundRequestConversationMutation,
     useRejectRefundRequestMutation,
 } from '../../../services/refundRequest';
 import { useGetHotelConfigQuery, useUpdateCancellationPolicyMutation } from '../../../services/hotelConfig';
@@ -64,70 +65,6 @@ function formatDateTime(value) {
     });
 }
 
-function PayerBankInfo({ value }) {
-    if (!value) {
-        return (
-            <p className="text-xs italic text-amber-600">
-                Chưa có thông tin tài khoản — vui lòng liên hệ khách qua chat hoặc số điện thoại để
-                xác nhận trước khi chuyển khoản.
-            </p>
-        );
-    }
-    if (typeof value === 'object') {
-        return (
-            <div className="space-y-0.5 text-xs text-gray-600">
-                {Object.entries(value).map(([key, val]) => (
-                    <p key={key}>
-                        <span className="font-medium">{key}:</span> {String(val)}
-                    </p>
-                ))}
-            </div>
-        );
-    }
-    return <p className="text-xs text-gray-600">{String(value)}</p>;
-}
-
-// Admin không tham gia chat trực tiếp (GET /chat/conversations chỉ dành cho STAFF — xem
-// chat.controller.ts) nên không dựng được dropdown chọn hội thoại ở đây; cho nhập tay ID
-// đã có qua kênh khác (lễ tân cung cấp) — đơn giản, không phá ranh giới quyền đã thiết lập
-// của hệ thống chat.
-function LinkConversationInline({ refundRequestId }) {
-    const [value, setValue] = useState('');
-    const [linkConversation, { isLoading }] = useLinkRefundRequestConversationMutation();
-
-    const handleLink = async () => {
-        const conversationId = value.trim();
-        if (!conversationId) return;
-        try {
-            await linkConversation({ refundRequestId, conversationId }).unwrap();
-            toast.success('Đã gắn hội thoại');
-            setValue('');
-        } catch (err) {
-            toast.error(err?.data?.message || 'Không gắn được hội thoại, kiểm tra lại ID.');
-        }
-    };
-
-    return (
-        <div className="flex items-center gap-1.5">
-            <input
-                type="text"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Dán ID hội thoại..."
-                className="w-40 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-                type="button"
-                onClick={handleLink}
-                disabled={!value.trim() || isLoading}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-                <Link2 size={12} /> Gắn
-            </button>
-        </div>
-    );
-}
-
 function RefundRow({ refund }) {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -136,16 +73,21 @@ function RefundRow({ refund }) {
     // Trang này cho cả ADMIN lẫn STAFF vào, nên phải tự ẩn phần chỉ STAFF dùng được.
     const isStaff = user?.role === 'STAFF';
     const [actionModal, setActionModal] = useState(null); // 'complete' | 'reject' | null
+    const [lightboxSrc, setLightboxSrc] = useState(null);
     const [completeRefund, { isLoading: completing }] = useCompleteRefundRequestMutation();
     const [rejectRefund, { isLoading: rejecting }] = useRejectRefundRequestMutation();
 
     const booking = refund.booking;
     const guestName = booking?.guestInfo?.fullName ?? booking?.user?.fullName ?? 'Khách hàng';
 
-    const handleConfirmAction = async (adminNote) => {
+    const handleConfirmAction = async ({ adminNote, proofImageUrl }) => {
         try {
             if (actionModal === 'complete') {
-                await completeRefund({ refundRequestId: refund.refundRequestId, adminNote }).unwrap();
+                await completeRefund({
+                    refundRequestId: refund.refundRequestId,
+                    adminNote,
+                    proofImageUrl,
+                }).unwrap();
                 toast.success('Đã đánh dấu hoàn tiền thành công');
             } else {
                 await rejectRefund({ refundRequestId: refund.refundRequestId, adminNote }).unwrap();
@@ -198,7 +140,12 @@ function RefundRow({ refund }) {
                                         <MessageCircle size={13} /> Xem hội thoại
                                     </button>
                                 ) : (
-                                    <LinkConversationInline refundRequestId={refund.refundRequestId} />
+                                    // Gắn hội thoại giờ làm trong khung chat (StaffChatPage), không còn thao
+                                    // tác gắn ở trang này nữa — chỉ hiện trạng thái.
+                                    <span className="inline-flex items-center gap-1.5 text-xs italic text-gray-400">
+                                        <Info size={13} />
+                                        Chưa gắn hội thoại — gắn trong khung chat
+                                    </span>
                                 )
                             ) : (
                                 // Admin không xem được nội dung chat (chỉ STAFF) — chỉ báo trạng thái liên
@@ -210,12 +157,7 @@ function RefundRow({ refund }) {
                             )}
                         </div>
                         {refund.status === 'PENDING' && (
-                            <>
-                                <p className="max-w-[220px] text-right text-[11px] text-gray-400">
-                                    Lưu ý: đối chiếu tên trên ảnh QR với tên khách đặt phòng trước khi xác nhận,
-                                    tránh hoàn nhầm tài khoản.
-                                </p>
-                                <div className="flex gap-1.5">
+                            <div className="flex gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => setActionModal('reject')}
@@ -230,19 +172,27 @@ function RefundRow({ refund }) {
                                 >
                                     Đánh dấu đã hoàn tiền
                                 </button>
-                                </div>
-                            </>
+                            </div>
                         )}
                         {refund.status !== 'PENDING' && refund.adminNote && (
                             <p className="max-w-[220px] text-right text-xs text-gray-400">
                                 Ghi chú: {refund.adminNote}
                             </p>
                         )}
+                        {refund.status === 'COMPLETED' && refund.proofImageUrl && (
+                            <button
+                                type="button"
+                                onClick={() => setLightboxSrc(refund.proofImageUrl)}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                            >
+                                <ImageIcon size={13} /> Xem biên lai
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 <div className="mt-3 border-t border-gray-100 pt-3">
-                    <PayerBankInfo value={refund.payerBankInfo} />
+                    <RefundPayerBankInfo payerBankInfo={refund.payerBankInfo} qrImageUrl={refund.qrImageUrl} />
                 </div>
             </div>
 
@@ -254,6 +204,7 @@ function RefundRow({ refund }) {
                 onConfirm={handleConfirmAction}
                 onClose={() => setActionModal(null)}
             />
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
         </>
     );
 }
@@ -269,11 +220,13 @@ function CancellationPolicyPanel() {
     const [updateCancellationPolicy, { isLoading: savingPolicy }] = useUpdateCancellationPolicyMutation();
     const [freeCancellationHours, setFreeCancellationHours] = useState(48);
     const [partialRefundPercent, setPartialRefundPercent] = useState(50);
+    const [refundProcessingSlaHours, setRefundProcessingSlaHours] = useState(24);
 
     useEffect(() => {
         if (!config) return;
         setFreeCancellationHours(config.freeCancellationHours ?? 48);
         setPartialRefundPercent(config.partialRefundPercent ?? 50);
+        setRefundProcessingSlaHours(config.refundProcessingSlaHours ?? 24);
     }, [config]);
 
     const isPolicyValid =
@@ -281,25 +234,33 @@ function CancellationPolicyPanel() {
         freeCancellationHours >= 0 &&
         Number.isFinite(partialRefundPercent) &&
         partialRefundPercent >= 0 &&
-        partialRefundPercent <= 100;
+        partialRefundPercent <= 100 &&
+        Number.isFinite(refundProcessingSlaHours) &&
+        refundProcessingSlaHours >= 1;
 
     const isPolicyDirty =
         Boolean(config) &&
         (freeCancellationHours !== (config.freeCancellationHours ?? 48) ||
-            partialRefundPercent !== (config.partialRefundPercent ?? 50));
+            partialRefundPercent !== (config.partialRefundPercent ?? 50) ||
+            refundProcessingSlaHours !== (config.refundProcessingSlaHours ?? 24));
 
     const handleCancelPolicy = () => {
         setFreeCancellationHours(config?.freeCancellationHours ?? 48);
         setPartialRefundPercent(config?.partialRefundPercent ?? 50);
+        setRefundProcessingSlaHours(config?.refundProcessingSlaHours ?? 24);
     };
 
     const handleSavePolicy = async () => {
         if (!isPolicyValid) {
-            toast.error('Số giờ phải >= 0 và % hoàn phải trong khoảng 0-100');
+            toast.error('Số giờ phải >= 0, % hoàn phải trong khoảng 0-100, SLA xử lý phải >= 1 giờ');
             return;
         }
         try {
-            await updateCancellationPolicy({ freeCancellationHours, partialRefundPercent }).unwrap();
+            await updateCancellationPolicy({
+                freeCancellationHours,
+                partialRefundPercent,
+                refundProcessingSlaHours,
+            }).unwrap();
             toast.success('Đã lưu chính sách hoàn tiền');
         } catch (err) {
             toast.error(err?.data?.message || 'Không thể lưu chính sách hoàn tiền');
@@ -328,7 +289,7 @@ function CancellationPolicyPanel() {
                         Áp dụng cho mọi đơn đã thanh toán bị huỷ, chung cho toàn khách sạn (không phân biệt
                         theo loại phòng).
                     </p>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-3">
                         <div className="space-y-1.5">
                             <label className="text-[13px] font-bold text-gray-500">
                                 Hoàn 100% nếu huỷ trước (giờ)
@@ -361,6 +322,25 @@ function CancellationPolicyPanel() {
                             <p className="text-xs text-gray-400">
                                 Huỷ sau mốc trên nhưng vẫn trước giờ nhận phòng thì hoàn theo % này. Huỷ sau giờ
                                 nhận phòng (no-show) thì không hoàn gì.
+                            </p>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[13px] font-bold text-gray-500">
+                                Thời hạn xử lý hoàn tiền (giờ)
+                            </label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={Number.isNaN(refundProcessingSlaHours) ? '' : refundProcessingSlaHours}
+                                onChange={(e) =>
+                                    setRefundProcessingSlaHours(
+                                        e.target.value === '' ? NaN : Number(e.target.value),
+                                    )
+                                }
+                                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-400">
+                                Nếu quá thời gian này mà chưa xử lý, khách sẽ thấy nút liên hệ lễ tân.
                             </p>
                         </div>
                     </div>
@@ -429,6 +409,16 @@ export default function RefundRequestManagementPage() {
                     </button>
                 ))}
             </div>
+
+            {status === 'PENDING' && !isLoading && items.length > 0 && (
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    <Info size={16} className="mt-0.5 shrink-0" />
+                    <p>
+                        Trước khi đánh dấu đã hoàn tiền, hãy đối chiếu tên trên ảnh QR khách gửi với tên
+                        người đặt phòng để tránh hoàn nhầm tài khoản.
+                    </p>
+                </div>
+            )}
 
             {isLoading ? (
                 <div className="space-y-3">

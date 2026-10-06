@@ -9,4 +9,8 @@ export class UpdateCancellationPolicyDto {
   @Min(0)
   @Max(100)
   partialRefundPercent!: number;
+
+  @IsInt()
+  @Min(1)
+  refundProcessingSlaHours!: number;
 }

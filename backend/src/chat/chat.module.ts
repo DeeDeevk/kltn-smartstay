@@ -8,6 +8,7 @@ import { ChatGateway } from './chat.gateway';
 import { UserModule } from '../users/user.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { UploadModule } from '../uploads/upload.module';
+import { RefundRequestModule } from '../refund-requests/refund-request.module';
 
 @Module({
   imports: [
@@ -15,6 +16,10 @@ import { UploadModule } from '../uploads/upload.module';
     UserModule,
     RealtimeModule,
     UploadModule,
+    // Để lễ tân gắn yêu cầu hoàn tiền ngay trong khung chat (GET /chat/conversations/:id/
+    // refund-requests) — không tạo vòng lặp vì RefundRequestModule không phụ thuộc ngược
+    // lại ChatModule (chỉ dùng entity Conversation, không import ChatModule).
+    RefundRequestModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],

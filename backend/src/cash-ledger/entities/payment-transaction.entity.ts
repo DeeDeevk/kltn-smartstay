@@ -27,6 +27,13 @@ export class PaymentTransaction {
   @Column({ name: 'method', type: 'enum', enum: PaymentMethod })
   method!: PaymentMethod;
 
+  // Thông tin tài khoản người chuyển, trích từ PayOS webhook/sync NẾU SDK có trả (xem
+  // PaymentService) — null nếu không có dữ liệu (PayOS không trả, hoặc thu tiền mặt).
+  // Cột MỚI, thêm sau khi bảng đã có dữ liệu — không ảnh hưởng gì tới logic chốt ca/đối
+  // soát hiện có (chỉ đọc amount/method/collectedAt/collectedBy).
+  @Column({ name: 'payerBankInfo', type: 'jsonb', nullable: true })
+  payerBankInfo!: Record<string, string> | null;
+
   // null = không có nhân viên cầm tiền (khách tự thanh toán online qua PayOS).
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'collectedBy' })

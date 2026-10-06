@@ -2,15 +2,23 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Param,
+  ParseFilePipeBuilder,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { RefundRequestService } from './refund-request.service';
+import { UploadService } from '../uploads/upload.service';
 import { QueryRefundRequestDto } from './dto/query-refund-request.dto';
 import { CompleteRefundRequestDto } from './dto/complete-refund-request.dto';
 import { RejectRefundRequestDto } from './dto/reject-refund-request.dto';
@@ -19,6 +27,10 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+
+// Ảnh biên lai lưu riêng khỏi "room-types"/"chat" (xem UploadService.uploadImage keyPrefix),
+// cùng giới hạn định dạng/kích thước với POST /chat/attachments.
+const REFUND_PROOF_KEY_PREFIX = 'vikahotel/refund-proof';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: string; email: string; role: string };
@@ -35,7 +47,33 @@ interface AuthenticatedRequest extends Request {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.STAFF)
 export class RefundRequestController {
-  constructor(private readonly refundRequestService: RefundRequestService) {}
+  constructor(
+    private readonly refundRequestService: RefundRequestService,
+    private readonly uploadService: UploadService,
+  ) {}
+
+  // Admin/STAFF chọn ảnh biên lai -> upload trước lấy URL (cùng pattern POST /chat/
+  // attachments, tái dùng đúng UploadService.uploadImage), rồi FE gửi URL đó kèm adminNote
+  // vào PATCH :id/complete. Không thêm @Roles riêng -> kế thừa @Roles(ADMIN, STAFF) ở
+  // class-level, giống mọi endpoint refund-requests khác (STAFF là người trực tiếp đánh dấu
+  // hoàn tiền sau khi xác minh qua chat, nên cũng là người cần upload ảnh này).
+  @Post('attachments')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadAttachment(
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ })
+        .addMaxSizeValidator({ maxSize: 5 * 1024 * 1024 })
+        .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const result = await this.uploadService.uploadImage(
+      file,
+      REFUND_PROOF_KEY_PREFIX,
+    );
+    return { url: result.url };
+  }
 
   // Khách TỰ xem được yêu cầu hoàn tiền của CHÍNH MÌNH (lọc theo userId đang đăng nhập,
   // không phải xem của người khác) — trang "Lịch sử đặt phòng" cần hiện trạng thái này cho
@@ -56,9 +94,21 @@ export class RefundRequestController {
     return this.refundRequestService.findAll(query);
   }
 
+  // Ghép thêm refundProcessingSlaHours/qrImageUrl ở ĐÂY (controller) thay vì đổi return type
+  // của RefundRequestService.findById() — hàm đó còn được dùng nội bộ bởi complete()/
+  // reject()/linkConversation()/assertPending() để lấy entity rồi save() lại, đổi shape của
+  // nó sẽ rủi ro cho các chỗ dùng nội bộ đó (KAN-122/123).
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.refundRequestService.findById(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const [refund, refundProcessingSlaHours] = await Promise.all([
+      this.refundRequestService.findById(id),
+      this.refundRequestService.getRefundProcessingSlaHours(),
+    ]);
+    return {
+      ...refund,
+      refundProcessingSlaHours,
+      qrImageUrl: this.refundRequestService.buildQrImageUrl(refund),
+    };
   }
 
   @Patch(':id/complete')

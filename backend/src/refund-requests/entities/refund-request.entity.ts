@@ -81,6 +81,12 @@ export class RefundRequest {
   @Column({ name: 'adminNote', type: 'text', nullable: true })
   adminNote!: string | null;
 
+  // Ảnh biên lai/QR chuyển khoản admin đính kèm khi đánh dấu đã hoàn tiền — bằng chứng cho
+  // việc chuyển khoản thủ công, KHÔNG BẮT BUỘC (một số admin chuyển bằng app ngân hàng
+  // không tiện chụp lại ngay).
+  @Column({ name: 'proofImageUrl', type: 'varchar', nullable: true })
+  proofImageUrl!: string | null;
+
   @CreateDateColumn({ name: 'createdAt' })
   createdAt!: Date;
 }

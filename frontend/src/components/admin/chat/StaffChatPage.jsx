@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
-import { MessageCircle, Send, Paperclip, X, Loader2 } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, Link2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
@@ -9,13 +9,79 @@ import {
   chatApi,
   useGetConversationsQuery,
   useGetMessagesQuery,
+  useGetUnlinkedRefundRequestsQuery,
   useUploadChatAttachmentMutation,
 } from '../../../services/chat';
+import { useLinkRefundRequestConversationMutation } from '../../../services/refundRequest';
 import ImageLightbox from '../../common/ImageLightbox';
 
 // Khớp đúng giới hạn backend (ChatController.uploadAttachment).
 const MAX_ATTACHMENT_SIZE_MB = 5;
 const ACCEPTED_ATTACHMENT_TYPES = 'image/jpeg,image/png,image/webp';
+
+// Lễ tân tự chọn gắn yêu cầu hoàn tiền của khách ngay trong khung chat đang mở (KAN-117) —
+// thay cho việc ADMIN phải gõ tay conversationId (ADMIN không có quyền xem nội dung chat).
+function LinkRefundRequestPopover({ conversationId }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: refunds = [], isFetching } = useGetUnlinkedRefundRequestsQuery(conversationId, {
+    skip: !isOpen,
+  });
+  const [linkConversation, { isLoading: linking }] = useLinkRefundRequestConversationMutation();
+
+  const handleLink = async (refundRequestId) => {
+    try {
+      await linkConversation({ refundRequestId, conversationId }).unwrap();
+      toast.success('Đã gắn hội thoại vào yêu cầu hoàn tiền');
+      setIsOpen(false);
+    } catch (err) {
+      toast.error(err?.data?.message || 'Không gắn được, vui lòng thử lại.');
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+      >
+        <Link2 size={13} /> Gắn yêu cầu hoàn tiền
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+          {isFetching ? (
+            <div className="flex items-center justify-center py-4 text-gray-400">
+              <Loader2 size={16} className="animate-spin" />
+            </div>
+          ) : refunds.length === 0 ? (
+            <p className="px-2 py-3 text-center text-xs text-gray-400">
+              Không có yêu cầu hoàn tiền nào đang chờ gắn.
+            </p>
+          ) : (
+            <ul className="max-h-60 space-y-1 overflow-y-auto">
+              {refunds.map((r) => (
+                <li key={r.refundRequestId}>
+                  <button
+                    type="button"
+                    onClick={() => handleLink(r.refundRequestId)}
+                    disabled={linking}
+                    className="flex w-full flex-col items-start rounded-lg px-2 py-2 text-left text-xs transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="font-semibold text-gray-900">{r.roomTypeName || 'Phòng'}</span>
+                    <span className="text-gray-500">
+                      {r.amount?.toLocaleString('vi-VN')}đ ·{' '}
+                      {new Date(r.createdAt).toLocaleDateString('vi-VN')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Danh sách hội thoại đang mở (trái) + khung chat (phải) để lễ tân/admin trả lời
 // khách hàng real-time — đối xứng với widget Chatbot.jsx phía khách.
@@ -169,11 +235,14 @@ export default function StaffChatPage() {
           </div>
         ) : (
           <>
-            <div className="border-b border-gray-100 p-4">
-              <p className="font-bold text-gray-900">
-                {selectedConversation.customer?.fullName || 'Khách hàng'}
-              </p>
-              <p className="text-xs text-gray-400">{selectedConversation.customer?.email}</p>
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 p-4">
+              <div>
+                <p className="font-bold text-gray-900">
+                  {selectedConversation.customer?.fullName || 'Khách hàng'}
+                </p>
+                <p className="text-xs text-gray-400">{selectedConversation.customer?.email}</p>
+              </div>
+              <LinkRefundRequestPopover conversationId={selectedId} />
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4">

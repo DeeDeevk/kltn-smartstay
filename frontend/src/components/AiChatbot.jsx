@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BotMessageSquare, X, Send, LogIn, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import {
+    BotMessageSquare,
+    X,
+    Send,
+    LogIn,
+    Sparkles,
+    Maximize2,
+    Minimize2,
+    Mic,
+    MicOff,
+} from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import { useLazyGetAiHistoryQuery, useSendAiMessageMutation } from '../services/aiAgent';
 import useDraggableWidget from '../hooks/useDraggableWidget';
@@ -59,6 +70,12 @@ function storePanelSize(size) {
     }
 }
 
+// Web Speech API — không chuẩn hoá tên trên mọi trình duyệt (Chrome/Edge vẫn cần tiền tố
+// "webkit"), và Firefox chưa hỗ trợ (SpeechRecognitionCtor sẽ là undefined). Tra 1 lần ở
+// module scope thay vì mỗi lần render, dùng chung để vừa biết có hỗ trợ hay không vừa để
+// khởi tạo instance khi bấm mic.
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
 function getSendErrorMessage(error) {
     if (error?.status === 429) {
         return error.data?.code === AI_DAILY_QUOTA_EXCEEDED
@@ -81,7 +98,10 @@ const AiChatbot = () => {
     const [inputStr, setInputStr] = useState('');
     const [dismissedFormAt, setDismissedFormAt] = useState(-1);
     const [panelSize, setPanelSize] = useState(readStoredPanelSize);
+    const [isRecording, setIsRecording] = useState(false);
     const messagesEndRef = useRef(null);
+    const recognitionRef = useRef(null);
+    const textareaRef = useRef(null);
 
     // < 640px (Tailwind "sm"): khung chat mở full-screen thay vì giữ tỉ lệ nhỏ như
     // desktop — xem yêu cầu responsive ở Phần 3.
@@ -185,6 +205,80 @@ const AiChatbot = () => {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isSending]);
+
+    // Auto-resize textarea theo nội dung (KAN-118) — đặt ở effect theo dõi inputStr thay vì
+    // chỉ trong onChange, để cũng tự co lại đúng lúc handleSend set inputStr về rỗng sau khi
+    // gửi (programmatic value change không tự bắn sự kiện onChange của DOM). maxHeight chặn
+    // bằng CSS (class max-h-32 ở textarea), nên set quá cao ở đây vẫn bị giới hạn đúng.
+    useEffect(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    }, [inputStr]);
+
+    // Enter gửi tin nhắn (giữ hành vi cũ); Shift+Enter xuống dòng. textarea không tự submit
+    // form khi Enter như input, nên phải tự bắt phím rồi gọi lại handleSend hiện có.
+    const handleTextareaKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend(e);
+        }
+    };
+
+    // Đóng khung chat trong lúc đang ghi âm -> dừng ngay, tránh micro chạy ngầm sau khi
+    // widget đã ẩn đi.
+    useEffect(() => {
+        if (!isOpen) {
+            recognitionRef.current?.stop();
+        }
+    }, [isOpen]);
+
+    // Unmount (VD rời trang) trong lúc đang ghi âm -> cùng lý do, dọn dẹp instance.
+    useEffect(() => {
+        return () => {
+            recognitionRef.current?.stop();
+        };
+    }, []);
+
+    // Bấm lần đầu -> bắt đầu nghe, cập nhật inputStr dần theo kết quả tạm (interim) để
+    // khách thấy chữ xuất hiện ngay trong lúc nói. Nhận kết quả cuối (final) -> set câu
+    // hoàn chỉnh rồi TỰ DỪNG, KHÔNG tự gửi (để khách xem lại/sửa trước khi tự bấm Send).
+    // Bấm lần nữa trong lúc đang ghi -> dừng ngay (khách chủ động huỷ).
+    const handleToggleMic = () => {
+        if (isRecording) {
+            recognitionRef.current?.stop();
+            return;
+        }
+
+        const recognition = new SpeechRecognitionCtor();
+        recognition.lang = 'vi-VN';
+        recognition.interimResults = true;
+        recognition.continuous = false;
+
+        recognition.onresult = (event) => {
+            let transcript = '';
+            for (let i = 0; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            setInputStr(transcript);
+            if (event.results[event.results.length - 1].isFinal) {
+                recognition.stop();
+            }
+        };
+        recognition.onerror = () => {
+            setIsRecording(false);
+            toast.error('Không thể truy cập micro, vui lòng kiểm tra quyền trình duyệt.');
+        };
+        recognition.onend = () => {
+            setIsRecording(false);
+            recognitionRef.current = null;
+        };
+
+        recognitionRef.current = recognition;
+        setIsRecording(true);
+        recognition.start();
+    };
 
     const sendText = async (content, extra = {}) => {
         if (!content || isSending || isLoadingHistory) return;
@@ -449,16 +543,41 @@ const AiChatbot = () => {
 
                             <form
                                 onSubmit={handleSend}
-                                className="p-3 bg-white border-t border-gray-100 flex items-center gap-2"
+                                className="p-3 bg-white border-t border-gray-100 flex items-end gap-2"
                             >
-                                <input
-                                    type="text"
+                                <textarea
+                                    ref={textareaRef}
+                                    rows={1}
                                     value={inputStr}
                                     onChange={(e) => setInputStr(e.target.value)}
+                                    onKeyDown={handleTextareaKeyDown}
                                     placeholder="Nhập tin nhắn..."
-                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className="max-h-32 flex-1 resize-none overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                     disabled={isSending || isLoadingHistory}
                                 />
+                                {SpeechRecognitionCtor && (
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleMic}
+                                        disabled={isSending || isLoadingHistory}
+                                        title={isRecording ? 'Dừng ghi âm' : 'Nhập bằng giọng nói'}
+                                        aria-label={isRecording ? 'Dừng ghi âm' : 'Nhập bằng giọng nói'}
+                                        className={`press relative p-3 rounded-full transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                                            isRecording
+                                                ? 'bg-red-500 text-white hover:bg-red-600'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {isRecording ? (
+                                            <MicOff className="w-5 h-5" />
+                                        ) : (
+                                            <Mic className="w-5 h-5" />
+                                        )}
+                                        {isRecording && (
+                                            <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-red-500 animate-pulse" />
+                                        )}
+                                    </button>
+                                )}
                                 <button
                                     type="submit"
                                     disabled={!inputStr.trim() || isSending || isLoadingHistory}

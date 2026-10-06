@@ -37,8 +37,15 @@ import openReceptionChat from '../../utils/openReceptionChat';
 // Icon + màu riêng cho từng trạng thái RefundRequest — KHÔNG dùng pill badge như
 // booking.status/paymentStatus (StatusPill) để tránh xếp chồng 3 pill nhìn rối; đây là 1
 // dòng phụ nhỏ (12-13px) nằm ngay dưới, canh lề trái với badge trạng thái đơn.
+// PENDING_OVERDUE là trạng thái "ảo" (không có thật ở backend) — chỉ để chọn style khác
+// cho đúng cùng 1 refund.status='PENDING' khi đã quá SLA xử lý (KAN-122).
 const REFUND_STATUS_CONFIG = {
   PENDING: { icon: Clock, className: 'text-amber-600', labelKey: 'booking.history.refundPending' },
+  PENDING_OVERDUE: {
+    icon: AlertTriangle,
+    className: 'text-red-600',
+    labelKey: 'booking.history.refundOverdue',
+  },
   COMPLETED: {
     icon: CheckCircle2,
     className: 'text-green-600',
@@ -51,12 +58,24 @@ const REFUND_STATUS_CONFIG = {
   },
 };
 
+// Còn PENDING nhưng đã quá refundProcessingSlaHours (HotelConfig, KAN-122) kể từ lúc tạo ->
+// coi là quá hạn, khách cần được nhắc chủ động liên hệ thay vì chờ im lặng. Tính lại mỗi lần
+// render (không polling) — F5/mở lại trang là đủ cập nhật đúng, không cần real-time.
+function isRefundOverdue(refund) {
+  if (!refund || refund.status !== 'PENDING') return false;
+  const slaHours = refund.refundProcessingSlaHours ?? 24;
+  const hoursSincePending = (Date.now() - new Date(refund.createdAt).getTime()) / (60 * 60 * 1000);
+  return hoursSincePending >= slaHours;
+}
+
 // Dòng phụ hiển thị trạng thái hoàn tiền cho 1 đơn đã huỷ đã thanh toán — tạo TỰ ĐỘNG khi
 // huỷ đơn (KAN-114), khách không cần tự "yêu cầu" hoàn tiền. Không có RefundRequest nào
 // (đơn huỷ nhưng chưa từng thanh toán) thì không hiện gì — refund ở đây luôn undefined/null
 // trong trường hợp đó.
 function RefundStatus({ refund, t }) {
-  const config = refund && REFUND_STATUS_CONFIG[refund.status];
+  if (!refund) return null;
+  const configKey = refund.status === 'PENDING' && isRefundOverdue(refund) ? 'PENDING_OVERDUE' : refund.status;
+  const config = REFUND_STATUS_CONFIG[configKey];
   if (!config) return null;
   const Icon = config.icon;
   return (
@@ -77,13 +96,13 @@ function BookingActions({
   canPayNow,
   canCancel,
   canReview,
-  showSendQr,
+  showContactReception,
   isPaying,
   onPayNow,
   onCancel,
   onReview,
   onViewDetail,
-  onSendQr,
+  onContactReception,
   t,
 }) {
   return (
@@ -116,16 +135,17 @@ function BookingActions({
           {t('booking.history.review')}
         </button>
       )}
-      {/* Chỉ hiện khi RefundRequest đang PENDING — ẩn ngay khi admin đã COMPLETED/REJECTED
-          (xem showSendQr được tính ở nơi gọi). Kiểu outline để phân biệt với nút "Chi tiết"
-          chính (viền xám trung tính) — đây là hành động CẦN khách chú ý hơn. */}
-      {showSendQr && (
+      {/* Chỉ hiện khi RefundRequest còn PENDING VÀ đã quá SLA xử lý (xem isRefundOverdue) —
+          còn trong hạn thì chỉ cần badge trạng thái, không cần làm phiền khách bằng nút này
+          (KAN-122). Kiểu fill đỏ (khác các nút outline khác) vì đây là tình huống cần khách
+          chú ý ngay — đã quá hạn cam kết xử lý. */}
+      {showContactReception && (
         <button
           type="button"
-          onClick={() => onSendQr(booking)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 px-3.5 py-2 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+          onClick={() => onContactReception(booking)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700"
         >
-          <MessageCircle size={14} /> {t('booking.history.sendQrProof')}
+          <MessageCircle size={14} /> {t('booking.history.contactReception')}
         </button>
       )}
       <button
@@ -193,10 +213,10 @@ export default function BookingHistoryPage() {
     return () => socket.off('booking:updated', handleBookingUpdated);
   }, [socket, dispatch]);
 
-  // "Gửi ảnh QR" chỉ cần mở đúng widget chat lễ tân — khách chỉ có DUY NHẤT 1 hội thoại
+  // "Liên hệ lễ tân" chỉ cần mở đúng widget chat lễ tân — khách chỉ có DUY NHẤT 1 hội thoại
   // đang mở tại 1 thời điểm (getOrCreateOwnConversation ở backend), nên không cần biết
   // trước conversationId/scroll tới đoạn nào, mở ra là thấy đúng cuộc hội thoại cần gửi.
-  const handleSendQr = () => openReceptionChat();
+  const handleContactReception = () => openReceptionChat();
 
   const handlePayNow = async (bookingId) => {
     setPayingId(bookingId);
@@ -280,7 +300,7 @@ export default function BookingHistoryPage() {
                       const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                       const isPaying = isRedirecting && payingId === booking.bookingId;
                       const refund = refundByBookingId.get(booking.bookingId);
-                      const showSendQr = refund?.status === 'PENDING';
+                      const showContactReception = isRefundOverdue(refund);
 
                       return (
                         <tr key={booking.bookingId} className="transition-colors hover:bg-gray-50/60">
@@ -337,8 +357,8 @@ export default function BookingHistoryPage() {
                           <td className="px-6 py-4">
                             <BookingActions
                               booking={booking}
-                              showSendQr={showSendQr}
-                              onSendQr={handleSendQr}
+                              showContactReception={showContactReception}
+                              onContactReception={handleContactReception}
                               canPayNow={canPayNow}
                               canCancel={canCancel}
                               canReview={canReview}
@@ -369,7 +389,7 @@ export default function BookingHistoryPage() {
                 const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
                 const isPaying = isRedirecting && payingId === booking.bookingId;
                 const refund = refundByBookingId.get(booking.bookingId);
-                const showSendQr = refund?.status === 'PENDING';
+                const showContactReception = isRefundOverdue(refund);
 
                 return (
                   <div key={booking.bookingId} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -421,8 +441,8 @@ export default function BookingHistoryPage() {
                     <div className="border-t border-gray-100 px-4 py-3">
                       <BookingActions
                         booking={booking}
-                        showSendQr={showSendQr}
-                        onSendQr={handleSendQr}
+                        showContactReception={showContactReception}
+                        onContactReception={handleContactReception}
                         canPayNow={canPayNow}
                         canCancel={canCancel}
                         canReview={canReview}
