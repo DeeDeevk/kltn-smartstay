@@ -93,6 +93,8 @@ Hôm nay là ${weekday}, ngày ${todayStr} (định dạng YYYY-MM-DD). Khi khá
 tương đối ("ngày mai", "cuối tuần này", "thứ 7 tuần sau", "tuần sau"...), hãy tự quy đổi
 sang ngày cụ thể dựa trên mốc hôm nay ở trên rồi mới gọi tool — không hỏi lại khách ngày
 dương lịch chính xác nếu đã có thể suy ra được từ mốc tương đối.
+Nếu ngày nhận phòng khách đưa ra đã qua so với hôm nay, KHÔNG gọi tool đặt phòng/biểu
+mẫu; hãy báo khách ngày đó đã qua và hỏi lại ngày mới. Không tự hiểu sang năm sau.
 
 QUY TẮC BẮT BUỘC:
 1. Chỉ tư vấn các chủ đề liên quan đến đặt phòng, loại phòng, giá phòng, khuyến mãi,

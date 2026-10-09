@@ -41,6 +41,7 @@ import {
   NotificationType,
 } from '../notifications/notification.service';
 import { RefundRequestService } from '../refund-requests/refund-request.service';
+import { todayInHotelTz } from 'src/common/utils/date.util';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -93,6 +94,9 @@ export class BookingService {
   }
 
   async create(userId: string, dto: CreateBookingDto) {
+    if(dto.checkIn < todayInHotelTz()){
+      throw new BadRequestException('Ngày nhận phòng không được ở trong quá khứ');
+    }
     if (new Date(dto.checkIn) >= new Date(dto.checkOut)) {
       throw new BadRequestException('Ngày check-in phải trước ngày check-out');
     }

@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { BookingService } from './booking.service';
 import { Booking } from './entities/booking.entity';
@@ -287,5 +287,53 @@ describe('BookingService.cancel', () => {
       expect.objectContaining({ status: BookingStatus.CANCELLED }),
     );
     expect(result).toEqual({ message: 'Đã huỷ đơn đặt phòng' });
+  });
+});
+
+describe('BookingService.create — chặn ngày nhận phòng đã qua', () => {
+  // Cố định "hôm nay" = 09/10/2026 giờ VN (02:00 UTC = 09:00 VN), chỉ giả lập Date.
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date('2026-10-09T02:00:00Z'),
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'setTimeout',
+        'setInterval',
+        'queueMicrotask',
+      ],
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('báo 400 khi ngày nhận phòng là hôm qua, không chạm tới DB', async () => {
+    const { service, bookingSave } = buildService();
+
+    await expect(
+      service.create('user-1', {
+        roomTypeId: 'rt-1',
+        checkIn: '2026-10-08',
+        checkOut: '2026-10-10',
+      } as never),
+    ).rejects.toThrow(
+      new BadRequestException('Ngày nhận phòng không được ở trong quá khứ'),
+    );
+    expect(bookingSave).not.toHaveBeenCalled();
+  });
+
+  it('tính "hôm nay" theo giờ Việt Nam: 23:30 UTC ngày 08/10 đã là 09/10 ở VN', async () => {
+    jest.setSystemTime(new Date('2026-10-08T23:30:00Z'));
+    const { service } = buildService();
+
+    await expect(
+      service.create('user-1', {
+        roomTypeId: 'rt-1',
+        checkIn: '2026-10-08',
+        checkOut: '2026-10-10',
+      } as never),
+    ).rejects.toThrow('quá khứ');
   });
 });
