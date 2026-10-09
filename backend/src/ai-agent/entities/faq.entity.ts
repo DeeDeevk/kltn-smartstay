@@ -29,33 +29,6 @@ export class Faq {
   @Column({ name: 'isActive', type: 'boolean', default: true })
   isActive!: boolean;
 
-  // Vector embedding của "question + answer". Lưu jsonb (mảng số) thay vì kiểu vector
-  // của pgvector để không phải cài thêm extension — với vài chục FAQ, tính cosine
-  // similarity trong RAM là đủ nhanh.
-  @Column({ name: 'embedding', type: 'jsonb', nullable: true })
-  embedding!: number[] | null;
-
-  // Tên model đã sinh ra embedding — đổi GEMINI_EMBEDDING_MODEL thì vector cũ không còn
-  // so sánh được với vector câu hỏi mới, cần embed lại.
-  @Column({
-    name: 'embeddingModel',
-    type: 'varchar',
-    length: 100,
-    nullable: true,
-  })
-  embeddingModel!: string | null;
-
-  // Hash SHA-256 của đoạn text đã đem đi embed. Admin sửa question/answer thì hash lệch
-  // -> biết cần embed lại. Dùng hash thay vì so updatedAt vì mọi lệnh UPDATE (kể cả lúc
-  // chính mình ghi embedding vào) đều làm TypeORM tự đổi updatedAt.
-  @Column({
-    name: 'embeddingHash',
-    type: 'varchar',
-    length: 64,
-    nullable: true,
-  })
-  embeddingHash!: string | null;
-
   @CreateDateColumn({ name: 'createdAt' })
   createdAt!: Date;
 

@@ -61,6 +61,7 @@ const PromotionManagementPage = lazy(() => import('../components/admin/promotion
 const ReviewManagementPage = lazy(() => import('../components/admin/reviews/ReviewManagementPage'))
 const RefundRequestManagementPage = lazy(() => import('../components/admin/refunds/RefundRequestManagementPage'))
 const AdminNotificationsPage = lazy(() => import('../components/admin/notifications/AdminNotificationsPage'))
+const StaffProfilePage = lazy(() => import('../components/admin/profile/StaffProfilePage'))
 const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
 const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
 const RoomMapPage = lazy(() => import('../components/admin/roomMap/RoomMapPage'))
@@ -1028,6 +1029,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute roles={['ADMIN', 'STAFF']}>
                 <AdminNotificationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="profile"
+            element={
+              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
+                <StaffProfilePage />
               </ProtectedRoute>
             }
           />
