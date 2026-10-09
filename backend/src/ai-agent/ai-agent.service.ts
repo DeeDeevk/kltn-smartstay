@@ -23,7 +23,10 @@ import {
   AI_AGENT_TOOLS,
   LOGIN_REQUIRED_TOOLS,
 } from './tools/ai-agent-tools.definitions';
-import { AiAgentToolsService } from './tools/ai-agent-tools.service';
+import {
+  AiAgentToolsService,
+  normalizeText,
+} from './tools/ai-agent-tools.service';
 import { buildSystemPrompt } from './constants/system-prompt.constant';
 import { HotelConfigService } from 'src/hotel-config/hotel-config.service';
 
@@ -33,6 +36,26 @@ import { HotelConfigService } from 'src/hotel-config/hotel-config.service';
 // gọi tool) trước khi model mới trả lời bằng văn bản ở vòng kế tiếp; để 4 dễ bị chặn
 // giữa chừng và rơi vào FALLBACK_REPLY dù model chưa thực sự bế tắc.
 const MAX_TOOL_ROUNDS = 6;
+
+// Lớp chặn thứ hai cho thẻ phòng: dù model quên truyền sortBy/limit cho search_rooms,
+// thẻ phòng hiện cho khách vẫn chỉ gồm những loại phòng câu trả lời thật sự nhắc tới.
+// VD hỏi "phòng rẻ nhất", model trả lời đúng 1 tên phòng thì chỉ hiện đúng thẻ đó thay
+// vì cả danh sách tool trả về. Không nhắc tên phòng nào (câu chung chung kiểu "đây là các
+// phòng còn trống") thì giữ nguyên toàn bộ.
+function narrowRoomsToMentioned(
+  rooms: unknown[] | null,
+  reply: string,
+): unknown[] | null {
+  if (!rooms || rooms.length <= 1) return rooms;
+  const text = normalizeText(reply);
+  const mentioned = rooms.filter((room) => {
+    const name = (room as { name?: unknown })?.name;
+    return (
+      typeof name === 'string' && name && text.includes(normalizeText(name))
+    );
+  });
+  return mentioned.length > 0 ? mentioned : rooms;
+}
 const FALLBACK_REPLY =
   'Xin lỗi, hiện tôi chưa thể xử lý yêu cầu này, bạn vui lòng thử lại hoặc liên hệ lễ tân.';
 // Chỉ gửi cho LLM N lượt hỏi-đáp gần nhất — hội thoại dài mà gửi toàn bộ thì mỗi tin
@@ -236,7 +259,7 @@ export class AiAgentService {
     return {
       conversationId: conversation.conversationId,
       reply,
-      rooms: latestRooms,
+      rooms: narrowRoomsToMentioned(latestRooms, reply),
       promotions: latestPromotions,
       pendingBooking: conversation.pendingBooking ?? null,
       booking: latestBooking,

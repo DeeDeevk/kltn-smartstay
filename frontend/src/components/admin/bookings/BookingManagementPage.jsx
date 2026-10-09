@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   CalendarCheck2,
@@ -12,7 +13,7 @@ import {
   Search,
   SearchX,
 } from 'lucide-react';
-import { useGetBookingsQuery } from '../../../services/booking';
+import { useGetBookingByIdQuery, useGetBookingsQuery } from '../../../services/booking';
 import useAdminOverviewStats from '../dashboard/useAdminOverviewStats';
 import BookingAdminDetailModal from './BookingAdminDetailModal';
 import StatusPill from '../../booking/StatusPill';
@@ -60,6 +61,29 @@ export default function BookingManagementPage() {
   const [applied, setApplied] = useState(EMPTY_SEARCH);
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState(null);
+
+  // Mở thẳng chi tiết 1 đơn khi vào trang bằng ?bookingId=... (VD bấm thông báo "Có đơn
+  // đặt phòng mới"). Tra riêng theo id chứ không tìm trong danh sách: đơn đó có thể không
+  // nằm ở trang/tab đang hiển thị. Mở xong thì bỏ tham số khỏi URL, để F5 hay đóng modal
+  // không bật lại nó lần nữa.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusBookingId = searchParams.get('bookingId');
+  const { data: focusBooking, isError: focusError } = useGetBookingByIdQuery(focusBookingId, {
+    skip: !focusBookingId,
+  });
+  useEffect(() => {
+    if (!focusBookingId || (!focusBooking && !focusError)) return;
+    if (focusBooking) setDetail(focusBooking);
+    else toast.error('Không tìm thấy đơn đặt phòng này');
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('bookingId');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [focusBookingId, focusBooking, focusError, setSearchParams]);
 
   const { stats, reload: reloadStats } = useAdminOverviewStats();
   const activeStatus = TABS.find((t) => t.key === tab)?.status;

@@ -47,6 +47,7 @@
     "@nestjs/typeorm": "^11.0.3",
     "@nestjs/websockets": "^11.2.3",
     "@payos/node": "^2.0.5",
+    "@pinecone-database/pinecone": "^9.0.0",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.2.0",
     "class-transformer": "^0.5.1",
