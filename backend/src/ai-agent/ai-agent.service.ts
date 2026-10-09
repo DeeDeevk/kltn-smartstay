@@ -125,6 +125,18 @@ export class AiAgentService {
       }),
     );
 
+    // Khách bấm "Huỷ" trên thẻ đề xuất: xoá đề xuất trước khi gọi model, để response
+    // lượt này trả pendingBooking = null và thẻ biến mất. So khớp proposalId để bấm Huỷ
+    // trên một thẻ cũ không xoá nhầm đề xuất mới hơn.
+    if (
+      dto.cancelProposalId &&
+      conversation.pendingBooking?.proposalId === dto.cancelProposalId
+    ) {
+      conversation.pendingBooking = null;
+      conversation.pendingBookingProposedAt = null;
+      await this.conversationRepo.save(conversation);
+    }
+
     // Cheap single-row lookup, refreshed every message so the model always has the
     // CURRENT address (no stale cache) — this is what lets it answer "hotel address?"
     // directly from the system prompt instead of needing a tool call for it. Wrapped in
@@ -280,15 +292,33 @@ export class AiAgentService {
       where: { conversation: { conversationId: conversation.conversationId } },
       order: { createdAt: 'ASC' },
     });
+    // Đề xuất đặt phòng chỉ còn hiệu lực nếu trùng với pendingBooking hiện tại của hội
+    // thoại. Đề xuất đã huỷ / đã bị thay bằng đề xuất mới / đã thành đơn thì ẩn data đi
+    // để frontend không dựng lại thẻ "Xác nhận đặt phòng" khi tải lại lịch sử.
+    const activeProposalId = conversation.pendingBooking?.proposalId ?? null;
     return messages.map((m) => ({
       messageId: m.messageId,
       role: m.role,
       content: m.content,
       toolName: m.toolName,
       toolArgs: m.toolArgs,
-      toolResult: m.toolResult,
+      toolResult: this.hideStaleProposal(m, activeProposalId),
       createdAt: m.createdAt,
     }));
+  }
+
+  private hideStaleProposal(
+    m: AiMessage,
+    activeProposalId: string | null,
+  ): AiMessage['toolResult'] {
+    if (m.toolName !== 'propose_booking' || !m.toolResult) {
+      return m.toolResult;
+    }
+    const result = m.toolResult as { data?: { proposalId?: string } | null };
+    if (result.data?.proposalId === activeProposalId) {
+      return m.toolResult;
+    }
+    return { ...m.toolResult, data: null };
   }
 
   private async assertWithinDailyQuota(userId: string): Promise<void> {
