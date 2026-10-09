@@ -23,16 +23,16 @@ services:
     volumes:
       - vikahotel_redis_data:/data
 
-  qdrant:
-    image: qdrant/qdrant:v1.12.4
-    container_name: vikahotel-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"   # REST API + giao diện web: http://localhost:6333/dashboard
-    volumes:
-      - vikahotel_qdrant_data:/qdrant/storage
+  # qdrant:
+  #   image: qdrant/qdrant:v1.12.4
+  #   container_name: vikahotel-qdrant
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6333:6333"   # REST API + giao diện web: http://localhost:6333/dashboard
+  #   volumes:
+  #     - vikahotel_qdrant_data:/qdrant/storage
 
 volumes:
   vikahotel_pg_data:
   vikahotel_redis_data:
-  vikahotel_qdrant_data:
+  # vikahotel_qdrant_data:
