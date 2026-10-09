@@ -23,6 +23,7 @@ import {
   AiConversation,
   PendingBookingSummary,
 } from '../entities/ai-conversation.entity';
+import { todayInHotelTz } from 'src/common/utils/date.util';
 
 export interface ToolExecutionContext {
   // null = khách vãng lai chưa đăng nhập.
@@ -75,7 +76,11 @@ const NEGATED_AFFIRMATIVE_RE = new RegExp(
   'iu',
 );
 
-function normalizeText(text: string): string {
+// Trần cho tham số limit của search_rooms — model truyền số lớn bất thường thì cũng chỉ
+// trả về chừng này.
+const MAX_SEARCH_LIMIT = 10;
+
+export function normalizeText(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -174,6 +179,7 @@ export class AiAgentToolsService {
       case 'request_booking_form':
         // Tool này không thao tác dữ liệu gì — chỉ là tín hiệu để backend trả kèm
         // "bookingFormRequest" trong response cho frontend hiển thị biểu mẫu.
+        this.assertNotPast(args.checkIn);
         return Promise.resolve(args);
       case 'propose_booking':
         return this.proposeBooking(args, ctx);
@@ -191,6 +197,7 @@ export class AiAgentToolsService {
   }
 
   private async searchRooms(args: Record<string, unknown>) {
+    this.assertNotPast(args.checkIn);
     const checkIn = String(args.checkIn);
     const checkOut = String(args.checkOut);
     const guests = args.guests !== undefined ? Number(args.guests) : undefined;
@@ -222,6 +229,18 @@ export class AiAgentToolsService {
     if (minPrice !== undefined) {
       results = results.filter((rt) => rt.basePrice >= minPrice);
     }
+    // Sắp xếp + cắt số lượng ở server, cùng lý do với lọc giá ở trên: khách hỏi "phòng rẻ
+    // nhất" thì thẻ phòng hiện ra chỉ được có đúng phòng đó, không phải cả danh sách.
+    if (args.sortBy === 'price_asc' || args.sortBy === 'price_desc') {
+      const direction = args.sortBy === 'price_asc' ? 1 : -1;
+      results = [...results].sort(
+        (a, b) => (a.basePrice - b.basePrice) * direction,
+      );
+    }
+    const limit = Number(args.limit);
+    if (Number.isInteger(limit) && limit > 0) {
+      results = results.slice(0, Math.min(limit, MAX_SEARCH_LIMIT));
+    }
 
     return results.map((rt) => ({
       roomTypeId: rt.roomTypeId,
@@ -239,6 +258,7 @@ export class AiAgentToolsService {
     const roomTypeId = String(args.roomTypeId);
     const checkIn = String(args.checkIn);
     const checkOut = String(args.checkOut);
+    this.assertNotPast(checkIn);
 
     const result = await this.bookingService.getRoomTypeAvailability(
       roomTypeId,
@@ -355,6 +375,7 @@ export class AiAgentToolsService {
     args: Record<string, unknown>,
     ctx: ToolExecutionContext,
   ) {
+    this.assertNotPast(args.checkIn);
     const roomTypeId = String(args.roomTypeId);
     const checkIn = String(args.checkIn);
     const checkOut = String(args.checkOut);
@@ -600,5 +621,17 @@ export class AiAgentToolsService {
       description: place.description,
       address: place.address,
     }));
+  }
+
+  // Lỗi trả về cho model đọc: nói rõ hôm nay là ngày nào để nó báo lại khách cho đúng.
+  private assertNotPast(checkIn: unknown) {
+    const today = todayInHotelTz();
+    if (typeof checkIn === 'string' && checkIn && checkIn < today) {
+      throw new BadRequestException(
+        `Ngày nhận phòng ${checkIn} đã qua (hôm nay là ${today}). Hãy báo khách ngày này ` +
+          'đã qua và mời khách chọn ngày từ hôm nay trở đi — KHÔNG hiển thị biểu mẫu, ' +
+          'KHÔNG tự đổi sang năm sau.',
+      );
+    }
   }
 }

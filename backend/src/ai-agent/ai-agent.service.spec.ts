@@ -385,6 +385,142 @@ describe('AiAgentService', () => {
     ).toBe(false);
   });
 
+  describe('khách bấm "Huỷ" trên thẻ đề xuất (cancelProposalId)', () => {
+    const replyOk = {
+      text: 'Dạ vâng, em đã huỷ đề xuất này ạ.',
+      toolCalls: [],
+    } satisfies LlmChatResult;
+
+    // Tạo hội thoại rồi gắn sẵn 1 đề xuất đang chờ xác nhận — giống trạng thái sau khi
+    // propose_booking chạy xong ở lượt trước.
+    async function conversationWithPendingProposal(proposalId: string) {
+      llmProvider.chat.mockResolvedValueOnce(replyOk);
+      const { conversationId } = await service.sendMessage(userId, {
+        message: 'Xin chào',
+      });
+      const conversation = (await conversationRepo.findOne({
+        where: { conversationId },
+      }))!;
+      conversation.pendingBooking = { proposalId } as never;
+      conversation.pendingBookingProposedAt = new Date();
+      return conversation;
+    }
+
+    it('xoá đề xuất ngay khi proposalId khớp, response trả pendingBooking = null', async () => {
+      const proposalId = randomUUID();
+      const conversation = await conversationWithPendingProposal(proposalId);
+      llmProvider.chat.mockResolvedValueOnce(replyOk);
+
+      const result = await service.sendMessage(userId, {
+        conversationId: conversation.conversationId,
+        message: 'Tôi không đồng ý, vui lòng huỷ đề xuất này.',
+        cancelProposalId: proposalId,
+      });
+
+      expect(result.pendingBooking).toBeNull();
+      expect(conversation.pendingBooking).toBeNull();
+      expect(conversation.pendingBookingProposedAt).toBeNull();
+    });
+
+    it('giữ nguyên đề xuất khi cancelProposalId thuộc một thẻ cũ hơn', async () => {
+      const currentId = randomUUID();
+      const conversation = await conversationWithPendingProposal(currentId);
+      llmProvider.chat.mockResolvedValueOnce(replyOk);
+
+      const result = await service.sendMessage(userId, {
+        conversationId: conversation.conversationId,
+        message: 'Tôi không đồng ý, vui lòng huỷ đề xuất này.',
+        cancelProposalId: randomUUID(),
+      });
+
+      expect(result.pendingBooking).toEqual({ proposalId: currentId });
+      expect(conversation.pendingBookingProposedAt).not.toBeNull();
+    });
+
+    it('không đụng tới đề xuất khi khách nhắn bình thường (không có cancelProposalId)', async () => {
+      const proposalId = randomUUID();
+      const conversation = await conversationWithPendingProposal(proposalId);
+      llmProvider.chat.mockResolvedValueOnce(replyOk);
+
+      const result = await service.sendMessage(userId, {
+        conversationId: conversation.conversationId,
+        message: 'Phòng này có ban công không?',
+      });
+
+      expect(result.pendingBooking).toEqual({ proposalId });
+    });
+  });
+
+  describe('getHistory ẩn đề xuất không còn hiệu lực', () => {
+    // Lưu thẳng 1 dòng TOOL propose_booking vào lịch sử, như lúc tool chạy thật.
+    async function saveProposalMessage(
+      conversation: AiConversation,
+      proposalId: string,
+    ) {
+      await messageRepo.save(
+        messageRepo.create({
+          conversation,
+          role: AiMessageRole.TOOL,
+          toolName: 'propose_booking',
+          toolArgs: {},
+          toolResult: { success: true, data: { proposalId } },
+        }),
+      );
+    }
+
+    async function newConversation() {
+      llmProvider.chat.mockResolvedValueOnce({
+        text: 'Dạ em chào anh/chị ạ.',
+        toolCalls: [],
+      } satisfies LlmChatResult);
+      const { conversationId } = await service.sendMessage(userId, {
+        message: 'Xin chào',
+      });
+      return (await conversationRepo.findOne({ where: { conversationId } }))!;
+    }
+
+    function proposalResults(history: Array<{ toolName: string | null }>) {
+      return history
+        .filter((m) => m.toolName === 'propose_booking')
+        .map(
+          (m) =>
+            (m as unknown as { toolResult: { data: unknown } }).toolResult.data,
+        );
+    }
+
+    it('giữ data của đề xuất đang chờ, ẩn data (null) của đề xuất cũ đã bị thay thế', async () => {
+      const conversation = await newConversation();
+      const oldId = randomUUID();
+      const currentId = randomUUID();
+      await saveProposalMessage(conversation, oldId);
+      await saveProposalMessage(conversation, currentId);
+      conversation.pendingBooking = { proposalId: currentId } as never;
+
+      const history = await service.getHistory(
+        conversation.conversationId,
+        userId,
+      );
+
+      expect(proposalResults(history)).toEqual([
+        null,
+        { proposalId: currentId },
+      ]);
+    });
+
+    it('ẩn mọi đề xuất khi hội thoại không còn đề xuất nào (đã huỷ hoặc đã thành đơn)', async () => {
+      const conversation = await newConversation();
+      await saveProposalMessage(conversation, randomUUID());
+      conversation.pendingBooking = null;
+
+      const history = await service.getHistory(
+        conversation.conversationId,
+        userId,
+      );
+
+      expect(proposalResults(history)).toEqual([null]);
+    });
+  });
+
   it('Gemini lỗi tạm thời (503) thì thử lại và vẫn trả lời được', async () => {
     jest.useFakeTimers();
     try {

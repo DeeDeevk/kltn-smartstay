@@ -34,6 +34,9 @@ const ADMIN_TARGETS = {
   ADMIN_SHIFT_AUTO_CLOSED: '/admin/schedule',
 };
 
+// Các loại thông báo nội bộ gắn với đúng 1 đơn đặt phòng.
+const BOOKING_DETAIL_TYPES = new Set(['STAFF_NEW_BOOKING', 'ADMIN_PAID_BOOKING_CANCELLED']);
+
 // "3 phút trước", "2 giờ trước"... Thông báo mới là thứ khách quan tâm nhất nên hiện
 // khoảng cách thời gian dễ đọc hơn là ngày giờ đầy đủ.
 export function timeAgo(value) {
@@ -95,6 +98,13 @@ export function useOpenNotification(onBeforeNavigate) {
     onBeforeNavigate?.();
     // Đánh dấu đã đọc là việc phụ — lỗi thì vẫn cho khách đi tiếp.
     if (!item.isRead) markRead(item.id);
+
+    // Thông báo gắn với 1 đơn cụ thể -> mở thẳng chi tiết đơn đó trên trang Đặt phòng,
+    // không bắt nhân viên tự dò lại trong danh sách.
+    if (BOOKING_DETAIL_TYPES.has(item.type) && item.bookingId) {
+      navigate(`/admin/bookings?bookingId=${item.bookingId}`);
+      return;
+    }
 
     if (ADMIN_TARGETS[item.type]) {
       navigate(ADMIN_TARGETS[item.type]);

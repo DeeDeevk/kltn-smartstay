@@ -42,7 +42,6 @@ export default function LoginForm() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    rememberMe: false,
   });
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
@@ -164,20 +163,7 @@ export default function LoginForm() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <label className="flex cursor-pointer items-center gap-2 group">
-              <input
-                type="checkbox"
-                checked={formData.rememberMe}
-                onChange={(e) =>
-                  setFormData({ ...formData, rememberMe: e.target.checked })
-                }
-                className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-sm leading-none text-slate-500 transition-colors group-hover:text-slate-700">
-                {t("auth.rememberMe")}
-              </span>
-            </label>
+          <div className="flex items-center justify-start gap-3 pt-1">
             <button
               type="button"
               onClick={() => navigate("/forgot-password")}
