@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -71,7 +71,15 @@ export default function BookingAdminDetailModal({ booking: bookingProp, onClose,
   // bên dưới KHÔNG BAO GIỜ chạy -> Modal không unmount -> nút X/"Đóng" bấm không có tác
   // dụng (bug đã xác nhận bằng Playwright, xảy ra với MỌI đơn, không riêng đơn có
   // RefundRequest — chỉ là dễ gặp hơn vì fetch đã kịp trả dữ liệu).
-  const booking = bookingProp ? (detail ?? bookingProp) : null;
+  const bookingData = bookingProp ? (detail ?? bookingProp) : null;
+  // Giữ lại dữ liệu đơn của lần render cuối còn mở, để nội dung modal không biến mất
+  // đột ngột trong lúc Modal.jsx đang chạy animation đóng (EXIT_MS) — khớp với cơ chế
+  // `lastOpenContent` mà Modal.jsx tự dùng cho chính nó. Nếu dùng trực tiếp `bookingData`
+  // (về null ngay khi đóng) thì `if (!booking) return null` ngay dưới sẽ unmount toàn bộ
+  // cây, kể cả <Modal>, khiến modal "tắt phựt" thay vì mờ dần như mọi modal khác.
+  const lastBookingRef = useRef(bookingData);
+  if (bookingData) lastBookingRef.current = bookingData;
+  const booking = bookingData ?? lastBookingRef.current;
   // Bước chọn phòng của luồng nhận phòng — mở ngay trong modal này thay vì điều hướng
   // sang Sơ đồ phòng: đơn đặt online luôn chưa gán phòng (khách chỉ chọn LOẠI phòng),
   // nên nếu chỉ navigate thì nhân viên rơi vào sơ đồ trống trơn và phải tự mò phòng.
@@ -140,7 +148,7 @@ export default function BookingAdminDetailModal({ booking: bookingProp, onClose,
 
   return (
     <>
-    <Modal open={Boolean(booking)} onClose={onClose} title="Chi tiết đặt phòng" size="lg">
+    <Modal open={Boolean(bookingData)} onClose={onClose} title="Chi tiết đặt phòng" size="lg">
       <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
         <Info label="Mã đặt phòng">
           <span className="font-mono font-bold text-blue-600">
