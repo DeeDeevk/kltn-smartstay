@@ -6,7 +6,7 @@ import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { Faq } from '../../entities/faq.entity';
 import { cosineSimilarity } from '../faq-embedding.service';
 import { EVAL_SET, EvalItem } from './faq-eval-set';
-import { QdrantClient } from '@qdrant/js-client-rest';
+import { Pinecone } from '@pinecone-database/pinecone';
 
 const CACHE_FILE = path.join(__dirname, 'query-embeddings.cache.json');
 const RESULT_FILE = path.join(__dirname, 'rag-eval-result.json');
@@ -63,16 +63,18 @@ interface Ranked {
   rank: number | null;
 }
 
-async function embedFaqs(faqs: Faq[]): Promise<Map<string, number[]>> {
-  const qdrant = new QdrantClient({
-    url: process.env.QDRANT_URL ?? 'http://localhost:6333',
-  });
-  const point = await qdrant.retrieve(process.env.QDRANT_COLLECTION!, {
+async function loadFaqVectors(faqs: Faq[]): Promise<Map<string, number[]>> {
+  const index = new Pinecone({
+    apiKey: process.env.PINECONE_API_KEY!,
+  }).index({ name: process.env.PINECONE_INDEX ?? 'faq' });
+  const { records } = await index.fetch({
     ids: faqs.map((f) => f.faqId),
-    with_payload: false,
-    with_vector: true,
   });
-  return new Map(point.map((p) => [String(p.id), p.vector as number[]]));
+  const vectors = new Map<string, number[]>();
+  for (const [id, r] of Object.entries(records)) {
+    if (r.values?.length) vectors.set(id, r.values);
+  }
+  return vectors;
 }
 
 function rankAll(
@@ -166,7 +168,7 @@ async function run() {
     throw new Error(
       `expected không khớp FAQ nào:\n${missing.map((m) => ' - ' + m.expected).join('\n')}`,
     );
-  const faqVectors = await embedFaqs(faqs);
+  const faqVectors = await loadFaqVectors(faqs);
   if (faqs.some((f) => !faqVectors.has(f.faqId)))
     throw new Error(
       'Có FAQ chưa embed — restart backend hoặc gọi /faqs/reindex trước.',

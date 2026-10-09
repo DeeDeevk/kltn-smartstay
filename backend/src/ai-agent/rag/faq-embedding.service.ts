@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { Faq } from '../entities/faq.entity';
-import { QdrantClient } from '@qdrant/js-client-rest';
+import { Index, Pinecone } from '@pinecone-database/pinecone';
 
 // Below this cosine-similarity score, the best match is not close enough to be
 // presented as a confident answer — the caller (get_policy) should tell the model
@@ -24,24 +24,25 @@ export interface FaqReindexSummary {
   failed: number;
 }
 
-interface StaleFaq {
-  faq: Faq;
-  text: string;
+// Metadata lưu kèm mỗi vector trên Pinecone: hash + model để biết FAQ nào cần embed
+// lại, faqId để lọc theo FAQ khi query.
+type FaqVectorMeta = {
   hash: string;
-}
+  model: string;
+  faqId: string;
+};
 
 // Gemini batchEmbedContents accepts at most 100 requests per call.
 const EMBED_BATCH_SIZE = 100;
 const VECTOR_SIZE = 768;
 
-// Lưu vector ở Qdrant thay vì trong DB để tránh bloat bảng FAQ (mỗi vector ~3KB, vài nghìn FAQ là vài MB).
+// Vector FAQ lưu trên Pinecone (id = faqId), nội dung FAQ vẫn nằm ở Postgres.
 @Injectable()
 export class FaqEmbeddingService implements OnModuleInit {
   private readonly logger = new Logger(FaqEmbeddingService.name);
   private readonly client: GoogleGenerativeAI;
   private readonly embeddingModel: string;
-  private readonly qdrant: QdrantClient;
-  private readonly collection: string;
+  private readonly index: Index<FaqVectorMeta>;
   // false until one refresh has fully succeeded — lets search() retry a refresh that
   // failed at boot (e.g. embedding API briefly unreachable) instead of staying empty.
   private indexReady = false;
@@ -58,23 +59,23 @@ export class FaqEmbeddingService implements OnModuleInit {
       throw new Error('Missing GEMINI_API_KEY environment variable');
     }
     this.client = new GoogleGenerativeAI(apiKey);
-    // text-embedding-004 is not enabled for embedContent on every API key/project
-    // (confirmed via ListModels for this project — only the gemini-embedding-* family
-    // is available here), so default to the current generally-available embedding
-    // model instead. Still overridable via env for projects where text-embedding-004
-    // (or a newer model) is actually enabled.
+    // Overridable via env; đổi model thì refresh() tự embed lại toàn bộ FAQ.
     this.embeddingModel =
       this.config.get<string>('GEMINI_EMBEDDING_MODEL') ??
       'gemini-embedding-001';
-    this.qdrant = new QdrantClient({
-      url: config.get<string>('QDRANT_URL') ?? 'http://localhost:6333',
+    const pineconeKey = this.config.get<string>('PINECONE_API_KEY');
+    if (!pineconeKey) {
+      throw new Error('Không tìm thấy PINECONE_API_KEY trong biến môi trường');
+    }
+    this.index = new Pinecone({
+      apiKey: pineconeKey,
+    }).index<FaqVectorMeta>({
+      name: this.config.get<string>('PINECONE_INDEX') ?? 'faq',
     });
-    this.collection = config.get('QDRANT_COLLECTION') ?? 'faq';
   }
 
   async onModuleInit(): Promise<void> {
     try {
-      await this.ensureCollection();
       await this.refresh();
     } catch (err) {
       // A DB/embedding failure at boot shouldn't crash the whole app — search() will
@@ -85,43 +86,29 @@ export class FaqEmbeddingService implements OnModuleInit {
     }
   }
 
-  // Tạo collection nếu chưa có. Distance 'Cosine' -> điểm Qdrant trả về CHÍNH LÀ độ
-  // giống cosine, nên ngưỡng LOW_CONFIDENCE_THRESHOLD = 0.68.
-  private async ensureCollection() {
-    const { exists } = await this.qdrant.collectionExists(this.collection);
-    if (!exists) {
-      await this.qdrant.createCollection(this.collection, {
-        vectors: {
-          size: VECTOR_SIZE,
-          distance: 'Cosine',
-        },
-      });
-    }
-  }
-
   async search(queryText: string, topK = 2): Promise<FaqSearchResult[]> {
     try {
       if (!this.indexReady) await this.refresh().catch(() => {});
       const queryVector = await this.embed(queryText, TaskType.RETRIEVAL_QUERY);
-      const { points: hits } = await this.qdrant.query(this.collection, {
-        query: queryVector,
-        limit: topK,
+      const { matches } = await this.index.query({
+        vector: queryVector,
+        topK,
       });
-      if (hits.length === 0) return [];
+      if (matches.length === 0) return [];
 
-      // Nội dung FAQ lấy từ Postgres (nguồn gốc), không nhét vào payload Qdrant — để admin
-      // sửa câu chữ là bot dùng ngay bản mới, không lệch giữa hai nơi.
+      // Nội dung FAQ lấy từ Postgres (nguồn gốc), không lưu trong metadata Pinecone — để
+      // admin sửa câu chữ là bot dùng ngay bản mới, không lệch giữa hai nơi.
       const faqs = await this.faqRepo.findBy({
-        faqId: In(hits.map((h) => String(h.id))),
+        faqId: In(matches.map((m) => String(m.id))),
       });
       const byId = new Map(faqs.map((f) => [f.faqId, f]));
 
-      return hits
-        .filter((h) => byId.has(String(h.id)))
-        .map((h) => ({
-          entry: byId.get(String(h.id))!,
-          similarity: h.score,
-          lowConfidence: h.score < LOW_CONFIDENCE_THRESHOLD,
+      return matches
+        .filter((m) => byId.has(String(m.id)))
+        .map((m) => ({
+          entry: byId.get(String(m.id))!,
+          similarity: m.score ?? 0,
+          lowConfidence: (m.score ?? 0) < LOW_CONFIDENCE_THRESHOLD,
         }));
     } catch (error) {
       this.logger.error(
@@ -131,6 +118,8 @@ export class FaqEmbeddingService implements OnModuleInit {
     }
   }
 
+  // Embeds only FAQs whose text or embedding model changed since last time, and removes
+  // vectors of hidden/deleted FAQs. Called at boot and after every admin create/update/delete.
   refresh(): Promise<FaqReindexSummary> {
     if (!this.refreshing) {
       this.refreshing = this.doRefresh().finally(() => {
@@ -143,14 +132,16 @@ export class FaqEmbeddingService implements OnModuleInit {
   private async doRefresh(): Promise<FaqReindexSummary> {
     const faqs = await this.faqRepo.find({ where: { isActive: true } });
 
-    // Lấy payload (hash, model) hiện có trong Qdrant. Dùng faqId làm id của điểm —
-    // Qdrant nhận UUID làm id, nên 1 FAQ = đúng 1 điểm, upsert lại là ghi đè.
-    const existing = await this.qdrant.retrieve(this.collection, {
-      ids: faqs.map((faq) => faq.faqId),
-      with_payload: true,
-      with_vector: false,
-    });
-    const stored = new Map(existing.map((p) => [String(p.id), p.payload]));
+    const stored = new Map<string, FaqVectorMeta | undefined>();
+    if (faqs.length > 0) {
+      const { records } = await this.index.fetch({
+        ids: faqs.map((f) => f.faqId),
+      });
+      for (const [id, r] of Object.entries(records)) {
+        stored.set(id, r.metadata);
+      }
+    }
+
     const stale = faqs
       .map((faq) => ({
         faq,
@@ -174,30 +165,35 @@ export class FaqEmbeddingService implements OnModuleInit {
         return [
           {
             id: s.faq.faqId,
-            vector: v,
-            payload: { hash: s.hash, model: this.embeddingModel },
+            values: v,
+            metadata: {
+              hash: s.hash,
+              model: this.embeddingModel,
+              faqId: s.faq.faqId,
+            },
           },
         ];
       });
       if (points.length > 0) {
-        await this.qdrant.upsert(this.collection, { wait: true, points });
+        await this.index.upsert({ records: points });
         embedded += points.length;
       }
     }
-    // Xoá điểm của FAQ đã bị xoá hoặc bị ẩn — trước đây việc này tự xảy ra vì chỉ mục
-    // RAM dựng lại từ đầu mỗi lần; giờ chỉ mục nằm lâu dài trong Qdrant nên phải dọn tay.
-    const activeIds = new Set(faqs.map((faq) => faq.faqId));
-    const { points: all } = await this.qdrant.scroll(this.collection, {
-      limit: 10_000,
-      with_payload: false,
-    });
-    const orphanIds = all
-      .map((p) => String(p.id))
-      .filter((id) => !activeIds.has(id));
+    // Xoá vector của FAQ đã bị xoá hoặc bị ẩn. listPaginated trả id theo từng trang.
+    const activeIds = new Set(faqs.map((f) => f.faqId));
+    const allIds: string[] = [];
+    let token: string | undefined;
+    do {
+      const page = await this.index.listPaginated({
+        paginationToken: token,
+      });
+      allIds.push(...(page.vectors ?? []).map((v) => v.id!));
+      token = page.pagination?.next;
+    } while (token);
+    const orphanIds = allIds.filter((id) => !activeIds.has(id));
     if (orphanIds.length > 0) {
-      await this.qdrant.delete(this.collection, {
-        wait: true,
-        points: orphanIds,
+      await this.index.deleteMany({
+        ids: orphanIds,
       });
     }
     this.indexReady = failed === 0;

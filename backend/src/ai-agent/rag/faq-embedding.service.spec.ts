@@ -30,59 +30,47 @@ function fakeEmbed(text: string): number[] {
   return vector;
 }
 
-// Qdrant giả, lưu điểm trong bộ nhớ: đủ để chạy đúng luồng retrieve -> upsert ->
-// scroll -> delete -> query của service mà không cần container Qdrant thật.
+// Pinecone giả, lưu record trong bộ nhớ: đủ để chạy luồng fetch -> upsert ->
+// listPaginated -> deleteMany -> query của service mà không cần gọi Pinecone thật.
 // Tên bắt đầu bằng "mock" để jest.mock (bị hoist lên đầu file) được phép tham chiếu.
-interface StoredPoint {
+interface StoredRecord {
   id: string;
-  vector: number[];
-  payload: Record<string, unknown>;
+  values: number[];
+  metadata: Record<string, unknown>;
 }
-const mockPoints = new Map<string, StoredPoint>();
-const mockState = { collectionExists: true };
-const mockQdrant = {
-  collectionExists: jest.fn(() =>
-    Promise.resolve({ exists: mockState.collectionExists }),
+const mockPoints = new Map<string, StoredRecord>();
+const mockIndex = {
+  fetch: jest.fn(({ ids }: { ids: string[] }) =>
+    Promise.resolve({
+      records: Object.fromEntries(
+        ids
+          .filter((id) => mockPoints.has(id))
+          .map((id) => [id, mockPoints.get(id)!]),
+      ),
+    }),
   ),
-  createCollection: jest.fn(() => {
-    mockState.collectionExists = true;
-    return Promise.resolve(true);
+  upsert: jest.fn(({ records }: { records: StoredRecord[] }) => {
+    for (const r of records) mockPoints.set(r.id, r);
+    return Promise.resolve();
   }),
-  retrieve: jest.fn((_collection: string, { ids }: { ids: string[] }) =>
-    Promise.resolve(
-      ids
-        .filter((id) => mockPoints.has(id))
-        .map((id) => ({ id, payload: mockPoints.get(id)!.payload })),
-    ),
+  listPaginated: jest.fn(() =>
+    Promise.resolve({ vectors: [...mockPoints.keys()].map((id) => ({ id })) }),
   ),
-  upsert: jest.fn(
-    (_collection: string, { points }: { points: StoredPoint[] }) => {
-      for (const p of points) mockPoints.set(p.id, p);
-      return Promise.resolve({ status: 'completed' });
-    },
-  ),
-  scroll: jest.fn(() =>
-    Promise.resolve({ points: [...mockPoints.keys()].map((id) => ({ id })) }),
-  ),
-  delete: jest.fn((_collection: string, { points }: { points: string[] }) => {
-    for (const id of points) mockPoints.delete(id);
-    return Promise.resolve({ status: 'completed' });
+  deleteMany: jest.fn(({ ids }: { ids: string[] }) => {
+    for (const id of ids) mockPoints.delete(id);
+    return Promise.resolve();
   }),
-  query: jest.fn(
-    (
-      _collection: string,
-      { query, limit }: { query: number[]; limit: number },
-    ) =>
-      Promise.resolve({
-        points: [...mockPoints.values()]
-          .map((p) => ({ id: p.id, score: cosineSimilarity(query, p.vector) }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, limit),
-      }),
+  query: jest.fn(({ vector, topK }: { vector: number[]; topK: number }) =>
+    Promise.resolve({
+      matches: [...mockPoints.values()]
+        .map((p) => ({ id: p.id, score: cosineSimilarity(vector, p.values) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK),
+    }),
   ),
 };
-jest.mock('@qdrant/js-client-rest', () => ({
-  QdrantClient: jest.fn(() => mockQdrant),
+jest.mock('@pinecone-database/pinecone', () => ({
+  Pinecone: jest.fn(() => ({ index: () => mockIndex })),
 }));
 
 // Single-text embedding: used for search queries and as the per-row fallback when a
@@ -128,7 +116,8 @@ jest.mock('@google/generative-ai', () => {
 
 function makeConfig(): ConfigService {
   return {
-    get: (key: string) => (key === 'GEMINI_API_KEY' ? 'fake-key' : undefined),
+    get: (key: string) =>
+      ({ GEMINI_API_KEY: 'fake-key', PINECONE_API_KEY: 'fake-pinecone' })[key],
   } as unknown as ConfigService;
 }
 
@@ -182,33 +171,11 @@ describe('FaqEmbeddingService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPoints.clear();
-    mockState.collectionExists = true;
   });
 
-  describe('collection', () => {
-    it('creates a 768-dim cosine collection at boot when it does not exist yet', async () => {
-      mockState.collectionExists = false;
-      const service = makeService(makeRepo(seedRows()));
-
-      await service.onModuleInit();
-
-      expect(mockQdrant.createCollection).toHaveBeenCalledWith('faq', {
-        vectors: { size: VECTOR_SIZE, distance: 'Cosine' },
-      });
-    });
-
-    it('does not recreate an existing collection', async () => {
-      const service = makeService(makeRepo(seedRows()));
-
-      await service.onModuleInit();
-
-      expect(mockQdrant.createCollection).not.toHaveBeenCalled();
-    });
-
-    it('keeps the app running when Qdrant is unreachable at boot', async () => {
-      mockQdrant.collectionExists.mockRejectedValueOnce(
-        new Error('ECONNREFUSED'),
-      );
+  describe('boot', () => {
+    it('keeps the app running when Pinecone is unreachable at boot', async () => {
+      mockIndex.fetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
       const service = makeService(makeRepo(seedRows()));
 
       await expect(service.onModuleInit()).resolves.toBeUndefined();
@@ -252,15 +219,15 @@ describe('FaqEmbeddingService', () => {
       expect(results[0].lowConfidence).toBe(true);
     });
 
-    it('sends a 768-dim query vector to Qdrant with the requested limit', async () => {
+    it('sends a 768-dim query vector to Pinecone with the requested topK', async () => {
       const service = makeService(makeRepo(seedRows()));
       await service.onModuleInit();
 
       await service.search('huỷ phòng', 3);
 
-      const [, request] = mockQdrant.query.mock.calls[0];
-      expect(request.query).toHaveLength(VECTOR_SIZE);
-      expect(request.limit).toBe(3);
+      const [request] = mockIndex.query.mock.calls[0];
+      expect(request.vector).toHaveLength(VECTOR_SIZE);
+      expect(request.topK).toBe(3);
     });
 
     it('reads the FAQ content from the DB, so an admin edit shows up without re-indexing', async () => {
@@ -274,21 +241,21 @@ describe('FaqEmbeddingService', () => {
       expect(results[0].entry.answer).toBe('Nội dung mới do admin vừa sửa.');
     });
 
-    it('skips a Qdrant hit whose FAQ row no longer exists in the DB', async () => {
+    it('skips a Pinecone match whose FAQ row no longer exists in the DB', async () => {
       const rows = seedRows();
       const service = makeService(makeRepo(rows));
       await service.onModuleInit();
 
-      rows.splice(0, 1); // xoá thẳng trong DB, Qdrant chưa kịp dọn
+      rows.splice(0, 1); // xoá thẳng trong DB, Pinecone chưa kịp dọn
       const results = await service.search('huỷ phòng có mất phí không', 5);
 
       expect(results.map((r) => r.entry.faqId)).toEqual(['late-checkout']);
     });
 
-    it('returns an empty result set when Qdrant fails instead of throwing', async () => {
+    it('returns an empty result set when Pinecone fails instead of throwing', async () => {
       const service = makeService(makeRepo(seedRows()));
       await service.onModuleInit();
-      mockQdrant.query.mockRejectedValueOnce(new Error('Qdrant down'));
+      mockIndex.query.mockRejectedValueOnce(new Error('Pinecone down'));
 
       await expect(service.search('huỷ phòng')).resolves.toEqual([]);
     });
@@ -313,9 +280,10 @@ describe('FaqEmbeddingService', () => {
         'late-checkout',
       ]);
       for (const point of mockPoints.values()) {
-        expect(point.vector).toHaveLength(VECTOR_SIZE);
-        expect(typeof point.payload.hash).toBe('string');
-        expect(point.payload.model).toBe('gemini-embedding-001');
+        expect(point.values).toHaveLength(VECTOR_SIZE);
+        expect(typeof point.metadata.hash).toBe('string');
+        expect(point.metadata.model).toBe('gemini-embedding-001');
+        expect(point.metadata.faqId).toBe(point.id);
       }
     });
 
@@ -323,13 +291,13 @@ describe('FaqEmbeddingService', () => {
       const service = makeService(makeRepo(seedRows()));
       await service.refresh();
       batchEmbedContents.mockClear();
-      mockQdrant.upsert.mockClear();
+      mockIndex.upsert.mockClear();
 
       const second = await service.refresh();
 
       expect(second).toEqual({ indexed: 2, embedded: 0, failed: 0 });
       expect(batchEmbedContents).not.toHaveBeenCalled();
-      expect(mockQdrant.upsert).not.toHaveBeenCalled();
+      expect(mockIndex.upsert).not.toHaveBeenCalled();
     });
 
     it('re-embeds only the FAQ whose answer was edited', async () => {
@@ -350,13 +318,13 @@ describe('FaqEmbeddingService', () => {
       const rows = seedRows();
       const service = makeService(makeRepo(rows));
       await service.refresh();
-      mockPoints.get('cancel')!.payload.model = 'text-embedding-004';
+      mockPoints.get('cancel')!.metadata.model = 'text-embedding-004';
       batchEmbedContents.mockClear();
 
       const summary = await service.refresh();
 
       expect(summary.embedded).toBe(1);
-      expect(mockPoints.get('cancel')!.payload.model).toBe(
+      expect(mockPoints.get('cancel')!.metadata.model).toBe(
         'gemini-embedding-001',
       );
     });
@@ -375,13 +343,13 @@ describe('FaqEmbeddingService', () => {
       );
       expect(embedContent).not.toHaveBeenCalled();
       // Each point received the vector of its own text (results map back in order).
-      expect(mockPoints.get('cancel')!.vector).toEqual(
+      expect(mockPoints.get('cancel')!.values).toEqual(
         fakeEmbed(`${rows[0].question}\n${rows[0].answer}`).slice(
           0,
           VECTOR_SIZE,
         ),
       );
-      expect(mockPoints.get('late-checkout')!.vector).toEqual(
+      expect(mockPoints.get('late-checkout')!.values).toEqual(
         fakeEmbed(`${rows[1].question}\n${rows[1].answer}`).slice(
           0,
           VECTOR_SIZE,
@@ -401,7 +369,7 @@ describe('FaqEmbeddingService', () => {
       expect(
         batchEmbedContents.mock.calls.map((call) => call[0].requests.length),
       ).toEqual([100, 100, 50]);
-      expect(mockQdrant.upsert).toHaveBeenCalledTimes(3);
+      expect(mockIndex.upsert).toHaveBeenCalledTimes(3);
     });
 
     it('when a batch fails, retries row by row so one bad FAQ does not hide the others', async () => {
@@ -433,10 +401,7 @@ describe('FaqEmbeddingService', () => {
       rows[0].isActive = false;
       await service.refresh();
 
-      expect(mockQdrant.delete).toHaveBeenCalledWith('faq', {
-        wait: true,
-        points: ['cancel'],
-      });
+      expect(mockIndex.deleteMany).toHaveBeenCalledWith({ ids: ['cancel'] });
       expect([...mockPoints.keys()]).toEqual(['late-checkout']);
     });
 
@@ -445,7 +410,7 @@ describe('FaqEmbeddingService', () => {
 
       await service.refresh();
 
-      expect(mockQdrant.delete).not.toHaveBeenCalled();
+      expect(mockIndex.deleteMany).not.toHaveBeenCalled();
     });
 
     it('shares one in-flight refresh between concurrent callers', async () => {
