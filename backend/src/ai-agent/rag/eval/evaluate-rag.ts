@@ -6,6 +6,7 @@ import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { Faq } from '../../entities/faq.entity';
 import { cosineSimilarity } from '../faq-embedding.service';
 import { EVAL_SET, EvalItem } from './faq-eval-set';
+import { QdrantClient } from '@qdrant/js-client-rest';
 
 const CACHE_FILE = path.join(__dirname, 'query-embeddings.cache.json');
 const RESULT_FILE = path.join(__dirname, 'rag-eval-result.json');
@@ -31,7 +32,7 @@ async function embedQueries(queries: string[]): Promise<Map<string, number[]>> {
   ).getGenerativeModel({ model: MODEL });
 
   for (const q of queries) {
-    const key = `${MODEL}::${q}`; // đổi model thì cache cũ không bị dùng nhầm
+    const key = `${MODEL}::768::${q}`; // đổi model thì cache cũ không bị dùng nhầm
     if (cache[key]) continue;
     for (let attempt = 1; ; attempt++) {
       try {
@@ -39,7 +40,7 @@ async function embedQueries(queries: string[]): Promise<Map<string, number[]>> {
           content: { role: 'user', parts: [{ text: q }] },
           taskType: TaskType.RETRIEVAL_QUERY,
         });
-        cache[key] = res.embedding.values;
+        cache[key] = res.embedding.values.slice(0, 768);
         fs.writeFileSync(CACHE_FILE, JSON.stringify(cache)); // lưu ngay, lỗi giữa chừng không mất
         break;
       } catch (err) {
@@ -50,7 +51,7 @@ async function embedQueries(queries: string[]): Promise<Map<string, number[]>> {
     }
     await sleep(300);
   }
-  return new Map(queries.map((q) => [q, cache[`${MODEL}::${q}`]]));
+  return new Map(queries.map((q) => [q, cache[`${MODEL}::768::${q}`]]));
 }
 
 // ── 2. Xếp hạng FAQ cho từng câu hỏi ────────────────────────────────────
@@ -62,13 +63,29 @@ interface Ranked {
   rank: number | null;
 }
 
-function rankAll(faqs: Faq[], vectors: Map<string, number[]>): Ranked[] {
+async function embedFaqs(faqs: Faq[]): Promise<Map<string, number[]>> {
+  const qdrant = new QdrantClient({
+    url: process.env.QDRANT_URL ?? 'http://localhost:6333',
+  });
+  const point = await qdrant.retrieve(process.env.QDRANT_COLLECTION!, {
+    ids: faqs.map((f) => f.faqId),
+    with_payload: false,
+    with_vector: true,
+  });
+  return new Map(point.map((p) => [String(p.id), p.vector as number[]]));
+}
+
+function rankAll(
+  faqs: Faq[],
+  vectors: Map<string, number[]>,
+  faqVectors: Map<string, number[]>,
+): Ranked[] {
   return EVAL_SET.map((item, i) => {
     const qv = vectors.get(item.query)!;
     const ranked = faqs
       .map((f) => ({
         question: f.question,
-        score: cosineSimilarity(qv, f.embedding!),
+        score: cosineSimilarity(qv, faqVectors.get(f.faqId)!),
       }))
       .sort((a, b) => b.score - a.score);
     const idx = item.expected
@@ -149,13 +166,14 @@ async function run() {
     throw new Error(
       `expected không khớp FAQ nào:\n${missing.map((m) => ' - ' + m.expected).join('\n')}`,
     );
-  if (faqs.some((f) => !f.embedding))
+  const faqVectors = await embedFaqs(faqs);
+  if (faqs.some((f) => !faqVectors.has(f.faqId)))
     throw new Error(
       'Có FAQ chưa embed — restart backend hoặc gọi /faqs/reindex trước.',
     );
 
   const vectors = await embedQueries(EVAL_SET.map((e) => e.query));
-  const rows = rankAll(faqs, vectors);
+  const rows = rankAll(faqs, vectors, faqVectors);
   const dev = rows.filter((r) => r.split === 'dev');
   const test = rows.filter((r) => r.split === 'test');
 

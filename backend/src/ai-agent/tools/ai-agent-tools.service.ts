@@ -75,7 +75,11 @@ const NEGATED_AFFIRMATIVE_RE = new RegExp(
   'iu',
 );
 
-function normalizeText(text: string): string {
+// Trần cho tham số limit của search_rooms — model truyền số lớn bất thường thì cũng chỉ
+// trả về chừng này.
+const MAX_SEARCH_LIMIT = 10;
+
+export function normalizeText(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -221,6 +225,16 @@ export class AiAgentToolsService {
     }
     if (minPrice !== undefined) {
       results = results.filter((rt) => rt.basePrice >= minPrice);
+    }
+    // Sắp xếp + cắt số lượng ở server, cùng lý do với lọc giá ở trên: khách hỏi "phòng rẻ
+    // nhất" thì thẻ phòng hiện ra chỉ được có đúng phòng đó, không phải cả danh sách.
+    if (args.sortBy === 'price_asc' || args.sortBy === 'price_desc') {
+      const direction = args.sortBy === 'price_asc' ? 1 : -1;
+      results = [...results].sort((a, b) => (a.basePrice - b.basePrice) * direction);
+    }
+    const limit = Number(args.limit);
+    if (Number.isInteger(limit) && limit > 0) {
+      results = results.slice(0, Math.min(limit, MAX_SEARCH_LIMIT));
     }
 
     return results.map((rt) => ({

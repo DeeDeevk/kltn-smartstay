@@ -2,24 +2,20 @@ import { createHash } from 'crypto';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { Faq } from '../entities/faq.entity';
+import { QdrantClient } from '@qdrant/js-client-rest';
 
 // Below this cosine-similarity score, the best match is not close enough to be
 // presented as a confident answer — the caller (get_policy) should tell the model
 // to hedge or point the guest to reception instead of stating the entry as fact.
-export const LOW_CONFIDENCE_THRESHOLD = 0.71;
+export const LOW_CONFIDENCE_THRESHOLD = 0.68;
 
 export interface FaqSearchResult {
   entry: Faq;
   similarity: number;
   lowConfidence: boolean;
-}
-
-interface IndexedFaqEntry {
-  entry: Faq;
-  vector: number[];
 }
 
 export interface FaqReindexSummary {
@@ -36,17 +32,16 @@ interface StaleFaq {
 
 // Gemini batchEmbedContents accepts at most 100 requests per call.
 const EMBED_BATCH_SIZE = 100;
+const VECTOR_SIZE = 768;
 
-// Lightweight RAG over the FAQ table (a few dozen entries at most). Vectors are
-// persisted on each Faq row so a restart only embeds rows that are new or edited;
-// search itself is an in-memory cosine-similarity scan over active entries, which is
-// fast enough at this scale without a dedicated vector database.
+// Lưu vector ở Qdrant thay vì trong DB để tránh bloat bảng FAQ (mỗi vector ~3KB, vài nghìn FAQ là vài MB).
 @Injectable()
 export class FaqEmbeddingService implements OnModuleInit {
   private readonly logger = new Logger(FaqEmbeddingService.name);
   private readonly client: GoogleGenerativeAI;
   private readonly embeddingModel: string;
-  private index: IndexedFaqEntry[] = [];
+  private readonly qdrant: QdrantClient;
+  private readonly collection: string;
   // false until one refresh has fully succeeded — lets search() retry a refresh that
   // failed at boot (e.g. embedding API briefly unreachable) instead of staying empty.
   private indexReady = false;
@@ -71,10 +66,15 @@ export class FaqEmbeddingService implements OnModuleInit {
     this.embeddingModel =
       this.config.get<string>('GEMINI_EMBEDDING_MODEL') ??
       'gemini-embedding-001';
+    this.qdrant = new QdrantClient({
+      url: config.get<string>('QDRANT_URL') ?? 'http://localhost:6333',
+    });
+    this.collection = config.get('QDRANT_COLLECTION') ?? 'faq';
   }
 
   async onModuleInit(): Promise<void> {
     try {
+      await this.ensureCollection();
       await this.refresh();
     } catch (err) {
       // A DB/embedding failure at boot shouldn't crash the whole app — search() will
@@ -85,35 +85,52 @@ export class FaqEmbeddingService implements OnModuleInit {
     }
   }
 
-  async search(queryText: string, topK = 2): Promise<FaqSearchResult[]> {
-    if (!this.indexReady) {
-      try {
-        await this.refresh();
-      } catch (err) {
-        this.logger.warn(
-          `FAQ index still unavailable: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+  // Tạo collection nếu chưa có. Distance 'Cosine' -> điểm Qdrant trả về CHÍNH LÀ độ
+  // giống cosine, nên ngưỡng LOW_CONFIDENCE_THRESHOLD = 0.68.
+  private async ensureCollection() {
+    const { exists } = await this.qdrant.collectionExists(this.collection);
+    if (!exists) {
+      await this.qdrant.createCollection(this.collection, {
+        vectors: {
+          size: VECTOR_SIZE,
+          distance: 'Cosine',
+        },
+      });
     }
-    if (this.index.length === 0) return [];
-
-    const queryVector = await this.embed(queryText, TaskType.RETRIEVAL_QUERY);
-    return this.index
-      .map(({ entry, vector }) => {
-        const similarity = cosineSimilarity(queryVector, vector);
-        return {
-          entry,
-          similarity,
-          lowConfidence: similarity < LOW_CONFIDENCE_THRESHOLD,
-        };
-      })
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, topK);
   }
 
-  // Re-reads active FAQs from the DB, embeds only rows whose text or embedding model
-  // changed since last time, and swaps in the new in-memory index. Called at boot and
-  // after every admin create/update/delete so the bot answers from the latest policy.
+  async search(queryText: string, topK = 2): Promise<FaqSearchResult[]> {
+    try {
+      if (!this.indexReady) await this.refresh().catch(() => {});
+      const queryVector = await this.embed(queryText, TaskType.RETRIEVAL_QUERY);
+      const { points: hits } = await this.qdrant.query(this.collection, {
+        query: queryVector,
+        limit: topK,
+      });
+      if (hits.length === 0) return [];
+
+      // Nội dung FAQ lấy từ Postgres (nguồn gốc), không nhét vào payload Qdrant — để admin
+      // sửa câu chữ là bot dùng ngay bản mới, không lệch giữa hai nơi.
+      const faqs = await this.faqRepo.findBy({
+        faqId: In(hits.map((h) => String(h.id))),
+      });
+      const byId = new Map(faqs.map((f) => [f.faqId, f]));
+
+      return hits
+        .filter((h) => byId.has(String(h.id)))
+        .map((h) => ({
+          entry: byId.get(String(h.id))!,
+          similarity: h.score,
+          lowConfidence: h.score < LOW_CONFIDENCE_THRESHOLD,
+        }));
+    } catch (error) {
+      this.logger.error(
+        `Tìm FAQ thất bại: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
+  }
+
   refresh(): Promise<FaqReindexSummary> {
     if (!this.refreshing) {
       this.refreshing = this.doRefresh().finally(() => {
@@ -126,62 +143,65 @@ export class FaqEmbeddingService implements OnModuleInit {
   private async doRefresh(): Promise<FaqReindexSummary> {
     const faqs = await this.faqRepo.find({ where: { isActive: true } });
 
-    const stale: StaleFaq[] = [];
-    for (const faq of faqs) {
-      const text = embeddingText(faq);
-      const hash = sha256(text);
-      if (
-        !faq.embedding ||
-        faq.embeddingHash !== hash ||
-        faq.embeddingModel !== this.embeddingModel
-      ) {
-        stale.push({ faq, text, hash });
-      }
-    }
-
+    // Lấy payload (hash, model) hiện có trong Qdrant. Dùng faqId làm id của điểm —
+    // Qdrant nhận UUID làm id, nên 1 FAQ = đúng 1 điểm, upsert lại là ghi đè.
+    const existing = await this.qdrant.retrieve(this.collection, {
+      ids: faqs.map((faq) => faq.faqId),
+      with_payload: true,
+      with_vector: false,
+    });
+    const stored = new Map(existing.map((p) => [String(p.id), p.payload]));
+    const stale = faqs
+      .map((faq) => ({
+        faq,
+        text: embeddingText(faq),
+        hash: sha256(embeddingText(faq)),
+      }))
+      .filter(({ faq, hash }) => {
+        const p = stored.get(faq.faqId);
+        return !p || p.hash !== hash || p.model !== this.embeddingModel;
+      });
     let embedded = 0;
-    const failedIds = new Set<string>();
+    let failed = 0;
     for (const batch of chunk(stale, EMBED_BATCH_SIZE)) {
-      const results = await this.embedDocuments(batch.map((s) => s.text));
-      for (let i = 0; i < batch.length; i += 1) {
-        const { faq, hash } = batch[i];
-        try {
-          const vector = results[i];
-          if (vector instanceof Error) throw vector;
-          await this.faqRepo.update(faq.faqId, {
-            embedding: vector,
-            embeddingHash: hash,
-            embeddingModel: this.embeddingModel,
-          });
-          faq.embedding = vector;
-          faq.embeddingHash = hash;
-          faq.embeddingModel = this.embeddingModel;
-          embedded += 1;
-        } catch (err) {
-          // One bad row shouldn't hide every other FAQ from search — skip it, it will
-          // be retried on the next refresh since its hash still won't match.
-          failedIds.add(faq.faqId);
-          this.logger.warn(
-            `Failed to embed FAQ ${faq.faqId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+      const vectors = await this.embedDocuments(batch.map((s) => s.text));
+      const points = batch.flatMap((s, i) => {
+        const v = vectors[i];
+        if (v instanceof Error) {
+          failed += 1;
+          return [];
         }
+        return [
+          {
+            id: s.faq.faqId,
+            vector: v,
+            payload: { hash: s.hash, model: this.embeddingModel },
+          },
+        ];
+      });
+      if (points.length > 0) {
+        await this.qdrant.upsert(this.collection, { wait: true, points });
+        embedded += points.length;
       }
     }
-
-    const failed = failedIds.size;
-    const nextIndex: IndexedFaqEntry[] = [];
-    for (const faq of faqs) {
-      if (!failedIds.has(faq.faqId) && faq.embedding) {
-        nextIndex.push({ entry: faq, vector: faq.embedding });
-      }
+    // Xoá điểm của FAQ đã bị xoá hoặc bị ẩn — trước đây việc này tự xảy ra vì chỉ mục
+    // RAM dựng lại từ đầu mỗi lần; giờ chỉ mục nằm lâu dài trong Qdrant nên phải dọn tay.
+    const activeIds = new Set(faqs.map((faq) => faq.faqId));
+    const { points: all } = await this.qdrant.scroll(this.collection, {
+      limit: 10_000,
+      with_payload: false,
+    });
+    const orphanIds = all
+      .map((p) => String(p.id))
+      .filter((id) => !activeIds.has(id));
+    if (orphanIds.length > 0) {
+      await this.qdrant.delete(this.collection, {
+        wait: true,
+        points: orphanIds,
+      });
     }
-
-    this.index = nextIndex;
     this.indexReady = failed === 0;
-    this.logger.log(
-      `Indexed ${nextIndex.length} FAQ entries for semantic search (${embedded} newly embedded, ${failed} failed)`,
-    );
-    return { indexed: nextIndex.length, embedded, failed };
+    return { indexed: faqs.length - failed, embedded, failed };
   }
 
   // Embeds document texts with one batchEmbedContents call instead of one request per
@@ -230,7 +250,7 @@ export class FaqEmbeddingService implements OnModuleInit {
         `Batch embedding returned ${result.embeddings.length} vectors for ${texts.length} texts`,
       );
     }
-    return result.embeddings.map((e) => e.values);
+    return result.embeddings.map((e) => e.values.slice(0, VECTOR_SIZE));
   }
 
   // taskType tells the embedding model whether this text is a document being indexed
@@ -244,7 +264,7 @@ export class FaqEmbeddingService implements OnModuleInit {
       content: { role: 'user', parts: [{ text }] },
       taskType,
     });
-    return result.embedding.values;
+    return result.embedding.values.slice(0, VECTOR_SIZE);
   }
 }
 

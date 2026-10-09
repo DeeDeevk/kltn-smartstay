@@ -6,18 +6,6 @@ import { CreateFaqDto } from '../dto/create-faq.dto';
 import { UpdateFaqDto } from '../dto/update-faq.dto';
 import { FaqEmbeddingService } from '../rag/faq-embedding.service';
 
-// Cột embedding* là dữ liệu nội bộ của RAG (mảng vài nghìn số) — không trả ra API.
-export type FaqView = Omit<
-  Faq,
-  'embedding' | 'embeddingModel' | 'embeddingHash'
->;
-
-function toView(faq: Faq): FaqView {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { embedding, embeddingModel, embeddingHash, ...view } = faq;
-  return view;
-}
-
 @Injectable()
 export class FaqService {
   private readonly logger = new Logger(FaqService.name);
@@ -27,15 +15,15 @@ export class FaqService {
     private readonly faqEmbeddingService: FaqEmbeddingService,
   ) {}
 
-  async findAll(onlyActive: boolean): Promise<FaqView[]> {
+  async findAll(onlyActive: boolean): Promise<Faq[]> {
     const faqs = await this.faqRepo.find({
       where: onlyActive ? { isActive: true } : {},
       order: { category: 'ASC', createdAt: 'ASC' },
     });
-    return faqs.map(toView);
+    return faqs;
   }
 
-  async create(dto: CreateFaqDto): Promise<FaqView> {
+  async create(dto: CreateFaqDto): Promise<Faq> {
     const saved = await this.faqRepo.save(
       this.faqRepo.create({
         question: dto.question.trim(),
@@ -45,10 +33,10 @@ export class FaqService {
       }),
     );
     await this.syncIndex();
-    return toView(saved);
+    return saved;
   }
 
-  async update(faqId: string, dto: UpdateFaqDto): Promise<FaqView> {
+  async update(faqId: string, dto: UpdateFaqDto): Promise<Faq> {
     const faq = await this.faqRepo.findOne({ where: { faqId } });
     if (!faq) throw new NotFoundException('Không tìm thấy FAQ');
 
@@ -59,7 +47,7 @@ export class FaqService {
 
     const saved = await this.faqRepo.save(faq);
     await this.syncIndex();
-    return toView(saved);
+    return saved;
   }
 
   async remove(faqId: string): Promise<{ faqId: string }> {
