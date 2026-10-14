@@ -611,7 +611,7 @@ const AiChatbot = () => {
                   value={inputStr}
                   onChange={(e) => setInputStr(e.target.value)}
                   onKeyDown={handleTextareaKeyDown}
-                  placeholder="Nhập tin nhắn..."
+                  placeholder="Nhắn tin để tìm và đặt phòng..."
                   className="max-h-32 flex-1 resize-none overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   disabled={isSending || isLoadingHistory}
                 />

@@ -220,7 +220,7 @@ export const PromotionList = ({ promotions }) => {
           <div className="text-xs text-gray-700">
             <span className="font-bold text-amber-700">{promo.code}</span>
             {" — giảm "}
-            {promo.discountType === "PERCENT"
+            {promo.discountType === "PERCENTAGE"
               ? `${promo.discountValue}%`
               : formatVnd(promo.discountValue)}
           </div>

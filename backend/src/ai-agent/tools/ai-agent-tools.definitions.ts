@@ -84,7 +84,8 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
   },
   {
     name: 'get_promotions',
-    description: 'Lấy danh sách khuyến mãi đang áp dụng tại khách sạn.',
+    description:
+      'Lấy danh sách khuyến mãi đang áp dụng tại khách sạn. Gọi mỗi khi khách hỏi về khuyến mãi/mã giảm giá, kể cả khi đã gọi ở lượt trước — kết quả được hiển thị thành thẻ cho khách.',
     parameters: { type: 'object', properties: {} },
   },
   {
