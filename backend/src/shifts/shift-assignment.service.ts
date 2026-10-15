@@ -472,7 +472,10 @@ export class ShiftAssignmentService {
   // tiền mặt đều rơi vào 1 ca và chốt két được.
   // Ngoài trạng thái CHECKEDIN còn kiểm tra khung giờ ca, vì cron tự đóng ca chỉ
   // chạy định kỳ — không để ca quên kết từ hôm trước tiếp tục thu tiền.
-  async assertOnDuty(staffId: string): Promise<void> {
+  // action: mô tả hành động đang bị chặn để hiện đúng ngữ cảnh trong thông báo lỗi (VD
+  // "huỷ đơn" khi gọi từ BookingService.cancel()) — không truyền thì giữ nguyên message mặc
+  // định cũ ("nhận/trả phòng"), để không đổi hành vi ở 2 nơi gọi hiện có (check-in/check-out).
+  async assertOnDuty(staffId: string, action?: string): Promise<void> {
     const openShift = await this.shiftAssignmentRepo.findOne({
       where: {
         staff: { userId: staffId },
@@ -482,7 +485,7 @@ export class ShiftAssignmentService {
     });
     if (!openShift) {
       throw new ForbiddenException(
-        'Bạn cần vô ca trước khi làm thủ tục nhận/trả phòng cho khách',
+        `Bạn cần vô ca trước khi làm thủ tục ${action ?? 'nhận/trả phòng'} cho khách`,
       );
     }
     const { end } = buildShiftWindow(

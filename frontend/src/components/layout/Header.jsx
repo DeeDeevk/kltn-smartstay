@@ -59,14 +59,20 @@ export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md z-50 shadow-sm transition-all border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+        {/* Lưới 3 cột thay vì flex justify-between: 2 cột ngoài ép CÙNG rộng (1fr/1fr) nên
+            cột giữa (nav) luôn nằm đúng tâm trang, bất kể cột phải phình to cỡ nào (khi
+            đăng nhập, chuông thông báo + badge tên khiến cột phải rộng hơn hẳn logo bên
+            trái — nếu dùng flex-1 + justify-center như cũ, nav chỉ canh giữa phần KHOẢNG
+            TRỐNG còn lại giữa 2 bên, không phải canh giữa trang thật, nên bị kéo lệch
+            sang trái rõ rệt sau khi đăng nhập). */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center h-20">
 
           {/* LEFT: LOGO — xếp icon + chữ "VIKA" theo chiều dọc, vẫn gọn trong h-20 của
               header (icon 36px + chữ nhỏ bên dưới, gộp lại vẫn thấp hơn 80px nhiều). Màu
               chữ #0C1A30 lấy đúng từ nền navy của icon.png (xem RGB mẫu tại tâm hình tròn)
               để đồng bộ màu thương hiệu, không phải màu đoán chừng. */}
           <div
-            className="flex-shrink-0 flex flex-col items-center justify-center gap-0.5 cursor-pointer group"
+            className="justify-self-start flex flex-col items-center justify-center gap-0.5 cursor-pointer group"
             onClick={() => navigate('/')}
           >
             <img
@@ -79,8 +85,9 @@ export default function Header() {
             </span>
           </div>
 
-          {/* CENTER: NAVIGATION */}
-          <nav className="hidden md:flex space-x-8 items-center justify-center flex-1">
+          {/* CENTER: NAVIGATION — không cần flex-1/justify-center nữa, Grid đã tự canh giữa
+              đúng cột giữa nhờ 2 cột ngoài luôn bằng nhau (1fr/1fr). */}
+          <nav className="hidden md:flex space-x-8 items-center">
             {NAV_LINKS.map((item) => {
               const active = isNavActive(item.to);
               return (
@@ -101,38 +108,43 @@ export default function Header() {
             })}
           </nav>
 
-          {/* RIGHT: AUTH BUTTONS */}
-          <div className="hidden md:flex items-center gap-3 flex-shrink-0">
-            {isAuthenticated ? (
-              <>
-                <NotificationBell />
-                <UserMenu />
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="text-gray-600 hover:text-blue-600 font-medium text-sm"
-                >
-                  {t('auth.login')}
-                </button>
-                <button
-                  onClick={() => navigate('/register')} // Update to /register if separate
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-lg shadow-blue-200"
-                >
-                  {t('auth.register')}
-                </button>
-              </>
-            )}
-            <LanguageSwitcher />
-          </div>
+          {/* RIGHT: gộp chung 1 ô lưới (cột 3) cho cả bản desktop lẫn mobile — tách thành 2
+              div riêng như trước sẽ bị Grid coi là 2 ô khác nhau (ô thứ 4 rớt xuống hàng
+              mới vì chỉ khai báo 3 cột), nên phải bọc chung rồi mới ẩn/hiện bên trong. */}
+          <div className="justify-self-end flex items-center">
+            {/* AUTH BUTTONS (desktop) */}
+            <div className="hidden md:flex items-center gap-3">
+              {isAuthenticated ? (
+                <>
+                  <NotificationBell />
+                  <UserMenu />
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="text-gray-600 hover:text-blue-600 font-medium text-sm"
+                  >
+                    {t('auth.login')}
+                  </button>
+                  <button
+                    onClick={() => navigate('/register')} // Update to /register if separate
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-lg shadow-blue-200"
+                  >
+                    {t('auth.register')}
+                  </button>
+                </>
+              )}
+              <LanguageSwitcher />
+            </div>
 
-          {/* MOBILE MENU BUTTON */}
-          <div className="md:hidden flex items-center gap-3">
-            <LanguageSwitcher />
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-600">
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+            {/* MOBILE MENU BUTTON */}
+            <div className="md:hidden flex items-center gap-3">
+              <LanguageSwitcher />
+              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-600">
+                {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

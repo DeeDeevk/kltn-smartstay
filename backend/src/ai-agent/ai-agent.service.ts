@@ -23,7 +23,10 @@ import {
   AI_AGENT_TOOLS,
   LOGIN_REQUIRED_TOOLS,
 } from './tools/ai-agent-tools.definitions';
-import { AiAgentToolsService } from './tools/ai-agent-tools.service';
+import {
+  AiAgentToolsService,
+  normalizeText,
+} from './tools/ai-agent-tools.service';
 import { buildSystemPrompt } from './constants/system-prompt.constant';
 import { HotelConfigService } from 'src/hotel-config/hotel-config.service';
 
@@ -33,6 +36,26 @@ import { HotelConfigService } from 'src/hotel-config/hotel-config.service';
 // gọi tool) trước khi model mới trả lời bằng văn bản ở vòng kế tiếp; để 4 dễ bị chặn
 // giữa chừng và rơi vào FALLBACK_REPLY dù model chưa thực sự bế tắc.
 const MAX_TOOL_ROUNDS = 6;
+
+// Lớp chặn thứ hai cho thẻ phòng: dù model quên truyền sortBy/limit cho search_rooms,
+// thẻ phòng hiện cho khách vẫn chỉ gồm những loại phòng câu trả lời thật sự nhắc tới.
+// VD hỏi "phòng rẻ nhất", model trả lời đúng 1 tên phòng thì chỉ hiện đúng thẻ đó thay
+// vì cả danh sách tool trả về. Không nhắc tên phòng nào (câu chung chung kiểu "đây là các
+// phòng còn trống") thì giữ nguyên toàn bộ.
+function narrowRoomsToMentioned(
+  rooms: unknown[] | null,
+  reply: string,
+): unknown[] | null {
+  if (!rooms || rooms.length <= 1) return rooms;
+  const text = normalizeText(reply);
+  const mentioned = rooms.filter((room) => {
+    const name = (room as { name?: unknown })?.name;
+    return (
+      typeof name === 'string' && name && text.includes(normalizeText(name))
+    );
+  });
+  return mentioned.length > 0 ? mentioned : rooms;
+}
 const FALLBACK_REPLY =
   'Xin lỗi, hiện tôi chưa thể xử lý yêu cầu này, bạn vui lòng thử lại hoặc liên hệ lễ tân.';
 // Chỉ gửi cho LLM N lượt hỏi-đáp gần nhất — hội thoại dài mà gửi toàn bộ thì mỗi tin
@@ -101,6 +124,18 @@ export class AiAgentService {
         content: dto.message,
       }),
     );
+
+    // Khách bấm "Huỷ" trên thẻ đề xuất: xoá đề xuất trước khi gọi model, để response
+    // lượt này trả pendingBooking = null và thẻ biến mất. So khớp proposalId để bấm Huỷ
+    // trên một thẻ cũ không xoá nhầm đề xuất mới hơn.
+    if (
+      dto.cancelProposalId &&
+      conversation.pendingBooking?.proposalId === dto.cancelProposalId
+    ) {
+      conversation.pendingBooking = null;
+      conversation.pendingBookingProposedAt = null;
+      await this.conversationRepo.save(conversation);
+    }
 
     // Cheap single-row lookup, refreshed every message so the model always has the
     // CURRENT address (no stale cache) — this is what lets it answer "hotel address?"
@@ -236,7 +271,7 @@ export class AiAgentService {
     return {
       conversationId: conversation.conversationId,
       reply,
-      rooms: latestRooms,
+      rooms: narrowRoomsToMentioned(latestRooms, reply),
       promotions: latestPromotions,
       pendingBooking: conversation.pendingBooking ?? null,
       booking: latestBooking,
@@ -257,15 +292,33 @@ export class AiAgentService {
       where: { conversation: { conversationId: conversation.conversationId } },
       order: { createdAt: 'ASC' },
     });
+    // Đề xuất đặt phòng chỉ còn hiệu lực nếu trùng với pendingBooking hiện tại của hội
+    // thoại. Đề xuất đã huỷ / đã bị thay bằng đề xuất mới / đã thành đơn thì ẩn data đi
+    // để frontend không dựng lại thẻ "Xác nhận đặt phòng" khi tải lại lịch sử.
+    const activeProposalId = conversation.pendingBooking?.proposalId ?? null;
     return messages.map((m) => ({
       messageId: m.messageId,
       role: m.role,
       content: m.content,
       toolName: m.toolName,
       toolArgs: m.toolArgs,
-      toolResult: m.toolResult,
+      toolResult: this.hideStaleProposal(m, activeProposalId),
       createdAt: m.createdAt,
     }));
+  }
+
+  private hideStaleProposal(
+    m: AiMessage,
+    activeProposalId: string | null,
+  ): AiMessage['toolResult'] {
+    if (m.toolName !== 'propose_booking' || !m.toolResult) {
+      return m.toolResult;
+    }
+    const result = m.toolResult as { data?: { proposalId?: string } | null };
+    if (result.data?.proposalId === activeProposalId) {
+      return m.toolResult;
+    }
+    return { ...m.toolResult, data: null };
   }
 
   private async assertWithinDailyQuota(userId: string): Promise<void> {

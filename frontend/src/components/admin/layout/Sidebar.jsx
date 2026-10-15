@@ -303,11 +303,21 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
 
       {/* Tài khoản & đăng xuất */}
       <div className="border-t border-gray-100 p-4">
-        <div className={`mb-3 flex items-center ${collapsed ? 'justify-center' : 'gap-3'} min-w-0`}>
+        {/* Bấm vào tên/avatar để mở hồ sơ của chính mình. NavLink để khối này sáng lên
+            khi đang ở trang hồ sơ, giống các mục menu phía trên. */}
+        <NavLink
+          to="/admin/profile"
+          onClick={onClose}
+          title={collapsed ? `${displayName} — Hồ sơ của tôi` : 'Hồ sơ của tôi'}
+          className={({ isActive }) =>
+            `mb-3 flex min-w-0 items-center rounded-lg p-1.5 transition-colors ${
+              collapsed ? 'justify-center' : 'gap-3'
+            } ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}`
+          }
+        >
           <img
             src={avatarUrl}
             alt={displayName}
-            title={collapsed ? displayName : undefined}
             className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
           />
           {!collapsed && (
@@ -316,7 +326,7 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
               <p className="truncate text-xs text-gray-400">{ROLE_LABELS[user?.role] || user?.role}</p>
             </div>
           )}
-        </div>
+        </NavLink>
         <button
           onClick={handleLogout}
           title={collapsed ? 'Đăng xuất' : undefined}

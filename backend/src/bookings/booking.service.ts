@@ -41,6 +41,7 @@ import {
   NotificationType,
 } from '../notifications/notification.service';
 import { RefundRequestService } from '../refund-requests/refund-request.service';
+import { todayInHotelTz } from 'src/common/utils/date.util';
 
 const LOCK_TTL_MS = 5000;
 // Thuế GTGT áp dụng cho dịch vụ lưu trú tại Việt Nam — chỉ tính trên tiền phòng, không
@@ -82,15 +83,20 @@ export class BookingService {
     private readonly refundRequestService: RefundRequestService,
   ) {}
 
-  // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) — Admin không
-  // được phân ca nên không áp dụng.
-  private async assertStaffOnDuty(actor: Requester) {
+  // Lễ tân phải đang trong ca mới được nhận khách/trả phòng (thu tiền) hoặc huỷ đơn (huỷ
+  // đơn đã thanh toán tạo yêu cầu hoàn tiền — cũng là hệ quả tài chính) — Admin không
+  // được phân ca nên không áp dụng. action: truyền xuống assertOnDuty() để thông báo lỗi
+  // đúng ngữ cảnh (không truyền thì giữ message mặc định "nhận/trả phòng" như cũ).
+  private async assertStaffOnDuty(actor: Requester, action?: string) {
     if ((actor.role as UserRole) === UserRole.STAFF) {
-      await this.shiftAssignmentService.assertOnDuty(actor.userId);
+      await this.shiftAssignmentService.assertOnDuty(actor.userId, action);
     }
   }
 
   async create(userId: string, dto: CreateBookingDto) {
+    if(dto.checkIn < todayInHotelTz()){
+      throw new BadRequestException('Ngày nhận phòng không được ở trong quá khứ');
+    }
     if (new Date(dto.checkIn) >= new Date(dto.checkOut)) {
       throw new BadRequestException('Ngày check-in phải trước ngày check-out');
     }
@@ -615,6 +621,16 @@ export class BookingService {
         'Đơn phải ở trạng thái đã xác nhận trước khi check-in',
       );
     }
+    // Đơn PAYOS phải thanh toán online xong (webhook/sync xác nhận PAID) mới cho
+    // check-in — khác đơn CASH được lễ tân thu tiền mặt trực tiếp lúc check-in.
+    if (
+      booking.paymentMethod === PaymentMethod.PAYOS &&
+      booking.paymentStatus !== PaymentStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Đơn thanh toán online chưa được thanh toán, không thể check-in',
+      );
+    }
 
     const room = await this.roomRepo.findOne({
       where: { roomId: dto.roomId },
@@ -822,6 +838,7 @@ export class BookingService {
   }
 
   async cancel(bookingId: string, requester: Requester, dto: CancelBookingDto) {
+    await this.assertStaffOnDuty(requester, 'huỷ đơn');
     const booking = await this.findByIdRaw(bookingId);
     this.assertCanView(booking, requester);
 

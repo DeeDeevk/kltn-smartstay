@@ -2,5 +2,8 @@
 skills-lock.json
 node_modules/
 
+# Báo cáo tiến độ cá nhân — không push lên repo chung
+/BAO-CAO-TIEN-DO-VINH.md
+
 # Cache embedding runtime của script eval RAG — sinh lại khi chạy `npm run eval:rag`
 backend/src/ai-agent/rag/eval/*.cache.json

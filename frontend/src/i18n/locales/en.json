@@ -16,7 +16,6 @@
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm password",
-    "rememberMe": "Remember me",
     "orDivider": "Or",
     "loggingIn": "Logging in...",
     "noAccount": "Don't have an account?",

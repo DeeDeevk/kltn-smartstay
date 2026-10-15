@@ -22,4 +22,8 @@ export class SendMessageDto {
   @IsOptional()
   @IsUUID()
   confirmProposalId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  cancelProposalId?: string;
 }

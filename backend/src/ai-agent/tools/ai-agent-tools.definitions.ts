@@ -53,6 +53,17 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
           description:
             'Mức giá tối thiểu (VNĐ/đêm) nếu khách có nêu, ví dụ "trên 1 triệu" (không bắt buộc).',
         },
+        sortBy: {
+          type: 'string',
+          description:
+            'Sắp xếp theo giá. Khách hỏi phòng RẺ NHẤT / giá thấp nhất -> "price_asc"; phòng ĐẮT NHẤT / cao cấp nhất -> "price_desc" (không bắt buộc).',
+          enum: ['price_asc', 'price_desc'],
+        },
+        limit: {
+          type: 'integer',
+          description:
+            'Số loại phòng tối đa trả về, đi kèm sortBy. Khách hỏi "phòng rẻ nhất" (1 phòng) -> sortBy "price_asc" + limit 1; "3 phòng rẻ nhất" -> limit 3. PHẢI truyền khi khách chỉ hỏi một vài phòng cụ thể, vì danh sách thẻ phòng hiện cho khách lấy đúng kết quả tool này — không truyền thì khách thấy toàn bộ phòng dù chỉ hỏi 1 (không bắt buộc).',
+        },
       },
       required: ['checkIn', 'checkOut', 'guests'],
     },
@@ -73,7 +84,8 @@ export const AI_AGENT_TOOLS: LlmTool[] = [
   },
   {
     name: 'get_promotions',
-    description: 'Lấy danh sách khuyến mãi đang áp dụng tại khách sạn.',
+    description:
+      'Lấy danh sách khuyến mãi đang áp dụng tại khách sạn. Gọi mỗi khi khách hỏi về khuyến mãi/mã giảm giá, kể cả khi đã gọi ở lượt trước — kết quả được hiển thị thành thẻ cho khách.',
     parameters: { type: 'object', properties: {} },
   },
   {

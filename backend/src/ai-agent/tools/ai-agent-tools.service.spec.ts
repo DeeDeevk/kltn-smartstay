@@ -25,6 +25,26 @@ describe('AiAgentToolsService', () => {
 
   const roomType = { roomTypeId: 'rt-1', name: 'Deluxe', basePrice: 1000000 };
 
+  // Cố định "hôm nay" = 01/03/2026 (giờ VN) để các ngày đặt phòng trong test (tháng
+  // 3/2026) không bị assertNotPast coi là ngày đã qua khi chạy test vào ngày khác. Chỉ
+  // giả lập Date, giữ nguyên setTimeout/Promise thật.
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date('2026-03-01T03:00:00Z'),
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'setTimeout',
+        'setInterval',
+        'queueMicrotask',
+      ],
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   beforeEach(() => {
     conversationRepo = { save: jest.fn((c) => Promise.resolve(c)) };
     bookingService = {
@@ -757,5 +777,63 @@ describe('AiAgentToolsService', () => {
 
     expect(result.success).toBe(false);
     expect(bookingService.findByDateForAgent).not.toHaveBeenCalled();
+  });
+  describe('chặn ngày nhận phòng đã qua', () => {
+    const ctx = () => ({
+      userId: 'user-1',
+      role: 'CUSTOMER',
+      conversation: makeConversation(),
+      currentUserMessage: { text: 'đặt phòng', createdAt: new Date() },
+    });
+
+    it.each([
+      ['request_booking_form', { roomTypeId: 'rt-1', checkIn: '2026-02-27' }],
+      [
+        'check_availability',
+        { roomTypeId: 'rt-1', checkIn: '2026-02-27', checkOut: '2026-02-28' },
+      ],
+      ['search_rooms', { checkIn: '2026-02-27', checkOut: '2026-02-28' }],
+      [
+        'propose_booking',
+        {
+          roomTypeId: 'rt-1',
+          checkIn: '2026-02-27',
+          checkOut: '2026-02-28',
+          guestFullName: 'Nguyễn Văn A',
+          guestPhone: '0901234567',
+          paymentMethod: 'CASH',
+        },
+      ],
+    ])(
+      '%s báo lỗi "đã qua" và không gọi xuống tầng dưới',
+      async (name, args) => {
+        const result = await tools.execute(name, args, ctx());
+
+        expect(result.success).toBe(false);
+        if (result.success) return;
+        expect(result.error).toContain('đã qua');
+        expect(result.error).toContain('2026-03-01');
+        expect(bookingService.getRoomTypeAvailability).not.toHaveBeenCalled();
+        expect(bookingService.findAvailableRoomTypes).not.toHaveBeenCalled();
+      },
+    );
+
+    it('request_booking_form vẫn hiện biểu mẫu khi ngày nhận phòng là hôm nay', async () => {
+      const args = { roomTypeId: 'rt-1', checkIn: '2026-03-01' };
+
+      const result = await tools.execute('request_booking_form', args, ctx());
+
+      expect(result).toEqual({ success: true, data: args });
+    });
+
+    it('request_booking_form không chặn khi khách chưa nói ngày', async () => {
+      const result = await tools.execute(
+        'request_booking_form',
+        { roomTypeId: 'rt-1' },
+        ctx(),
+      );
+
+      expect(result.success).toBe(true);
+    });
   });
 });
