@@ -621,6 +621,16 @@ export class BookingService {
         'Đơn phải ở trạng thái đã xác nhận trước khi check-in',
       );
     }
+    // Đơn PAYOS phải thanh toán online xong (webhook/sync xác nhận PAID) mới cho
+    // check-in — khác đơn CASH được lễ tân thu tiền mặt trực tiếp lúc check-in.
+    if (
+      booking.paymentMethod === PaymentMethod.PAYOS &&
+      booking.paymentStatus !== PaymentStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Đơn thanh toán online chưa được thanh toán, không thể check-in',
+      );
+    }
 
     const room = await this.roomRepo.findOne({
       where: { roomId: dto.roomId },

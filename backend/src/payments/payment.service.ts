@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PayOS } from '@payos/node';
+import {
+  APIError,
+  PayOS,
+  type PaymentLink,
+  type PaymentLinkItem,
+} from '@payos/node';
 import { BookingService } from '../bookings/booking.service';
 import { VietqrBankService } from './vietqr-bank.service';
 import { PaymentMethod } from '../common/enums/payment-method.enum';
@@ -34,6 +39,21 @@ interface PayosCounterAccountFields {
 // — không khớp thì coi như không tin cậy, chuyển sang tra theo tên (xem resolveBankBin()).
 const VALID_BANK_ID_PATTERN = /^(\d{6}|[A-Z]{2,6})$/;
 
+// Link thanh toán PayOS mobile cần đủ thông tin để tự mở app ngân hàng bằng VietQR
+// deeplink (không chỉ quét ảnh QR): bin + accountNumber + accountName + amount +
+// description là 5 field bắt buộc của chuẩn VietQR, orderCode để đối chiếu với đơn.
+export interface PayosLinkResult {
+  checkoutUrl: string;
+  qrCode: string;
+  expiredAt: number;
+  bin: string;
+  accountNumber: string;
+  accountName: string;
+  amount: number;
+  description: string;
+  orderCode: string;
+}
+
 @Injectable()
 export class PaymentService {
   private readonly payos: PayOS;
@@ -56,7 +76,10 @@ export class PaymentService {
       .trim();
   }
 
-  async createLinkForBooking(bookingId: string, requester: Requester) {
+  async createLinkForBooking(
+    bookingId: string,
+    requester: Requester,
+  ): Promise<PayosLinkResult> {
     const booking = await this.bookingService.findById(bookingId, requester);
 
     if (booking.paymentMethod !== PaymentMethod.PAYOS) {
@@ -73,41 +96,50 @@ export class PaymentService {
       );
     }
 
-    const orderCode = Number(booking.payosOrderCode);
     const returnUrl = `${this.frontendUrl}/payment/success?bookingId=${bookingId}`;
     const cancelUrl = `${this.frontendUrl}/payment/cancel?bookingId=${bookingId}`;
-    // Link hết hạn sau 15 phút — đủ để hiển thị đếm ngược có ý nghĩa trên trang checkout
-    // thay vì để mặc định không giới hạn thời gian của PayOS.
-    const expiredAt = Math.floor(Date.now() / 1000) + 15 * 60;
+    const items: PaymentLinkItem[] = [
+      {
+        name: booking.roomType.name,
+        quantity: 1,
+        price: booking.totalAmount,
+      },
+    ];
+    const buyer = {
+      buyerName: booking.guestInfo.fullName,
+      buyerPhone: booking.guestInfo.phone,
+      buyerEmail: booking.guestInfo.email,
+    };
+
+    const orderCode = Number(booking.payosOrderCode);
 
     try {
-      const link = await this.payos.paymentRequests.create({
+      return await this.createPaymentLink({
         orderCode,
         amount: booking.totalAmount,
-        description: `DH ${String(orderCode).slice(-8)}`,
         returnUrl,
         cancelUrl,
-        expiredAt,
-        items: [
-          {
-            name: booking.roomType.name,
-            quantity: 1,
-            price: booking.totalAmount,
-          },
-        ],
-        buyerName: booking.guestInfo.fullName,
-        buyerPhone: booking.guestInfo.phone,
-        buyerEmail: booking.guestInfo.email,
+        items,
+        ...buyer,
       });
-      return {
-        checkoutUrl: link.checkoutUrl,
-        qrCode: link.qrCode,
-        expiredAt: link.expiredAt ?? expiredAt,
-      };
-    } catch {
-      // orderCode đã tồn tại link từ lần tạo trước đó (VD: người dùng bấm "Thanh toán
-      // lại") — lấy thông tin link cũ và tự dựng lại checkoutUrl theo mẫu chuẩn của PayOS.
-      const existing = await this.payos.paymentRequests.get(orderCode);
+    } catch (err) {
+      if (!(err instanceof APIError)) throw err;
+
+      // @payos/node không có tài liệu (README/CHANGELOG/JSDoc) xác nhận chắc chắn mã lỗi
+      // cụ thể khi create() thất bại vì orderCode đã tồn tại (tinh thần giống comment ở
+      // resolveBankBin() — không đoán mò mã lỗi của PayOS). Thay vì so khớp err.code/err.desc
+      // theo một chuỗi/con số không có gì đảm bảo đúng, xác minh trực tiếp bằng dữ liệu thật:
+      // gọi get(orderCode) ngay sau đó — lấy được bản ghi nghĩa là orderCode THẬT SỰ đã tồn
+      // tại (đúng nguyên nhân khiến create() báo lỗi); không lấy được (get() cũng lỗi) thì
+      // chứng tỏ create() thất bại vì lý do khác (sai tham số, PayOS lỗi tạm thời...) — ném
+      // lại lỗi gốc để client biết, không nuốt lỗi/trả nhầm kết quả.
+      let existing: PaymentLink;
+      try {
+        existing = await this.payos.paymentRequests.get(orderCode);
+      } catch {
+        throw err;
+      }
+
       if (existing.status === 'PAID') {
         // Lấy payerBankInfo giống hệt syncStatus() — tránh để PaymentTransaction của
         // nhánh fallback này thiếu thông tin ngân hàng, khiến RefundRequest tạo sau này
@@ -123,11 +155,81 @@ export class PaymentService {
         await this.bookingService.markPaidByOrderCode(orderCode, payerBankInfo);
         throw new BadRequestException('Đơn đặt phòng đã được thanh toán');
       }
-      return {
-        checkoutUrl: `https://pay.payos.vn/web/${existing.id}`,
-        qrCode: null,
-      };
+
+      if (
+        existing.status === 'PENDING' ||
+        existing.status === 'CANCELLED' ||
+        existing.status === 'EXPIRED'
+      ) {
+        if (existing.status === 'PENDING') {
+          // Huỷ link cũ trước khi phát hành orderCode mới — PayOS không cho 1 orderCode
+          // có 2 link cùng PENDING, và không huỷ thì link cũ vẫn hiện hoạt, khách có thể
+          // lỡ tay thanh toán nhầm vào link đã bị thay thế.
+          await this.payos.paymentRequests.cancel(
+            orderCode,
+            'Tạo lại link thanh toán mới',
+          );
+        }
+        // Ghi orderCode mới vào booking ngay — webhook/syncStatus tra theo
+        // booking.payosOrderCode nên phải trỏ đúng link vừa phát hành.
+        const freshOrderCode = Number(
+          await this.bookingService.assignFreshPayosOrderCode(bookingId),
+        );
+        return this.createPaymentLink({
+          orderCode: freshOrderCode,
+          amount: booking.totalAmount,
+          returnUrl,
+          cancelUrl,
+          items,
+          ...buyer,
+        });
+      }
+
+      // UNDERPAID/PROCESSING/FAILED: orderCode cũ đang có giao dịch dở dang (VD khách đã
+      // chuyển thiếu, hoặc PayOS đang xử lý) — không tự ý huỷ/phát hành lại, rủi ro orphan
+      // phần tiền khách đã chuyển hoặc tạo 2 link cùng nhận tiền cho 1 đơn. Cần lễ tân/admin
+      // kiểm tra thủ công qua cổng quản trị PayOS.
+      throw new BadRequestException(
+        `Link thanh toán hiện ở trạng thái ${existing.status}, không thể tự tạo lại. Vui lòng liên hệ lễ tân để được hỗ trợ.`,
+      );
     }
+  }
+
+  // Dùng chung cho cả lượt tạo link đầu tiên lẫn lượt phát hành lại (orderCode mới) khi
+  // orderCode cũ đã tồn tại link không còn dùng được — cùng 1 chỗ build request + map
+  // response, tránh lặp logic giữa 2 nhánh của createLinkForBooking().
+  private async createPaymentLink(params: {
+    orderCode: number;
+    amount: number;
+    returnUrl: string;
+    cancelUrl: string;
+    items: PaymentLinkItem[];
+    buyerName?: string;
+    buyerPhone?: string;
+    buyerEmail?: string;
+  }): Promise<PayosLinkResult> {
+    const description = `DH ${String(params.orderCode).slice(-8)}`;
+    // Link hết hạn sau 15 phút — đủ để hiển thị đếm ngược có ý nghĩa trên trang checkout
+    // thay vì để mặc định không giới hạn thời gian của PayOS.
+    const expiredAt = Math.floor(Date.now() / 1000) + 15 * 60;
+
+    const link = await this.payos.paymentRequests.create({
+      ...params,
+      description,
+      expiredAt,
+    });
+
+    return {
+      checkoutUrl: link.checkoutUrl,
+      qrCode: link.qrCode,
+      expiredAt: link.expiredAt ?? expiredAt,
+      bin: link.bin,
+      accountNumber: link.accountNumber,
+      accountName: link.accountName,
+      amount: link.amount,
+      description: link.description,
+      orderCode: String(link.orderCode),
+    };
   }
 
   // Tạo link/QR PayOS để thu phần tiền còn lại khi lễ tân trả phòng (khác
@@ -262,9 +364,12 @@ export class PaymentService {
     data: PayosCounterAccountFields,
   ): Promise<Record<string, string> | null> {
     const info: Record<string, string> = {};
-    if (data.counterAccountName) info['Tên người chuyển'] = data.counterAccountName;
-    if (data.counterAccountNumber) info['Số tài khoản'] = data.counterAccountNumber;
-    if (data.counterAccountBankName) info['Ngân hàng'] = data.counterAccountBankName;
+    if (data.counterAccountName)
+      info['Tên người chuyển'] = data.counterAccountName;
+    if (data.counterAccountNumber)
+      info['Số tài khoản'] = data.counterAccountNumber;
+    if (data.counterAccountBankName)
+      info['Ngân hàng'] = data.counterAccountBankName;
 
     const bankBin = await this.resolveBankBin(data);
     if (bankBin) info.bankBin = bankBin;
