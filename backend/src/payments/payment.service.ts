@@ -56,7 +56,14 @@ export class PaymentService {
       .trim();
   }
 
-  async createLinkForBooking(bookingId: string, requester: Requester) {
+  async createLinkForBooking(
+    bookingId: string,
+    requester: Requester,
+  ): Promise<{
+    checkoutUrl: string;
+    qrCode: string | null;
+    expiredAt?: number;
+  }> {
     const booking = await this.bookingService.findById(bookingId, requester);
 
     if (booking.paymentMethod !== PaymentMethod.PAYOS) {
@@ -73,10 +80,13 @@ export class PaymentService {
       );
     }
 
-    const orderCode = Number(booking.payosOrderCode);
+    const orderCode =
+      booking.paymentStatus === PaymentStatus.FAILED
+        ? Number(await this.bookingService.resetPaymentForRetry(bookingId))
+        : Number(booking.payosOrderCode);
     const returnUrl = `${this.frontendUrl}/payment/success?bookingId=${bookingId}`;
     const cancelUrl = `${this.frontendUrl}/payment/cancel?bookingId=${bookingId}`;
-    // Link hết hạn sau 15 phút — đủ để hiển thị đếm ngược có ý nghĩa trên trang checkout
+    // Link hết hạn sau 15 phút - đủ để hiển thị đếm ngược có ý nghĩa trên trang checkout
     // thay vì để mặc định không giới hạn thời gian của PayOS.
     const expiredAt = Math.floor(Date.now() / 1000) + 15 * 60;
 
@@ -123,6 +133,11 @@ export class PaymentService {
         await this.bookingService.markPaidByOrderCode(orderCode, payerBankInfo);
         throw new BadRequestException('Đơn đặt phòng đã được thanh toán');
       }
+      if (FAILED_PAYOS_STATUSES.includes(existing.status)) {
+        await this.bookingService.markFailedByOrderCode(orderCode);
+        return this.createLinkForBooking(bookingId, requester);
+      }
+
       return {
         checkoutUrl: `https://pay.payos.vn/web/${existing.id}`,
         qrCode: null,
@@ -262,9 +277,12 @@ export class PaymentService {
     data: PayosCounterAccountFields,
   ): Promise<Record<string, string> | null> {
     const info: Record<string, string> = {};
-    if (data.counterAccountName) info['Tên người chuyển'] = data.counterAccountName;
-    if (data.counterAccountNumber) info['Số tài khoản'] = data.counterAccountNumber;
-    if (data.counterAccountBankName) info['Ngân hàng'] = data.counterAccountBankName;
+    if (data.counterAccountName)
+      info['Tên người chuyển'] = data.counterAccountName;
+    if (data.counterAccountNumber)
+      info['Số tài khoản'] = data.counterAccountNumber;
+    if (data.counterAccountBankName)
+      info['Ngân hàng'] = data.counterAccountBankName;
 
     const bankBin = await this.resolveBankBin(data);
     if (bankBin) info.bankBin = bankBin;

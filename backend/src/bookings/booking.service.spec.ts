@@ -337,3 +337,28 @@ describe('BookingService.create — chặn ngày nhận phòng đã qua', () => 
     ).rejects.toThrow('quá khứ');
   });
 });
+describe('BookingService.markFailedByOrderCode', () => {
+  it('đơn UNPAID -> chuyển FAILED và lưu đúng 1 lần', async () => {
+    const { service, bookingSave } = buildService();
+
+    const result = await service.markFailedByOrderCode(123456);
+
+    expect(result?.paymentStatus).toBe(PaymentStatus.FAILED);
+    expect(bookingSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('đơn đã FAILED -> không lưu lại, không tạo thêm thông báo trùng', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.FAILED,
+        user: { userId: 'user-1' },
+      } as never,
+    });
+
+    await service.markFailedByOrderCode(123456);
+
+    expect(bookingSave).not.toHaveBeenCalled();
+  });
+});

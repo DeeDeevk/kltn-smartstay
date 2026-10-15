@@ -94,8 +94,10 @@ export class BookingService {
   }
 
   async create(userId: string, dto: CreateBookingDto) {
-    if(dto.checkIn < todayInHotelTz()){
-      throw new BadRequestException('Ngày nhận phòng không được ở trong quá khứ');
+    if (dto.checkIn < todayInHotelTz()) {
+      throw new BadRequestException(
+        'Ngày nhận phòng không được ở trong quá khứ',
+      );
     }
     if (new Date(dto.checkIn) >= new Date(dto.checkOut)) {
       throw new BadRequestException('Ngày check-in phải trước ngày check-out');
@@ -489,9 +491,8 @@ export class BookingService {
   async findById(bookingId: string, requester: Requester) {
     const booking = await this.findByIdRaw(bookingId);
     this.assertCanView(booking, requester);
-    const refundRequest = await this.refundRequestService.findByBookingId(
-      bookingId,
-    );
+    const refundRequest =
+      await this.refundRequestService.findByBookingId(bookingId);
     return { ...this.toDetailResponse(booking), refundRequest };
   }
 
@@ -582,6 +583,14 @@ export class BookingService {
   async assignFreshPayosOrderCode(bookingId: string): Promise<string> {
     const booking = await this.findByIdRaw(bookingId);
     booking.payosOrderCode = String(Date.now());
+    await this.bookingRepo.save(booking);
+    return booking.payosOrderCode;
+  }
+
+  async resetPaymentForRetry(bookingId: string): Promise<string> {
+    const booking = await this.findByIdRaw(bookingId);
+    booking.payosOrderCode = String(Date.now());
+    booking.paymentStatus = PaymentStatus.UNPAID;
     await this.bookingRepo.save(booking);
     return booking.payosOrderCode;
   }
@@ -967,7 +976,11 @@ export class BookingService {
       where: { payosOrderCode: String(orderCode) },
     });
     if (!booking) return null;
-    if (booking.paymentStatus === PaymentStatus.PAID) return booking;
+    if (
+      booking.paymentStatus === PaymentStatus.PAID ||
+      booking.paymentStatus === PaymentStatus.FAILED
+    )
+      return booking;
 
     booking.paymentStatus = PaymentStatus.FAILED;
     const saved = await this.bookingRepo.save(booking);
@@ -1259,7 +1272,6 @@ export class BookingService {
       .getRawMany<{ roomTypeId: string; count: string }>();
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
-
 
   // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Chỉ báo cho nhân viên
   // lễ tân (người xác nhận đơn), không báo admin. Đơn walk-in do chính lễ tân tạo nên
