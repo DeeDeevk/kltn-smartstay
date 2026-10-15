@@ -362,3 +362,41 @@ describe('BookingService.markFailedByOrderCode', () => {
     expect(bookingSave).not.toHaveBeenCalled();
   });
 });
+
+describe('BookingService.assignFreshPayosOrderCode', () => {
+  it('đơn FAILED (link cũ hết hạn) -> cấp mã mới và đưa về UNPAID', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.FAILED,
+      },
+    });
+
+    const code = await service.assignFreshPayosOrderCode('booking-1');
+
+    expect(code).not.toBe('123456');
+    expect(bookingSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payosOrderCode: code,
+        paymentStatus: PaymentStatus.UNPAID,
+      }),
+    );
+  });
+
+  it('đơn PAID (lễ tân thu thêm lúc trả phòng) -> chỉ đổi mã, giữ nguyên PAID', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.PAID,
+      },
+    });
+
+    await service.assignFreshPayosOrderCode('booking-1');
+
+    expect(bookingSave).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentStatus: PaymentStatus.PAID }),
+    );
+  });
+});

@@ -579,18 +579,16 @@ export class BookingService {
   }
 
   // Cấp 1 mã orderCode PayOS mới cho booking (ghi đè mã cũ) — dùng khi lễ tân tạo
-  // link chuyển khoản thu phần còn lại lúc trả phòng, số tiền khác với lúc đặt.
+  // link chuyển khoản thu phần còn lại lúc trả phòng, và khi khách thanh toán lại sau
+  // khi link cũ hết hạn/bị huỷ. Đơn đang FAILED (link cũ hết hạn) được đưa về UNPAID
+  // để lần hết hạn của link MỚI vẫn được báo "thanh toán thất bại" đúng 1 lần (xem
+  // markFailedByOrderCode). Không đụng tới đơn PAID (thu thêm lúc trả phòng).
   async assignFreshPayosOrderCode(bookingId: string): Promise<string> {
     const booking = await this.findByIdRaw(bookingId);
     booking.payosOrderCode = String(Date.now());
-    await this.bookingRepo.save(booking);
-    return booking.payosOrderCode;
-  }
-
-  async resetPaymentForRetry(bookingId: string): Promise<string> {
-    const booking = await this.findByIdRaw(bookingId);
-    booking.payosOrderCode = String(Date.now());
-    booking.paymentStatus = PaymentStatus.UNPAID;
+    if (booking.paymentStatus === PaymentStatus.FAILED) {
+      booking.paymentStatus = PaymentStatus.UNPAID;
+    }
     await this.bookingRepo.save(booking);
     return booking.payosOrderCode;
   }
@@ -628,6 +626,16 @@ export class BookingService {
     if (booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException(
         'Đơn phải ở trạng thái đã xác nhận trước khi check-in',
+      );
+    }
+    // Đơn PAYOS phải thanh toán online xong (webhook/sync xác nhận PAID) mới cho
+    // check-in — khác đơn CASH được lễ tân thu tiền mặt trực tiếp lúc check-in.
+    if (
+      booking.paymentMethod === PaymentMethod.PAYOS &&
+      booking.paymentStatus !== PaymentStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Đơn thanh toán online chưa được thanh toán, không thể check-in',
       );
     }
 
