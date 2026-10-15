@@ -144,9 +144,9 @@ export const RoomCard = ({ room, onSelect, index = 0 }) => {
   return (
     <div
       style={{ animationDelay: `${Math.min(index, 6) * 60}ms` }}
-      className="anim-fade-up lift w-full rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm"
+      className="anim-fade-up lift w-full h-full flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm"
     >
-      <div className="h-28 bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center overflow-hidden">
+      <div className="h-28 shrink-0 bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center overflow-hidden">
         {image ? (
           <img
             loading="lazy"
@@ -158,30 +158,30 @@ export const RoomCard = ({ room, onSelect, index = 0 }) => {
           <BedDouble className="w-9 h-9 text-blue-300" />
         )}
       </div>
-      <div className="p-3 space-y-1.5">
-        <p className="font-bold text-gray-800 text-sm leading-snug">
+      {/* Giống thẻ phòng trên mobile (ChatRoomCard): thông tin xếp dọc từng dòng, nút
+          chọn phòng chiếm trọn chiều ngang và luôn nằm đáy thẻ để 2 thẻ cạnh nhau thẳng hàng. */}
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        <p className="line-clamp-2 font-bold text-gray-800 text-sm leading-snug">
           {room.name}
         </p>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          {room.capacity && (
-            <span className="flex items-center gap-1">
-              <Users className="w-3.5 h-3.5" /> {room.capacity} khách
-            </span>
-          )}
-          {typeof room.availableCount === "number" && (
-            <span className="text-green-600 font-medium">
-              Còn {room.availableCount} phòng
-            </span>
-          )}
-        </div>
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-blue-600 font-bold text-sm">
-            {formatVnd(room.basePrice)}
-            <span className="text-gray-400 font-normal">/đêm</span>
+        {room.capacity && (
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <Users className="w-3.5 h-3.5" /> {room.capacity} khách
           </span>
+        )}
+        {typeof room.availableCount === "number" && (
+          <span className="text-xs font-medium text-green-600">
+            Còn {room.availableCount} phòng
+          </span>
+        )}
+        <span className="text-sm font-bold text-blue-600">
+          {formatVnd(room.basePrice)}
+          <span className="text-xs font-normal text-gray-400">/đêm</span>
+        </span>
+        <div className="mt-auto pt-1.5">
           <button
             onClick={() => onSelect(room)}
-            className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-full px-3 py-1.5 transition-colors"
+            className="w-full rounded-full bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
           >
             Chọn phòng này
           </button>
