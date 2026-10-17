@@ -7,15 +7,18 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
 
 class GuestInfoDto {
   @IsString()
+  @MaxLength(120)
   fullName!: string;
 
   @IsString()
+  @MaxLength(20)
   phone!: string;
 
   @IsOptional()

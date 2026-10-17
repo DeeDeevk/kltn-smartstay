@@ -10,12 +10,14 @@ import {
   ImageOff,
   Loader2,
   MessageCircle,
+  SearchX,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import ConfirmModal from '../common/ConfirmModal';
+import EmptyState from '../common/EmptyState';
 import BookingDetailModal from '../booking/BookingDetailModal';
 import ReviewModal from '../room/ReviewModal';
 import StatusPill from '../booking/StatusPill';
@@ -260,9 +262,11 @@ export default function BookingHistoryPage() {
         )}
 
         {!isFetching && !error && bookings.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-16 text-center text-gray-400">
-            {t('booking.history.empty')}
-          </div>
+          <EmptyState
+            icon={SearchX}
+            title={t('booking.history.empty')}
+            className="rounded-2xl border border-gray-200 bg-white p-16"
+          />
         )}
 
         {!isFetching && !error && bookings.length > 0 && (

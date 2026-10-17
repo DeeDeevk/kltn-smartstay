@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Search, SearchX, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../../common/ConfirmModal';
+import EmptyState from '../../common/EmptyState';
+import { Skeleton } from '../../common/Skeleton';
 import PromotionFormModal, { getErrorMessage } from './PromotionFormModal';
 import {
   useDeletePromotionMutation,
@@ -274,9 +276,15 @@ export default function PromotionManagementPage() {
       </div>
 
       {isFetching && promotions.length === 0 && (
-        <div className="flex justify-center py-16 text-gray-400">
-          <Loader2 className="animate-spin" size={28} />
-        </div>
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          {Array.from({ length: 5 }, (_, i) => (
+            <li key={i} className="flex items-center gap-4 p-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-20" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {!isFetching && error && (
@@ -286,11 +294,15 @@ export default function PromotionManagementPage() {
       )}
 
       {!error && !(isFetching && promotions.length === 0) && filtered.length === 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-          {hasFilter
-            ? 'Không có khuyến mãi nào khớp bộ lọc.'
-            : 'Chưa có khuyến mãi nào. Bấm "Thêm khuyến mãi" để bắt đầu.'}
-        </div>
+        <EmptyState
+          icon={SearchX}
+          title={
+            hasFilter
+              ? 'Không có khuyến mãi nào khớp bộ lọc'
+              : 'Chưa có khuyến mãi nào'
+          }
+          description={hasFilter ? undefined : 'Bấm "Thêm khuyến mãi" để bắt đầu.'}
+        />
       )}
 
       {filtered.length > 0 && (
