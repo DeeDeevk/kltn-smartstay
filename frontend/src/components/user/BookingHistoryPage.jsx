@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CalendarDays,
@@ -9,12 +10,14 @@ import {
   ImageOff,
   Loader2,
   MessageCircle,
+  SearchX,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 import ConfirmModal from '../common/ConfirmModal';
+import EmptyState from '../common/EmptyState';
 import BookingDetailModal from '../booking/BookingDetailModal';
 import ReviewModal from '../room/ReviewModal';
 import StatusPill from '../booking/StatusPill';
@@ -26,7 +29,6 @@ import {
   useGetMyBookingsQuery,
 } from '../../services/booking';
 import { useSocket } from '../../context/SocketContext';
-import { useCreatePayOSLinkMutation } from '../../services/payment';
 import { useGetMyReviewsQuery } from '../../services/review';
 import { useGetMyRefundRequestsQuery } from '../../services/refundRequest';
 import formatCurrency from '../../utils/formatCurrency';
@@ -97,7 +99,6 @@ function BookingActions({
   canCancel,
   canReview,
   showContactReception,
-  isPaying,
   onPayNow,
   onCancel,
   onReview,
@@ -111,10 +112,9 @@ function BookingActions({
         <button
           type="button"
           onClick={() => onPayNow(booking.bookingId)}
-          disabled={isPaying}
-          className="rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-70"
+          className="rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700"
         >
-          {isPaying ? t('booking.history.redirecting') : t('booking.history.payNow')}
+          {t('booking.history.payNow')}
         </button>
       )}
       {canCancel && (
@@ -163,8 +163,7 @@ export default function BookingHistoryPage() {
   const { t, i18n } = useTranslation();
   const { data, isFetching, error } = useGetMyBookingsQuery();
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
-  const [createPayOSLink, { isLoading: isRedirecting }] = useCreatePayOSLinkMutation();
-  const [payingId, setPayingId] = useState(null);
+  const navigate = useNavigate();
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [detailBookingId, setDetailBookingId] = useState(null);
@@ -218,15 +217,10 @@ export default function BookingHistoryPage() {
   // trước conversationId/scroll tới đoạn nào, mở ra là thấy đúng cuộc hội thoại cần gửi.
   const handleContactReception = () => openReceptionChat();
 
-  const handlePayNow = async (bookingId) => {
-    setPayingId(bookingId);
-    try {
-      const { checkoutUrl } = await createPayOSLink(bookingId).unwrap();
-      window.location.href = checkoutUrl;
-    } catch (err) {
-      toast.error(err?.data?.message || t('booking.history.linkError'));
-      setPayingId(null);
-    }
+  // Mở trang thanh toán của Vika (QR ngay trên web) thay vì chuyển sang trang PayOS —
+  // trang đó tự tạo link, đếm ngược và tự chuyển sang trang kết quả khi thanh toán xong.
+  const handlePayNow = (bookingId) => {
+    navigate(`/payment/${bookingId}`);
   };
 
   const handleConfirmCancel = async () => {
@@ -268,9 +262,11 @@ export default function BookingHistoryPage() {
         )}
 
         {!isFetching && !error && bookings.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-16 text-center text-gray-400">
-            {t('booking.history.empty')}
-          </div>
+          <EmptyState
+            icon={SearchX}
+            title={t('booking.history.empty')}
+            className="rounded-2xl border border-gray-200 bg-white p-16"
+          />
         )}
 
         {!isFetching && !error && bookings.length > 0 && (
@@ -298,7 +294,6 @@ export default function BookingHistoryPage() {
                         booking.status === 'PENDING';
                       const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
                       const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
-                      const isPaying = isRedirecting && payingId === booking.bookingId;
                       const refund = refundByBookingId.get(booking.bookingId);
                       const showContactReception = isRefundOverdue(refund);
 
@@ -362,7 +357,6 @@ export default function BookingHistoryPage() {
                               canPayNow={canPayNow}
                               canCancel={canCancel}
                               canReview={canReview}
-                              isPaying={isPaying}
                               onPayNow={handlePayNow}
                               onCancel={setCancelTarget}
                               onReview={setReviewTarget}
@@ -387,7 +381,6 @@ export default function BookingHistoryPage() {
                   booking.status === 'PENDING';
                 const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
                 const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
-                const isPaying = isRedirecting && payingId === booking.bookingId;
                 const refund = refundByBookingId.get(booking.bookingId);
                 const showContactReception = isRefundOverdue(refund);
 
@@ -446,7 +439,6 @@ export default function BookingHistoryPage() {
                         canPayNow={canPayNow}
                         canCancel={canCancel}
                         canReview={canReview}
-                        isPaying={isPaying}
                         onPayNow={handlePayNow}
                         onCancel={setCancelTarget}
                         onReview={setReviewTarget}

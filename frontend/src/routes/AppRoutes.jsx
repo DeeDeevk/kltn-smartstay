@@ -1,116 +1,212 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { User, Phone, Mail, Banknote, CreditCard, CheckCircle2, Loader2, ArrowLeft, SearchX, Download } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import { QRCodeSVG } from 'qrcode.react'
-import { toast } from 'react-toastify'
-import Header from '../components/layout/Header'
-import Footer from '../components/layout/Footer'
-import Chatbot from '../components/Chatbot'
-import AiChatbot from '../components/AiChatbot'
-import HeroSection from '../components/homepage/HeroSection'
-import FeaturedRooms from '../components/homepage/FeaturedRooms'
-import TestimonialsSection from '../components/homepage/TestimonialsSection'
-import PromoSection from '../components/homepage/PromoSection'
-import AuthHero from '../components/admin/auth/AuthHero'
-import LoginForm from '../components/admin/auth/LoginForm'
-import RegisterForm from '../components/admin/auth/RegisterForm'
-import ForgotPasswordForm from '../components/admin/auth/ForgotPasswordForm'
-import { ADMIN_AREA_ROLES, ADMIN_LANDING_PATH } from '../components/admin/auth/useRedirectAfterLogin'
-import GeneralInfoRoom from '../components/room/GeneralInfoRoom'
-import RoomGallery from '../components/room/RoomGallery'
-import RoomInfo from '../components/room/RoomInfo'
-import RoomAmenities from '../components/room/RoomAmenities'
-import BookingCard from '../components/room/BookingCard'
-import RoomReviews from '../components/room/RoomReviews'
-import RoomCard from '../components/searchroom/RoomCard'
-import FilterSidebar from '../components/FilterSidebar'
-import OrderSummaryCard from '../components/booking/OrderSummaryCard'
-import PromoCodeBox from '../components/booking/PromoCodeBox'
-import { calculateVat } from '../utils/vat'
-import { roomTypeApi } from '../services/roomType'
-import { useLazySearchAvailabilityQuery } from '../services/availability'
-import { useCreateBookingMutation } from '../services/booking'
-import { useCreatePayOSLinkMutation, useSyncPayOSStatusQuery } from '../services/payment'
-import { useAuth } from '../context/AuthContext'
-import ProtectedRoute from './ProtectedRoute'
-import ForbiddenPage from './ForbiddenPage'
-import PageLoader from '../components/common/PageLoader'
-import formatCurrency from '../utils/formatCurrency'
-import getBookingCode from '../utils/bookingCode'
-import getBookingQrPayload from '../utils/bookingQrPayload'
-import downloadQrPng from '../utils/downloadQr'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  User,
+  Phone,
+  Mail,
+  Banknote,
+  CreditCard,
+  CheckCircle2,
+  Loader2,
+  ArrowLeft,
+  SearchX,
+  Download,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { QRCodeSVG } from "qrcode.react";
+import { toast } from "react-toastify";
+import Header from "../components/layout/Header";
+import Footer from "../components/layout/Footer";
+import Chatbot from "../components/Chatbot";
+import AiChatbot from "../components/AiChatbot";
+import HeroSection from "../components/homepage/HeroSection";
+import FeaturedRooms from "../components/homepage/FeaturedRooms";
+import TestimonialsSection from "../components/homepage/TestimonialsSection";
+import PromoSection from "../components/homepage/PromoSection";
+import AuthHero from "../components/admin/auth/AuthHero";
+import LoginForm from "../components/admin/auth/LoginForm";
+import RegisterForm from "../components/admin/auth/RegisterForm";
+import ForgotPasswordForm from "../components/admin/auth/ForgotPasswordForm";
+import {
+  ADMIN_AREA_ROLES,
+  ADMIN_LANDING_PATH,
+} from "../components/admin/auth/useRedirectAfterLogin";
+import GeneralInfoRoom from "../components/room/GeneralInfoRoom";
+import RoomGallery from "../components/room/RoomGallery";
+import RoomInfo from "../components/room/RoomInfo";
+import RoomAmenities from "../components/room/RoomAmenities";
+import BookingCard from "../components/room/BookingCard";
+import RoomReviews from "../components/room/RoomReviews";
+import RoomCard from "../components/searchroom/RoomCard";
+import FilterSidebar from "../components/FilterSidebar";
+import OrderSummaryCard from "../components/booking/OrderSummaryCard";
+import PromoCodeBox from "../components/booking/PromoCodeBox";
+import { calculateVat } from "../utils/vat";
+import { roomTypeApi } from "../services/roomType";
+import { useLazySearchAvailabilityQuery } from "../services/availability";
+import { useCreateBookingMutation } from "../services/booking";
+import {
+  useCreatePayOSLinkMutation,
+  useSyncPayOSStatusQuery,
+} from "../services/payment";
+import { useAuth } from "../context/AuthContext";
+import ProtectedRoute from "./ProtectedRoute";
+import ForbiddenPage from "./ForbiddenPage";
+import PageLoader from "../components/common/PageLoader";
+import formatCurrency from "../utils/formatCurrency";
+import getBookingCode from "../utils/bookingCode";
+import getBookingQrPayload from "../utils/bookingQrPayload";
+import downloadQrPng from "../utils/downloadQr";
+import {
+  PAYOS_POLL_INTERVAL_MS,
+  PayOSPaymentPanel,
+  usePaymentCountdown,
+} from "../components/payment/PayOSPaymentPanel";
 
 // Trang admin và các trang phụ của khách chỉ tải khi truy cập tới, để lần vào trang chủ không
 // phải tải cả recharts, html5-qrcode... của phần quản trị.
-const ProfilePage = lazy(() => import('../components/user/ProfilePage'))
-const BookingHistoryPage = lazy(() => import('../components/user/BookingHistoryPage'))
-const NotificationsPage = lazy(() => import('../components/user/NotificationsPage'))
-const PaymentSuccessPage = lazy(() => import('../components/payment/PaymentSuccessPage'))
-const PaymentCancelPage = lazy(() => import('../components/payment/PaymentCancelPage'))
-const UserManagementPage = lazy(() => import('../components/admin/users/UserManagementPage'))
-const StaffManagementPage = lazy(() => import('../components/admin/users/StaffManagementPage'))
-const ShiftSchedulePage = lazy(() => import('../components/admin/shifts/ShiftSchedulePage'))
-const MySchedulePage = lazy(() => import('../components/admin/shifts/MySchedulePage'))
-const RevenueSummaryPage = lazy(() => import('../components/admin/revenue/RevenueSummaryPage'))
-const HotelLocationSettingsPage = lazy(() => import('../components/admin/settings/HotelLocationSettingsPage'))
-const LocalEventsSettingsPage = lazy(() => import('../components/admin/settings/LocalEventsSettingsPage'))
-const LocalPlacesSettingsPage = lazy(() => import('../components/admin/settings/LocalPlacesSettingsPage'))
-const FaqManagementPage = lazy(() => import('../components/admin/faqs/FaqManagementPage'))
-const PromotionManagementPage = lazy(() => import('../components/admin/promotions/PromotionManagementPage'))
-const ReviewManagementPage = lazy(() => import('../components/admin/reviews/ReviewManagementPage'))
-const RefundRequestManagementPage = lazy(() => import('../components/admin/refunds/RefundRequestManagementPage'))
-const AdminNotificationsPage = lazy(() => import('../components/admin/notifications/AdminNotificationsPage'))
-const StaffProfilePage = lazy(() => import('../components/admin/profile/StaffProfilePage'))
-const RevenueByStaffPage = lazy(() => import('../components/admin/revenue/RevenueByStaffPage'))
-const RoomTypeManagementPage = lazy(() => import('../components/admin/roomTypes/RoomTypeManagementPage'))
-const RoomMapPage = lazy(() => import('../components/admin/roomMap/RoomMapPage'))
-const AdminRoomDetailPage = lazy(() => import('../components/admin/roomMap/AdminRoomDetailPage'))
-const AdminCheckoutPage = lazy(() => import('../components/admin/roomMap/AdminCheckoutPage'))
-const BookingManagementPage = lazy(() => import('../components/admin/bookings/BookingManagementPage'))
-const StaffChatPage = lazy(() => import('../components/admin/chat/StaffChatPage'))
-const AdminDashboardPage = lazy(() => import('../components/admin/dashboard/AdminDashboardPage'))
-const DashboardLayout = lazy(() => import('../components/admin/layout/DashboardLayout'))
+const ProfilePage = lazy(() => import("../components/user/ProfilePage"));
+const BookingHistoryPage = lazy(
+  () => import("../components/user/BookingHistoryPage"),
+);
+const NotificationsPage = lazy(
+  () => import("../components/user/NotificationsPage"),
+);
+const PaymentSuccessPage = lazy(
+  () => import("../components/payment/PaymentSuccessPage"),
+);
+const PaymentCancelPage = lazy(
+  () => import("../components/payment/PaymentCancelPage"),
+);
+const BookingPaymentPage = lazy(
+  () => import("../components/payment/BookingPaymentPage"),
+);
+const UserManagementPage = lazy(
+  () => import("../components/admin/users/UserManagementPage"),
+);
+const StaffManagementPage = lazy(
+  () => import("../components/admin/users/StaffManagementPage"),
+);
+const ShiftSchedulePage = lazy(
+  () => import("../components/admin/shifts/ShiftSchedulePage"),
+);
+const MySchedulePage = lazy(
+  () => import("../components/admin/shifts/MySchedulePage"),
+);
+const RevenueSummaryPage = lazy(
+  () => import("../components/admin/revenue/RevenueSummaryPage"),
+);
+const HotelLocationSettingsPage = lazy(
+  () => import("../components/admin/settings/HotelLocationSettingsPage"),
+);
+const LocalEventsSettingsPage = lazy(
+  () => import("../components/admin/settings/LocalEventsSettingsPage"),
+);
+const LocalPlacesSettingsPage = lazy(
+  () => import("../components/admin/settings/LocalPlacesSettingsPage"),
+);
+const FaqManagementPage = lazy(
+  () => import("../components/admin/faqs/FaqManagementPage"),
+);
+const PromotionManagementPage = lazy(
+  () => import("../components/admin/promotions/PromotionManagementPage"),
+);
+const ReviewManagementPage = lazy(
+  () => import("../components/admin/reviews/ReviewManagementPage"),
+);
+const RefundRequestManagementPage = lazy(
+  () => import("../components/admin/refunds/RefundRequestManagementPage"),
+);
+const AdminNotificationsPage = lazy(
+  () => import("../components/admin/notifications/AdminNotificationsPage"),
+);
+const StaffProfilePage = lazy(
+  () => import("../components/admin/profile/StaffProfilePage"),
+);
+const RevenueByStaffPage = lazy(
+  () => import("../components/admin/revenue/RevenueByStaffPage"),
+);
+const RoomTypeManagementPage = lazy(
+  () => import("../components/admin/roomTypes/RoomTypeManagementPage"),
+);
+const RoomMapPage = lazy(
+  () => import("../components/admin/roomMap/RoomMapPage"),
+);
+const AdminRoomDetailPage = lazy(
+  () => import("../components/admin/roomMap/AdminRoomDetailPage"),
+);
+const AdminCheckoutPage = lazy(
+  () => import("../components/admin/roomMap/AdminCheckoutPage"),
+);
+const BookingManagementPage = lazy(
+  () => import("../components/admin/bookings/BookingManagementPage"),
+);
+const StaffChatPage = lazy(
+  () => import("../components/admin/chat/StaffChatPage"),
+);
+const AdminDashboardPage = lazy(
+  () => import("../components/admin/dashboard/AdminDashboardPage"),
+);
+const DashboardLayout = lazy(
+  () => import("../components/admin/layout/DashboardLayout"),
+);
 
 const paymentMethods = [
-  { value: 'cash', labelKey: 'checkout.paymentCash', icon: Banknote },
-  { value: 'online', labelKey: 'checkout.paymentOnline', icon: CreditCard },
-]
+  { value: "cash", labelKey: "checkout.paymentCash", icon: Banknote },
+  { value: "online", labelKey: "checkout.paymentOnline", icon: CreditCard },
+];
 
 // React Router doesn't reset scroll position on navigation by default, so
 // clicking a link while scrolled down leaves the next page scrolled down too.
 function ScrollToTop() {
-  const { pathname, hash } = useLocation()
+  const { pathname, hash } = useLocation();
 
   useEffect(() => {
     if (!hash) {
-      window.scrollTo(0, 0)
-      return
+      window.scrollTo(0, 0);
+      return;
     }
 
     // Wait a frame so the target page/section has rendered before scrolling to it.
     const id = requestAnimationFrame(() => {
-      const el = document.getElementById(hash.slice(1))
+      const el = document.getElementById(hash.slice(1));
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
       } else {
-        window.scrollTo(0, 0)
+        window.scrollTo(0, 0);
       }
-    })
+    });
 
-    return () => cancelAnimationFrame(id)
-  }, [pathname, hash])
+    return () => cancelAnimationFrame(id);
+  }, [pathname, hash]);
 
-  return null
+  return null;
 }
 
 function HomePage() {
-  const { user } = useAuth()
+  const { user } = useAuth();
 
   // Admin/lễ tân mở lại trang web khi phiên đăng nhập còn hạn thì vào thẳng khu quản
   // trị, giống điều hướng sau khi đăng nhập (useRedirectAfterLogin).
   if (ADMIN_AREA_ROLES.includes(user?.role)) {
-    return <Navigate to={ADMIN_LANDING_PATH} replace />
+    return <Navigate to={ADMIN_LANDING_PATH} replace />;
   }
 
   return (
@@ -124,111 +220,146 @@ function HomePage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }
 
 function AuthPage({ mode }) {
-  const navigate = useNavigate()
-  const { t } = useTranslation()
+  const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-gray-50">
       <AuthHero />
       <div className="flex flex-col">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate("/")}
           className="lg:hidden inline-flex items-center gap-1.5 px-6 pt-6 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors w-fit"
         >
-          <ArrowLeft size={16} /> {t('checkout.success.backHome')}
+          <ArrowLeft size={16} /> {t("checkout.success.backHome")}
         </button>
         <div className="flex flex-1 items-center justify-center py-8 lg:py-12">
-          {mode === 'login' ? <LoginForm /> : mode === 'register' ? <RegisterForm /> : <ForgotPasswordForm />}
+          {mode === "login" ? (
+            <LoginForm />
+          ) : mode === "register" ? (
+            <RegisterForm />
+          ) : (
+            <ForgotPasswordForm />
+          )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-const MAX_PRICE = 10000000
+const MAX_PRICE = 10000000;
 
 const SORT_OPTIONS = [
-  { value: 'recommended', labelKey: 'search.sort.recommended' },
-  { value: 'price-asc', labelKey: 'search.sort.priceAsc' },
-  { value: 'price-desc', labelKey: 'search.sort.priceDesc' },
-]
+  { value: "recommended", labelKey: "search.sort.recommended" },
+  { value: "price-asc", labelKey: "search.sort.priceAsc" },
+  { value: "price-desc", labelKey: "search.sort.priceDesc" },
+];
 
-const DEFAULT_PRICE_FILTERS = { priceMin: 0, priceMax: MAX_PRICE, roomTypes: [] }
+const DEFAULT_PRICE_FILTERS = {
+  priceMin: 0,
+  priceMax: MAX_PRICE,
+  roomTypes: [],
+};
 
 // Dùng khi vào /searchrooms trực tiếp (menu "Phòng nghỉ", "Xem tất cả phòng"...)
 // mà không có searchParams từ HeroSection: mặc định 1 khách, nhận phòng ngày mai.
 function getDefaultSearchParams() {
-  const checkIn = new Date()
-  checkIn.setDate(checkIn.getDate() + 1)
-  const checkOut = new Date(checkIn)
-  checkOut.setDate(checkOut.getDate() + 1)
-  return { checkIn: checkIn.toISOString(), checkOut: checkOut.toISOString(), capacity: 1 }
+  const checkIn = new Date();
+  checkIn.setDate(checkIn.getDate() + 1);
+  const checkOut = new Date(checkIn);
+  checkOut.setDate(checkOut.getDate() + 1);
+  return {
+    checkIn: checkIn.toISOString(),
+    checkOut: checkOut.toISOString(),
+    capacity: 1,
+  };
 }
 
 function SearchResultsPage() {
-  const { t, i18n } = useTranslation()
-  const location = useLocation()
-  const [triggerSearch, { isFetching: isSearching }] = useLazySearchAvailabilityQuery()
+  const { t, i18n } = useTranslation();
+  const location = useLocation();
+  const [triggerSearch, { isFetching: isSearching }] =
+    useLazySearchAvailabilityQuery();
 
-  const [searchParams, setSearchParams] = useState(() => location.state?.searchParams ?? getDefaultSearchParams())
+  const [searchParams, setSearchParams] = useState(
+    () => location.state?.searchParams ?? getDefaultSearchParams(),
+  );
   // Nếu đến từ HeroSection thì đã có kết quả sẵn (location.state.results), khỏi gọi lại API lần nữa.
-  const [rooms, setRooms] = useState(location.state?.results ?? [])
-  const [priceFilters, setPriceFilters] = useState(DEFAULT_PRICE_FILTERS)
-  const [sortBy, setSortBy] = useState('recommended')
+  const [rooms, setRooms] = useState(location.state?.results ?? []);
+  const [priceFilters, setPriceFilters] = useState(DEFAULT_PRICE_FILTERS);
+  const [sortBy, setSortBy] = useState("recommended");
 
-  const runSearch = useCallback(async (params) => {
-    try {
-      const result = await triggerSearch({
-        checkIn: params.checkIn,
-        checkOut: params.checkOut,
-        guests: params.capacity,
-      }).unwrap()
-      setRooms(result.availableRoomTypes)
-    } catch (error) {
-      toast.error(error?.data?.message || t('home.hero.searchError'))
-    }
-  }, [triggerSearch, t])
+  const runSearch = useCallback(
+    async (params) => {
+      try {
+        const result = await triggerSearch({
+          checkIn: params.checkIn,
+          checkOut: params.checkOut,
+          guests: params.capacity,
+        }).unwrap();
+        setRooms(result.availableRoomTypes);
+      } catch (error) {
+        toast.error(error?.data?.message || t("home.hero.searchError"));
+      }
+    },
+    [triggerSearch, t],
+  );
 
   useEffect(() => {
-    if (location.state?.results) return
-    runSearch(searchParams)
+    if (location.state?.results) return;
+    runSearch(searchParams);
     // Chỉ tự tìm khi vào trang mà chưa có kết quả sẵn; các lần tìm lại sau do người
     // dùng chủ động bấm nút "Tìm lại" trong FilterSidebar sau khi đổi ngày/số khách.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   const availableRoomTypes = useMemo(
     () => [...new Set(rooms.map((room) => room.name))],
     [rooms],
-  )
+  );
 
   const visibleRooms = useMemo(() => {
     const filtered = rooms.filter((room) => {
-      const price = room.basePrice ?? room.base_price ?? 0
-      if (price < priceFilters.priceMin || price > priceFilters.priceMax) return false
-      if (priceFilters.roomTypes.length > 0 && !priceFilters.roomTypes.includes(room.name)) return false
-      return true
-    })
+      const price = room.basePrice ?? room.base_price ?? 0;
+      if (price < priceFilters.priceMin || price > priceFilters.priceMax)
+        return false;
+      if (
+        priceFilters.roomTypes.length > 0 &&
+        !priceFilters.roomTypes.includes(room.name)
+      )
+        return false;
+      return true;
+    });
 
-    if (sortBy === 'price-asc') {
-      return [...filtered].sort((a, b) => (a.basePrice ?? a.base_price ?? 0) - (b.basePrice ?? b.base_price ?? 0))
+    if (sortBy === "price-asc") {
+      return [...filtered].sort(
+        (a, b) =>
+          (a.basePrice ?? a.base_price ?? 0) -
+          (b.basePrice ?? b.base_price ?? 0),
+      );
     }
-    if (sortBy === 'price-desc') {
-      return [...filtered].sort((a, b) => (b.basePrice ?? b.base_price ?? 0) - (a.basePrice ?? a.base_price ?? 0))
+    if (sortBy === "price-desc") {
+      return [...filtered].sort(
+        (a, b) =>
+          (b.basePrice ?? b.base_price ?? 0) -
+          (a.basePrice ?? a.base_price ?? 0),
+      );
     }
-    return filtered
-  }, [rooms, priceFilters, sortBy])
+    return filtered;
+  }, [rooms, priceFilters, sortBy]);
 
-  const handleSearchParamsChange = (patch) => setSearchParams((prev) => ({ ...prev, ...patch }))
-  const handlePriceFilterChange = (patch) => setPriceFilters((prev) => ({ ...prev, ...patch }))
-  const handleResetFilters = () => setPriceFilters(DEFAULT_PRICE_FILTERS)
+  const handleSearchParamsChange = (patch) =>
+    setSearchParams((prev) => ({ ...prev, ...patch }));
+  const handlePriceFilterChange = (patch) =>
+    setPriceFilters((prev) => ({ ...prev, ...patch }));
+  const handleResetFilters = () => setPriceFilters(DEFAULT_PRICE_FILTERS);
 
-  const isInitialLoading = isSearching && rooms.length === 0
-  const dateLocale = i18n.language === 'en' ? 'en-US' : 'vi-VN'
+  const isInitialLoading = isSearching && rooms.length === 0;
+  const dateLocale = i18n.language === "en" ? "en-US" : "vi-VN";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -238,22 +369,37 @@ function SearchResultsPage() {
           <p className="text-gray-600">
             {!isInitialLoading && (
               <>
-                {t('search.resultsFound')} <span className="font-bold text-gray-900">{visibleRooms.length}</span> {t('search.roomsMatch')}
-                {' '}{t('search.from')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkIn).toLocaleDateString(dateLocale)}</span>
-                {' '}{t('search.to')} <span className="font-semibold text-gray-900">{new Date(searchParams.checkOut).toLocaleDateString(dateLocale)}</span>
+                {t("search.resultsFound")}{" "}
+                <span className="font-bold text-gray-900">
+                  {visibleRooms.length}
+                </span>{" "}
+                {t("search.roomsMatch")} {t("search.from")}{" "}
+                <span className="font-semibold text-gray-900">
+                  {new Date(searchParams.checkIn).toLocaleDateString(
+                    dateLocale,
+                  )}
+                </span>{" "}
+                {t("search.to")}{" "}
+                <span className="font-semibold text-gray-900">
+                  {new Date(searchParams.checkOut).toLocaleDateString(
+                    dateLocale,
+                  )}
+                </span>
               </>
             )}
           </p>
 
           <label className="flex items-center gap-2 text-sm text-gray-600">
-            {t('search.sort.label')}
+            {t("search.sort.label")}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </option>
               ))}
             </select>
           </label>
@@ -275,7 +421,10 @@ function SearchResultsPage() {
             {isInitialLoading && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-96 rounded-xl border border-gray-200 bg-white overflow-hidden animate-pulse">
+                  <div
+                    key={i}
+                    className="h-96 rounded-xl border border-gray-200 bg-white overflow-hidden animate-pulse"
+                  >
                     <div className="h-48 bg-gray-200" />
                     <div className="p-4 space-y-3">
                       <div className="h-4 w-1/3 bg-gray-200 rounded" />
@@ -292,13 +441,17 @@ function SearchResultsPage() {
                 <div className="w-14 h-14 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mb-4">
                   <SearchX size={26} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">{t('search.emptyTitle')}</h3>
-                <p className="text-gray-500 mt-1 mb-5 max-w-sm">{t('search.emptyText')}</p>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {t("search.emptyTitle")}
+                </h3>
+                <p className="text-gray-500 mt-1 mb-5 max-w-sm">
+                  {t("search.emptyText")}
+                </p>
                 <button
                   onClick={handleResetFilters}
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 text-sm transition-colors"
                 >
-                  {t('search.resetFilters')}
+                  {t("search.resetFilters")}
                 </button>
               </div>
             )}
@@ -320,24 +473,28 @@ function SearchResultsPage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }
 
 function RoomDetailPage() {
-  const { id } = useParams()
-  const [searchParams] = useSearchParams()
-  const { data: room, isLoading, isError } = roomTypeApi.useGetRoomTypeByIdQuery(id, { skip: !id })
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const {
+    data: room,
+    isLoading,
+    isError,
+  } = roomTypeApi.useGetRoomTypeByIdQuery(id, { skip: !id });
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-600" size={32} />
       </div>
-    )
+    );
   }
 
   if (isError || !room) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -356,28 +513,31 @@ function RoomDetailPage() {
           <aside className="lg:sticky lg:top-24 h-fit">
             <BookingCard
               room={room}
-              initialCheckIn={searchParams.get('checkIn')}
-              initialCheckOut={searchParams.get('checkOut')}
+              initialCheckIn={searchParams.get("checkIn")}
+              initialCheckOut={searchParams.get("checkOut")}
             />
           </aside>
         </div>
       </main>
       <Footer />
     </div>
-  )
+  );
 }
 
 function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
-  const navigate = useNavigate()
-  const { t, i18n } = useTranslation()
-  const dateLocale = i18n.language === 'en' ? 'en-US' : 'vi-VN'
+  const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const dateLocale = i18n.language === "en" ? "en-US" : "vi-VN";
 
-  const bookingCode = getBookingCode(booking.bookingId)
-  const qrValue = getBookingQrPayload(booking)
-  const qrRef = useRef(null)
+  const bookingCode = getBookingCode(booking.bookingId);
+  const qrValue = getBookingQrPayload(booking);
+  const qrRef = useRef(null);
 
   const handleSaveQr = () =>
-    downloadQrPng(qrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`)
+    downloadQrPng(
+      qrRef.current?.querySelector("svg"),
+      `vika-qr-${bookingCode}.png`,
+    );
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-lg mx-auto text-center space-y-6">
@@ -385,15 +545,22 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
         <CheckCircle2 size={32} />
       </div>
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{t('checkout.success.title')}</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {t("checkout.success.title")}
+        </h1>
         <p className="text-gray-500 mt-2">
-          {t('checkout.success.thankYou')}{' '}
-          <span className="font-mono font-bold text-blue-600">{bookingCode}</span>
+          {t("checkout.success.thankYou")}{" "}
+          <span className="font-mono font-bold text-blue-600">
+            {bookingCode}
+          </span>
         </p>
       </div>
 
       <div className="flex flex-col items-center gap-3 py-2">
-        <div ref={qrRef} className="rounded-xl border border-gray-100 bg-white p-3">
+        <div
+          ref={qrRef}
+          className="rounded-xl border border-gray-100 bg-white p-3"
+        >
           <QRCodeSVG value={qrValue} size={160} level="M" />
         </div>
         <button
@@ -401,260 +568,166 @@ function BookingSuccess({ booking, room, startDate, endDate, totalPrice }) {
           onClick={handleSaveQr}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
         >
-          <Download size={16} /> {t('checkout.success.saveQr')}
+          <Download size={16} /> {t("checkout.success.saveQr")}
         </button>
-        <p className="max-w-xs text-xs text-gray-400">{t('checkout.success.qrHint')}</p>
+        <p className="max-w-xs text-xs text-gray-400">
+          {t("checkout.success.qrHint")}
+        </p>
       </div>
 
       <div className="bg-gray-50 rounded-xl p-4 text-left text-sm space-y-2">
         <div className="flex justify-between">
-          <span className="text-gray-500">{t('checkout.success.room')}</span>
+          <span className="text-gray-500">{t("checkout.success.room")}</span>
           <span className="font-semibold text-gray-800">{room.name}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">{t('checkout.success.checkInOut')}</span>
+          <span className="text-gray-500">
+            {t("checkout.success.checkInOut")}
+          </span>
           <span className="font-semibold text-gray-800">
-            {new Date(startDate).toLocaleDateString(dateLocale)} - {new Date(endDate).toLocaleDateString(dateLocale)}
+            {new Date(startDate).toLocaleDateString(dateLocale)} -{" "}
+            {new Date(endDate).toLocaleDateString(dateLocale)}
           </span>
         </div>
         <div className="flex justify-between pt-2 border-t border-gray-200">
-          <span className="font-bold text-gray-900">{t('checkout.success.total')}</span>
-          <span className="font-bold text-blue-600">{formatCurrency(totalPrice, i18n.language)}</span>
+          <span className="font-bold text-gray-900">
+            {t("checkout.success.total")}
+          </span>
+          <span className="font-bold text-blue-600">
+            {formatCurrency(totalPrice, i18n.language)}
+          </span>
         </div>
       </div>
 
       <div className="flex gap-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate("/")}
           className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors"
         >
-          {t('checkout.success.backHome')}
+          {t("checkout.success.backHome")}
         </button>
         <button
-          onClick={() => navigate('/user/historybooking')}
+          onClick={() => navigate("/user/historybooking")}
           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
         >
-          {t('checkout.success.bookingHistory')}
+          {t("checkout.success.bookingHistory")}
         </button>
       </div>
     </div>
-  )
-}
-
-const PAYOS_POLL_INTERVAL_MS = 4000
-
-// Đếm ngược tới thời điểm hết hạn (unix giây) mà backend trả về cho link PayOS.
-// Trả về null nếu không có expiredAt (BE không phải lúc nào cũng có, xem AC "nếu có").
-function usePaymentCountdown(expiredAt) {
-  const [remaining, setRemaining] = useState(() =>
-    expiredAt ? Math.max(0, expiredAt - Math.floor(Date.now() / 1000)) : null,
-  )
-
-  useEffect(() => {
-    if (!expiredAt) {
-      setRemaining(null)
-      return
-    }
-    const tick = () => setRemaining(Math.max(0, expiredAt - Math.floor(Date.now() / 1000)))
-    tick()
-    const interval = setInterval(tick, 1000)
-    return () => clearInterval(interval)
-  }, [expiredAt])
-
-  return remaining
-}
-
-function formatCountdown(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
-
-// Hiển thị QR + link thanh toán ngay trên trang checkout (thay vì redirect sang PayOS),
-// đếm ngược tới khi hết hạn, và tự poll trạng thái để phát hiện thanh toán thành công mà
-// không cần khách quay lại trang (webhook thật của PayOS không gọi được tới localhost).
-function PayOSPaymentPanel({ totalPrice, paymentLink, linkError, isCreatingLink, paymentFailed, remaining, onRetry }) {
-  const { t, i18n } = useTranslation()
-  const isExpired = Boolean(paymentLink) && remaining === 0
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-lg mx-auto text-center space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{t('checkout.payment.title')}</h1>
-        <p className="text-gray-500 mt-2">
-          {t('checkout.payment.subtitle', { amount: formatCurrency(totalPrice, i18n.language) })}
-        </p>
-      </div>
-
-      {isCreatingLink && !paymentLink && (
-        <div className="flex flex-col items-center gap-3 py-8 text-gray-500">
-          <Loader2 className="animate-spin" size={28} />
-          {t('checkout.payment.creatingLink')}
-        </div>
-      )}
-
-      {linkError && !isCreatingLink && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-            {linkError}
-          </div>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            {t('checkout.payment.retry')}
-          </button>
-        </div>
-      )}
-
-      {paymentFailed && !linkError && !isCreatingLink && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-            {t('checkout.payment.failed')}
-          </div>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            {t('checkout.payment.retry')}
-          </button>
-        </div>
-      )}
-
-      {paymentLink && !isExpired && !paymentFailed && (
-        <>
-          <div className="flex justify-center py-2">
-            <QRCodeSVG value={paymentLink.qrCode} size={200} level="M" />
-          </div>
-          {remaining !== null && (
-            <p className="text-sm font-semibold text-gray-600">
-              {t('checkout.payment.expiresIn', { time: formatCountdown(remaining) })}
-            </p>
-          )}
-          <a
-            href={paymentLink.checkoutUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            {t('checkout.payment.openLink')}
-          </a>
-          <p className="text-xs text-gray-400">{t('checkout.payment.waitingHint')}</p>
-        </>
-      )}
-
-      {paymentLink && isExpired && !paymentFailed && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-            {t('checkout.payment.expired')}
-          </div>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            {t('checkout.payment.retry')}
-          </button>
-        </div>
-      )}
-    </div>
-  )
+  );
 }
 
 function CheckoutPage() {
-  const { t } = useTranslation()
-  const location = useLocation()
-  const { user } = useAuth()
-  const checkoutState = location.state
+  const { t } = useTranslation();
+  const location = useLocation();
+  const { user } = useAuth();
+  const checkoutState = location.state;
 
   const [guestInfo, setGuestInfo] = useState({
-    name: user?.name || '',
-    phone: user?.phone || '',
-    email: user?.email || '',
-  })
-  const [paymentMethod, setPaymentMethod] = useState('cash')
+    name: user?.name || "",
+    phone: user?.phone || "",
+    email: user?.email || "",
+  });
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   // Mã khuyến mãi khách đã kiểm tra thành công: { code, discountAmount }. Chỉ để hiện
   // trước số tiền giảm — backend tính lại khi tạo booking.
-  const [appliedPromotion, setAppliedPromotion] = useState(null)
-  const [errors, setErrors] = useState({})
-  const [paidBooking, setPaidBooking] = useState(null)
+  const [appliedPromotion, setAppliedPromotion] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [paidBooking, setPaidBooking] = useState(null);
   // Booking online đã tạo, đang chờ thanh toán — giữ lại để nút "Tạo mã mới" gọi lại
   // đúng booking này thay vì tạo booking mới (bug cũ khi bấm nộp lại form).
-  const [pendingBooking, setPendingBooking] = useState(null)
-  const [paymentLink, setPaymentLink] = useState(null)
-  const [linkError, setLinkError] = useState(null)
-  const [paymentFailed, setPaymentFailed] = useState(false)
+  const [pendingBooking, setPendingBooking] = useState(null);
+  const [paymentLink, setPaymentLink] = useState(null);
+  const [linkError, setLinkError] = useState(null);
+  const [paymentFailed, setPaymentFailed] = useState(false);
 
-  const [createBooking, { isLoading: isCreating }] = useCreateBookingMutation()
-  const [createPayOSLink, { isLoading: isCreatingLink }] = useCreatePayOSLinkMutation()
+  const [createBooking, { isLoading: isCreating }] = useCreateBookingMutation();
+  const [createPayOSLink, { isLoading: isCreatingLink }] =
+    useCreatePayOSLinkMutation();
 
   const requestPaymentLink = async (bookingId) => {
-    setLinkError(null)
-    setPaymentLink(null)
-    setPaymentFailed(false)
+    setLinkError(null);
+    setPaymentLink(null);
+    setPaymentFailed(false);
     try {
-      const link = await createPayOSLink(bookingId).unwrap()
-      setPaymentLink(link)
+      const link = await createPayOSLink(bookingId).unwrap();
+      setPaymentLink(link);
     } catch (err) {
-      setLinkError(err?.data?.message || t('checkout.payment.linkError'))
+      setLinkError(err?.data?.message || t("checkout.payment.linkError"));
     }
-  }
+  };
 
-  const remaining = usePaymentCountdown(paymentLink?.expiredAt)
-  const isLinkExpired = Boolean(paymentLink) && remaining === 0
+  const remaining = usePaymentCountdown(paymentLink?.expiredAt);
+  const isLinkExpired = Boolean(paymentLink) && remaining === 0;
 
   // Không có webhook thật trên localhost — tự poll trạng thái đơn (RTK Query
   // pollingInterval) trong lúc đang chờ khách quét QR/thanh toán, để trang tự chuyển
   // sang màn hình thành công hoặc báo thất bại. `skip` dừng poll khi đã PAID/FAILED
   // hoặc link đã hết hạn, và RTK Query tự huỷ subscription khi rời trang.
-  const shouldPollPayment = Boolean(pendingBooking && paymentLink && !paidBooking && !paymentFailed && !isLinkExpired)
-  const { data: syncedBooking } = useSyncPayOSStatusQuery(pendingBooking?.bookingId, {
-    skip: !shouldPollPayment,
-    pollingInterval: PAYOS_POLL_INTERVAL_MS,
-  })
+  const shouldPollPayment = Boolean(
+    pendingBooking &&
+    paymentLink &&
+    !paidBooking &&
+    !paymentFailed &&
+    !isLinkExpired,
+  );
+  const { data: syncedBooking } = useSyncPayOSStatusQuery(
+    pendingBooking?.bookingId,
+    {
+      skip: !shouldPollPayment,
+      pollingInterval: PAYOS_POLL_INTERVAL_MS,
+    },
+  );
 
   useEffect(() => {
-    if (!syncedBooking) return
-    if (syncedBooking.paymentStatus === 'PAID') {
-      setPaidBooking(syncedBooking)
-    } else if (syncedBooking.paymentStatus === 'FAILED') {
-      setPaymentFailed(true)
+    if (!syncedBooking) return;
+    if (syncedBooking.paymentStatus === "PAID") {
+      setPaidBooking(syncedBooking);
+    } else if (syncedBooking.paymentStatus === "FAILED") {
+      setPaymentFailed(true);
     }
-  }, [syncedBooking])
+  }, [syncedBooking]);
 
   if (!checkoutState?.room) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/" replace />;
   }
 
-  const { room, startDate, endDate, nights, totalPrice, vatAmount } = checkoutState
-  const roomTypeId = room.roomTypeId || room.id
+  const { room, startDate, endDate, nights, totalPrice, vatAmount } =
+    checkoutState;
+  const roomTypeId = room.roomTypeId || room.id;
 
   // Tổng tiền sau khuyến mãi. VAT phải tính lại trên tiền phòng đã trừ giảm giá, khớp
   // công thức `netRoomAmount * VAT_RATE` ở backend — giữ nguyên VAT cũ sẽ làm số tiền
   // khách phải trả qua PayOS lệch với số tiền thật của đơn.
-  const discountAmount = appliedPromotion?.discountAmount ?? 0
-  const netRoomSubtotal = Math.max(totalPrice - (vatAmount ?? 0) - discountAmount, 0)
+  const discountAmount = appliedPromotion?.discountAmount ?? 0;
+  const netRoomSubtotal = Math.max(
+    totalPrice - (vatAmount ?? 0) - discountAmount,
+    0,
+  );
   const payableTotal =
-    discountAmount > 0 ? netRoomSubtotal + calculateVat(netRoomSubtotal) : totalPrice
+    discountAmount > 0
+      ? netRoomSubtotal + calculateVat(netRoomSubtotal)
+      : totalPrice;
 
   const handleChange = (field) => (e) => {
-    setGuestInfo((prev) => ({ ...prev, [field]: e.target.value }))
-  }
+    setGuestInfo((prev) => ({ ...prev, [field]: e.target.value }));
+  };
 
   const validate = () => {
-    const nextErrors = {}
-    if (!guestInfo.name.trim()) nextErrors.name = t('checkout.errors.nameRequired')
-    if (!/^[0-9]{9,11}$/.test(guestInfo.phone.trim())) nextErrors.phone = t('checkout.errors.invalidPhone')
-    if (!/^\S+@\S+\.\S+$/.test(guestInfo.email.trim())) nextErrors.email = t('checkout.errors.invalidEmail')
-    setErrors(nextErrors)
-    return Object.keys(nextErrors).length === 0
-  }
+    const nextErrors = {};
+    if (!guestInfo.name.trim())
+      nextErrors.name = t("checkout.errors.nameRequired");
+    if (!/^[0-9]{9,11}$/.test(guestInfo.phone.trim()))
+      nextErrors.phone = t("checkout.errors.invalidPhone");
+    if (!/^\S+@\S+\.\S+$/.test(guestInfo.email.trim()))
+      nextErrors.email = t("checkout.errors.invalidEmail");
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
+    e.preventDefault();
+    if (!validate()) return;
 
     try {
       const booking = await createBooking({
@@ -666,21 +739,21 @@ function CheckoutPage() {
           phone: guestInfo.phone.trim(),
           email: guestInfo.email.trim(),
         },
-        paymentMethod: paymentMethod === 'online' ? 'PAYOS' : 'CASH',
+        paymentMethod: paymentMethod === "online" ? "PAYOS" : "CASH",
         promotionCode: appliedPromotion?.code,
-      }).unwrap()
+      }).unwrap();
 
-      if (paymentMethod === 'online') {
-        setPendingBooking(booking)
-        await requestPaymentLink(booking.bookingId)
-        return
+      if (paymentMethod === "online") {
+        setPendingBooking(booking);
+        await requestPaymentLink(booking.bookingId);
+        return;
       }
 
-      setPaidBooking(booking)
+      setPaidBooking(booking);
     } catch (err) {
-      toast.error(err?.data?.message || t('checkout.errors.bookingFailed'))
+      toast.error(err?.data?.message || t("checkout.errors.bookingFailed"));
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -706,62 +779,78 @@ function CheckoutPage() {
           />
         ) : (
           <>
-            <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('checkout.title')}</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-8">
+              {t("checkout.title")}
+            </h1>
             <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-                  <h2 className="font-bold text-lg text-gray-900">{t('checkout.customerInfo')}</h2>
+                  <h2 className="font-bold text-lg text-gray-900">
+                    {t("checkout.customerInfo")}
+                  </h2>
 
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                      <User size={14} /> {t('checkout.fullName')}
+                      <User size={14} /> {t("checkout.fullName")}
                     </label>
                     <input
                       type="text"
                       value={guestInfo.name}
-                      onChange={handleChange('name')}
+                      onChange={handleChange("name")}
                       placeholder="Nguyễn Văn A"
-                      className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-300' : 'border-gray-200'}`}
+                      className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.name ? "border-red-300" : "border-gray-200"}`}
                     />
-                    {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+                    {errors.name && (
+                      <p className="text-xs text-red-500 mt-1">{errors.name}</p>
+                    )}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                        <Phone size={14} /> {t('checkout.phone')}
+                        <Phone size={14} /> {t("checkout.phone")}
                       </label>
                       <input
                         type="tel"
                         value={guestInfo.phone}
-                        onChange={handleChange('phone')}
+                        onChange={handleChange("phone")}
                         placeholder="09xxxxxxxx"
-                        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.phone ? 'border-red-300' : 'border-gray-200'}`}
+                        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.phone ? "border-red-300" : "border-gray-200"}`}
                       />
-                      {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
+                      {errors.phone && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {errors.phone}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                        <Mail size={14} /> {t('checkout.email')}
+                        <Mail size={14} /> {t("checkout.email")}
                       </label>
                       <input
                         type="email"
                         value={guestInfo.email}
-                        onChange={handleChange('email')}
+                        onChange={handleChange("email")}
                         placeholder="ban@email.com"
-                        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.email ? 'border-red-300' : 'border-gray-200'}`}
+                        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.email ? "border-red-300" : "border-gray-200"}`}
                       />
-                      {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+                      {errors.email && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {errors.email}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-3">
-                  <h2 className="font-bold text-lg text-gray-900 mb-1">{t('checkout.paymentMethod')}</h2>
+                  <h2 className="font-bold text-lg text-gray-900 mb-1">
+                    {t("checkout.paymentMethod")}
+                  </h2>
                   {paymentMethods.map(({ value, labelKey, icon: Icon }) => (
                     <label
                       key={value}
-                      className={`flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${paymentMethod === value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                      className={`flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${paymentMethod === value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
                     >
                       <input
                         type="radio"
@@ -772,7 +861,9 @@ function CheckoutPage() {
                         className="accent-blue-600"
                       />
                       <Icon size={18} className="text-gray-500" />
-                      <span className="text-sm font-medium text-gray-800">{t(labelKey)}</span>
+                      <span className="text-sm font-medium text-gray-800">
+                        {t(labelKey)}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -792,12 +883,22 @@ function CheckoutPage() {
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-70 text-white font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
                   {isCreating && <Loader2 size={18} className="animate-spin" />}
-                  {isCreating ? t('checkout.processing') : t('checkout.confirmBooking')}
+                  {isCreating
+                    ? t("checkout.processing")
+                    : t("checkout.confirmBooking")}
                 </button>
               </form>
 
               <aside className="lg:sticky lg:top-24 h-fit">
-                <OrderSummaryCard room={room} startDate={startDate} endDate={endDate} nights={nights} totalPrice={totalPrice} vatAmount={vatAmount} discountAmount={discountAmount} />
+                <OrderSummaryCard
+                  room={room}
+                  startDate={startDate}
+                  endDate={endDate}
+                  nights={nights}
+                  totalPrice={totalPrice}
+                  vatAmount={vatAmount}
+                  discountAmount={discountAmount}
+                />
               </aside>
             </div>
           </>
@@ -805,20 +906,20 @@ function CheckoutPage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }
 
 // Trang của khách mờ dần vào mỗi lần đổi đường dẫn. Toàn bộ khu /admin dùng chung 1 key vì
 // layout admin tự lo hiệu ứng chuyển trang bên trong — nếu đổi key theo từng trang admin thì
 // cả Sidebar/Header cũng bị dựng lại.
 function RouteFade({ children }) {
-  const { pathname } = useLocation()
-  const key = pathname.startsWith('/admin') ? 'admin' : pathname
+  const { pathname } = useLocation();
+  const key = pathname.startsWith("/admin") ? "admin" : pathname;
   return (
     <div key={key} className="anim-fade-in">
       {children}
     </div>
-  )
+  );
 }
 
 export default function AppRoutes() {
@@ -829,231 +930,244 @@ export default function AppRoutes() {
       <Chatbot />
       <AiChatbot />
       <Suspense fallback={<PageLoader className="min-h-screen" />}>
-      <RouteFade>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/register" element={<AuthPage mode="register" />} />
-        <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
-        <Route path="/searchrooms" element={<SearchResultsPage />} />
-        <Route path="/rooms/:id" element={<RoomDetailPage />} />
-        <Route
-          path="/user/profile"
-          element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/historybooking"
-          element={
-            <ProtectedRoute>
-              <BookingHistoryPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/notifications"
-          element={
-            <ProtectedRoute>
-              <NotificationsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/checkout" element={<CheckoutPage />} />
-        <Route
-          path="/payment/success"
-          element={
-            <ProtectedRoute>
-              <PaymentSuccessPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/payment/cancel"
-          element={
-            <ProtectedRoute>
-              <PaymentCancelPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-              <DashboardLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<AdminDashboardPage />} />
-          {/* Lễ tân cũng cần xác nhận đơn/nhận phòng từ danh sách đặt phòng — mọi API
+        <RouteFade>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<AuthPage mode="login" />} />
+            <Route path="/register" element={<AuthPage mode="register" />} />
+            <Route
+              path="/forgot-password"
+              element={<AuthPage mode="forgot" />}
+            />
+            <Route path="/searchrooms" element={<SearchResultsPage />} />
+            <Route path="/rooms/:id" element={<RoomDetailPage />} />
+            <Route
+              path="/user/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/user/historybooking"
+              element={
+                <ProtectedRoute>
+                  <BookingHistoryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/user/notifications"
+              element={
+                <ProtectedRoute>
+                  <NotificationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route
+              path="/payment/success"
+              element={
+                <ProtectedRoute>
+                  <PaymentSuccessPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment/cancel"
+              element={
+                <ProtectedRoute>
+                  <PaymentCancelPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* Trang thanh toán của Vika cho đơn đã tạo (VD từ Lịch sử đặt phòng). Đường
+                dẫn cố định /payment/success|cancel ở trên vẫn được ưu tiên khớp trước. */}
+            <Route
+              path="/payment/:bookingId"
+              element={
+                <ProtectedRoute>
+                  <BookingPaymentPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute roles={["ADMIN", "STAFF"]}>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<AdminDashboardPage />} />
+              {/* Lễ tân cũng cần xác nhận đơn/nhận phòng từ danh sách đặt phòng — mọi API
               trang này dùng (list, confirm, check-in/out, cancel) đều đã mở cho STAFF. */}
-          <Route
-            path="bookings"
-            element={
-              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-                <BookingManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="rooms" element={<RoomMapPage />} />
-          <Route
-            path="chat"
-            element={
-              <ProtectedRoute roles={['STAFF']}>
-                <StaffChatPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="rooms/:roomId" element={<AdminRoomDetailPage />} />
-          <Route
-            path="rooms/:roomId/checkout/:bookingId"
-            element={<AdminCheckoutPage />}
-          />
-          <Route
-            path="room-types"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <RoomTypeManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="accounts"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <UserManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="staff"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <StaffManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="schedule"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <ShiftSchedulePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="schedule/me"
-            element={
-              <ProtectedRoute roles={['STAFF']}>
-                <MySchedulePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="revenue"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <RevenueSummaryPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="revenue/staff"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <RevenueByStaffPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="settings/location"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <HotelLocationSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="settings/local-events"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <LocalEventsSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="settings/local-places"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <LocalPlacesSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="faqs"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <FaqManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="promotions"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <PromotionManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="reviews"
-            element={
-              <ProtectedRoute roles={['ADMIN']}>
-                <ReviewManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="refund-requests"
-            element={
-              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-                <RefundRequestManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          {/* Cả admin lẫn nhân viên đều nhận thông báo đơn mới nên đều vào được. */}
-          <Route
-            path="notifications"
-            element={
-              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-                <AdminNotificationsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="profile"
-            element={
-              <ProtectedRoute roles={['ADMIN', 'STAFF']}>
-                <StaffProfilePage />
-              </ProtectedRoute>
-            }
-          />
-        </Route>
-        <Route
-          path="/admin/checkout"
-          element={
-            <ProtectedRoute roles={['ADMIN']}>
-              <CheckoutPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/403" element={<ForbiddenPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      </RouteFade>
+              <Route
+                path="bookings"
+                element={
+                  <ProtectedRoute roles={["ADMIN", "STAFF"]}>
+                    <BookingManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="rooms" element={<RoomMapPage />} />
+              <Route
+                path="chat"
+                element={
+                  <ProtectedRoute roles={["STAFF"]}>
+                    <StaffChatPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="rooms/:roomId" element={<AdminRoomDetailPage />} />
+              <Route
+                path="rooms/:roomId/checkout/:bookingId"
+                element={<AdminCheckoutPage />}
+              />
+              <Route
+                path="room-types"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <RoomTypeManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="accounts"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <UserManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="staff"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <StaffManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="schedule"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <ShiftSchedulePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="schedule/me"
+                element={
+                  <ProtectedRoute roles={["STAFF"]}>
+                    <MySchedulePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="revenue"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <RevenueSummaryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="revenue/staff"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <RevenueByStaffPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="settings/location"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <HotelLocationSettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="settings/local-events"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <LocalEventsSettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="settings/local-places"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <LocalPlacesSettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="faqs"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <FaqManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="promotions"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <PromotionManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="reviews"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <ReviewManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="refund-requests"
+                element={
+                  <ProtectedRoute roles={["ADMIN", "STAFF"]}>
+                    <RefundRequestManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Cả admin lẫn nhân viên đều nhận thông báo đơn mới nên đều vào được. */}
+              <Route
+                path="notifications"
+                element={
+                  <ProtectedRoute roles={["ADMIN", "STAFF"]}>
+                    <AdminNotificationsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="profile"
+                element={
+                  <ProtectedRoute roles={["ADMIN", "STAFF"]}>
+                    <StaffProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+            <Route
+              path="/admin/checkout"
+              element={
+                <ProtectedRoute roles={["ADMIN"]}>
+                  <CheckoutPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/403" element={<ForbiddenPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </RouteFade>
       </Suspense>
     </BrowserRouter>
-  )
+  );
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -112,7 +113,7 @@ export class ChatService {
     const content = rawContent.trim().slice(0, MAX_MESSAGE_LENGTH);
     // Tin nhắn chỉ có ảnh (content rỗng) vẫn hợp lệ — chỉ từ chối khi CẢ HAI đều rỗng.
     if (!content && !attachmentUrl) {
-      throw new ForbiddenException(
+      throw new BadRequestException(
         'Tin nhắn cần có nội dung hoặc ảnh đính kèm',
       );
     }

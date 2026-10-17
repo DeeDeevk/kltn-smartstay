@@ -33,6 +33,11 @@ const NEGATIVE_REVIEW_THRESHOLD = 3;
 // mất khoảng 1-3 giây nên để cao hơn sẽ làm request treo tới mức timeout.
 const ANALYZE_BATCH_LIMIT = 20;
 
+// findAll() không yêu cầu đăng nhập (trang chi tiết phòng, trang quản lý đánh giá đều
+// gọi qua endpoint công khai này) và không có tham số phân trang — chặn trên để 1 request
+// không thể kéo nguyên bảng Review (kèm join User/Booking/RoomType) khi dữ liệu lớn dần.
+const FIND_ALL_HARD_CAP = 300;
+
 // Hỏng liên tiếp chừng này lần thì dừng cả mẻ — dấu hiệu nhà cung cấp đang sập chứ
 // không phải vài đánh giá cá biệt có vấn đề.
 const CONSECUTIVE_FAILURE_LIMIT = 3;
@@ -53,7 +58,7 @@ export class ReviewService {
   ) {}
 
   async findAll(query: QueryReviewDto) {
-    const qb = this.baseQuery();
+    const qb = this.baseQuery().take(FIND_ALL_HARD_CAP);
     if (query.roomTypeId) {
       qb.andWhere('roomType.roomTypeId = :roomTypeId', {
         roomTypeId: query.roomTypeId,

@@ -40,9 +40,23 @@ function buildService(overrides?: {
 
   const bookingSave = jest.fn((x: Booking) => Promise.resolve(x));
   const bookingFindOne = jest.fn().mockResolvedValue(booking);
+  // cancel()/markPaidByOrderCode() chạy trong 1 transaction (manager.transaction) —
+  // giả lập manager chạy callback NGAY (không thật sự mở transaction DB), trả cùng
+  // các mock save/findOne ở trên cho Booking để assertion trên bookingSave vẫn đúng
+  // dù lệnh save() giờ đi qua manager.getRepository(Booking) thay vì gọi trực tiếp.
   const bookingRepo = {
     findOne: bookingFindOne,
     save: bookingSave,
+    manager: {
+      transaction: jest.fn(async (cb: (manager: unknown) => unknown) =>
+        cb({
+          getRepository: (entity: unknown) =>
+            entity === Booking
+              ? { save: bookingSave, findOne: bookingFindOne }
+              : { save: jest.fn((x: unknown) => Promise.resolve(x)) },
+        }),
+      ),
+    },
   } as unknown as Repository<Booking>;
 
   const record = jest.fn().mockResolvedValue(undefined);
@@ -137,12 +151,15 @@ describe('BookingService.markPaidByOrderCode', () => {
 
     await service.markPaidByOrderCode(123456, payerBankInfo);
 
+    // Tham số thứ 2 là EntityManager của transaction bọc quanh save() + record() (xem
+    // markPaidByOrderCode) — không quan tâm hình dạng cụ thể, chỉ cần xác nhận có truyền.
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingId: 'booking-1',
         method: PaymentMethod.PAYOS,
         payerBankInfo,
       }),
+      expect.anything(),
     );
   });
 
@@ -153,6 +170,7 @@ describe('BookingService.markPaidByOrderCode', () => {
 
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ payerBankInfo: null }),
+      expect.anything(),
     );
   });
 
@@ -335,5 +353,68 @@ describe('BookingService.create — chặn ngày nhận phòng đã qua', () => 
         checkOut: '2026-10-10',
       } as never),
     ).rejects.toThrow('quá khứ');
+  });
+});
+describe('BookingService.markFailedByOrderCode', () => {
+  it('đơn UNPAID -> chuyển FAILED và lưu đúng 1 lần', async () => {
+    const { service, bookingSave } = buildService();
+
+    const result = await service.markFailedByOrderCode(123456);
+
+    expect(result?.paymentStatus).toBe(PaymentStatus.FAILED);
+    expect(bookingSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('đơn đã FAILED -> không lưu lại, không tạo thêm thông báo trùng', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.FAILED,
+        user: { userId: 'user-1' },
+      } as never,
+    });
+
+    await service.markFailedByOrderCode(123456);
+
+    expect(bookingSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookingService.assignFreshPayosOrderCode', () => {
+  it('đơn FAILED (link cũ hết hạn) -> cấp mã mới và đưa về UNPAID', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.FAILED,
+      },
+    });
+
+    const code = await service.assignFreshPayosOrderCode('booking-1');
+
+    expect(code).not.toBe('123456');
+    expect(bookingSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payosOrderCode: code,
+        paymentStatus: PaymentStatus.UNPAID,
+      }),
+    );
+  });
+
+  it('đơn PAID (lễ tân thu thêm lúc trả phòng) -> chỉ đổi mã, giữ nguyên PAID', async () => {
+    const { service, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        payosOrderCode: '123456',
+        paymentStatus: PaymentStatus.PAID,
+      },
+    });
+
+    await service.assignFreshPayosOrderCode('booking-1');
+
+    expect(bookingSave).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentStatus: PaymentStatus.PAID }),
+    );
   });
 });

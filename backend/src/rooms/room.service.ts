@@ -40,8 +40,11 @@ export class RoomService {
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
-  // Chưa có module Bookings nên tạm coi phòng "trống" = status AVAILABLE,
-  // chưa đối chiếu khoảng ngày checkIn/checkOut với lịch đặt thực tế.
+  // Phòng "trống" theo khoảng ngày = status khác MAINTENANCE (đang sửa chữa, không gắn
+  // với 1 booking cụ thể nên không thể suy ra bằng ngày) VÀ không có booking đang hoạt
+  // động (PENDING/CONFIRMED/CHECKED_IN) giao với [checkIn, checkOut) — dùng đúng logic
+  // overlap như getRoomMap(), KHÔNG dựa vào room.status tức thời (OCCUPIED/CLEANING hôm
+  // nay không có nghĩa phòng bận vào ngày khách yêu cầu).
   async checkAvailability(query: QueryAvailabilityDto) {
     const checkIn = new Date(query.checkIn);
     const checkOut = new Date(query.checkOut);
@@ -52,7 +55,9 @@ export class RoomService {
     const qb = this.roomRepo
       .createQueryBuilder('room')
       .innerJoinAndSelect('room.roomType', 'roomType')
-      .where('room.status = :status', { status: RoomStatus.AVAILABLE })
+      .where('room.status != :maintenance', {
+        maintenance: RoomStatus.MAINTENANCE,
+      })
       .andWhere('roomType.capacity >= :guests', { guests: query.guests });
 
     if (query.roomTypeId) {
@@ -63,11 +68,24 @@ export class RoomService {
 
     const rooms = await qb.getMany();
 
+    const overlapping = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .innerJoin('booking.room', 'bookedRoom')
+      .select('bookedRoom.roomId', 'roomId')
+      .where('booking.status IN (:...statuses)', {
+        statuses: ACTIVE_BOOKING_STATUSES,
+      })
+      .andWhere('booking.checkInDate < :checkOut', { checkOut: query.checkOut })
+      .andWhere('booking.checkOutDate > :checkIn', { checkIn: query.checkIn })
+      .getRawMany<{ roomId: string }>();
+    const bookedRoomIds = new Set(overlapping.map((r) => r.roomId));
+
     const availableByType = new Map<
       string,
       { roomType: Room['roomType']; availableCount: number }
     >();
     for (const room of rooms) {
+      if (bookedRoomIds.has(room.roomId)) continue;
       const existing = availableByType.get(room.roomType.roomTypeId);
       if (existing) {
         existing.availableCount += 1;
