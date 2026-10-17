@@ -315,7 +315,12 @@
       "failed": "Thanh toán không thành công. Vui lòng thử lại.",
       "retry": "Tạo mã mới",
       "linkError": "Không thể tạo link thanh toán",
-      "waitingHint": "Trang sẽ tự động chuyển tiếp ngay khi hệ thống nhận được thanh toán."
+      "waitingHint": "Trang sẽ tự động chuyển tiếp ngay khi hệ thống nhận được thanh toán.",
+      "accountName": "Chủ tài khoản",
+      "accountNumber": "Số tài khoản",
+      "amount": "Số tiền",
+      "description": "Nội dung chuyển khoản",
+      "amountLabel": "Số tiền cần thanh toán"
     },
     "promo": {
       "title": "Mã khuyến mãi",

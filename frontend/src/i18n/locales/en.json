@@ -315,7 +315,12 @@
       "failed": "Payment failed. Please try again.",
       "retry": "Generate a new code",
       "linkError": "Could not create the payment link",
-      "waitingHint": "This page will move on automatically once payment is received."
+      "waitingHint": "This page will move on automatically once payment is received.",
+      "accountName": "Account holder",
+      "accountNumber": "Account number",
+      "amount": "Amount",
+      "description": "Transfer note",
+      "amountLabel": "Amount due"
     },
     "promo": {
       "title": "Promo code",
