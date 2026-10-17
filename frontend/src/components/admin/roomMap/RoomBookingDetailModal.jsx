@@ -6,6 +6,8 @@ import StatusPill from '../../booking/StatusPill';
 import {
   BOOKING_STATUS_STYLES,
   PAYMENT_STATUS_STYLES,
+  BOOKING_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
 } from '../../../utils/bookingStatusStyles';
 import formatDate from '../../../utils/formatDate';
 import getBookingCode from '../../../utils/bookingCode';
@@ -13,20 +15,6 @@ import {
   useCheckInMutation,
   useConfirmBookingMutation,
 } from '../../../services/booking';
-
-const BOOKING_STATUS_LABELS = {
-  PENDING: 'Chờ xác nhận',
-  CONFIRMED: 'Đã xác nhận (chưa nhận phòng)',
-  CHECKED_IN: 'Đang lưu trú',
-  CHECKED_OUT: 'Đã trả phòng',
-  CANCELLED: 'Đã huỷ',
-};
-
-const PAYMENT_STATUS_LABELS = {
-  UNPAID: 'Chưa thanh toán',
-  PAID: 'Đã thanh toán',
-  FAILED: 'Thanh toán lỗi',
-};
 
 // Modal chi tiết đơn trong trang Sơ đồ phòng > phòng: ngoài thông tin đơn còn cho lễ tân
 // làm thủ tục nhận phòng / trả phòng ngay (khác BookingDetailModal của khách chỉ để xem).

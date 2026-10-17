@@ -1,4 +1,4 @@
-import { IsInt, IsUUID, Min } from 'class-validator';
+import { IsInt, IsUUID, Max, Min } from 'class-validator';
 
 export class AddServiceDto {
   @IsUUID()
@@ -6,5 +6,6 @@ export class AddServiceDto {
 
   @IsInt()
   @Min(1)
+  @Max(100)
   quantity!: number;
 }

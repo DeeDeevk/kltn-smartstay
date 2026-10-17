@@ -16,6 +16,8 @@ import AvailableRoomPicker from '../../booking/AvailableRoomPicker';
 import {
   BOOKING_STATUS_STYLES,
   PAYMENT_STATUS_STYLES,
+  BOOKING_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
 } from '../../../utils/bookingStatusStyles';
 import formatCurrency from '../../../utils/formatCurrency';
 import formatDate from '../../../utils/formatDate';
@@ -27,18 +29,6 @@ import {
   useGetBookingByIdQuery,
 } from '../../../services/booking';
 
-const BOOKING_STATUS_LABELS = {
-  PENDING: 'Chờ xác nhận',
-  CONFIRMED: 'Đã xác nhận',
-  CHECKED_IN: 'Đang lưu trú',
-  CHECKED_OUT: 'Đã hoàn thành',
-  CANCELLED: 'Đã huỷ',
-};
-const PAYMENT_STATUS_LABELS = {
-  UNPAID: 'Chưa thanh toán',
-  PAID: 'Đã thanh toán',
-  FAILED: 'Thanh toán lỗi',
-};
 // Nhãn/màu riêng cho trạng thái RefundRequest trong khối "Hoàn tiền" (KAN-121) — khác chữ
 // dùng ở trang /admin/refund-requests (VD "Đang chờ xử lý") vì ngữ cảnh ở đây là 1 dòng phụ
 // trong modal chi tiết đơn, cần rõ ràng ngay là "đang chờ HOÀN TIỀN".

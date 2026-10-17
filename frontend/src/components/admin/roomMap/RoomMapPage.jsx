@@ -10,8 +10,11 @@ import {
   LogOut,
   QrCode,
   RefreshCw,
+  SearchX,
 } from 'lucide-react';
 import { adminRoomApi, useGetRoomMapQuery } from '../../../services/adminRoom';
+import EmptyState from '../../common/EmptyState';
+import { Skeleton } from '../../common/Skeleton';
 import { useSocket } from '../../../context/SocketContext';
 import { useGetMyShiftAssignmentsQuery } from '../../../services/shiftAssignment';
 import { useAuth } from '../../../context/AuthContext';
@@ -317,17 +320,19 @@ export default function RoomMapPage() {
           />
 
           {isFetching && rooms.length === 0 && (
-            <div className="flex justify-center py-24 text-gray-300">
-              <Loader2 className="animate-spin" size={32} />
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
+              {Array.from({ length: 8 }, (_, i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-xl" />
+              ))}
             </div>
           )}
 
           {!isFetching && decorated.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center">
-              <p className="text-sm text-gray-400">
-                Không có phòng nào khớp bộ lọc hiện tại.
-              </p>
-            </div>
+            <EmptyState
+              icon={SearchX}
+              title="Không có phòng nào khớp bộ lọc hiện tại"
+              className="rounded-2xl border border-dashed border-gray-200 bg-white py-16"
+            />
           )}
 
           <div className="space-y-8">

@@ -255,6 +255,7 @@
     },
     "reviews": {
       "loading": "Loading reviews...",
+      "loadError": "Couldn't load reviews. Please try again.",
       "count": "({{count}} reviews)",
       "empty": "No reviews yet for this room type.",
       "collapse": "Show fewer reviews",
@@ -315,7 +316,12 @@
       "failed": "Payment failed. Please try again.",
       "retry": "Generate a new code",
       "linkError": "Could not create the payment link",
-      "waitingHint": "This page will move on automatically once payment is received."
+      "waitingHint": "This page will move on automatically once payment is received.",
+      "accountName": "Account holder",
+      "accountNumber": "Account number",
+      "amount": "Amount",
+      "description": "Transfer note",
+      "amountLabel": "Amount due"
     },
     "promo": {
       "title": "Promo code",

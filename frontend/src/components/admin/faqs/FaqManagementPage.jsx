@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Loader2, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, Pencil, Plus, RefreshCw, Search, SearchX, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../../common/ConfirmModal';
+import EmptyState from '../../common/EmptyState';
+import { Skeleton } from '../../common/Skeleton';
 import FaqFormModal, { getErrorMessage } from './FaqFormModal';
 import {
   useDeleteFaqMutation,
@@ -252,9 +254,14 @@ export default function FaqManagementPage() {
       </div>
 
       {isFetching && faqs.length === 0 && (
-        <div className="flex justify-center py-16 text-gray-400">
-          <Loader2 className="animate-spin" size={28} />
-        </div>
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          {Array.from({ length: 5 }, (_, i) => (
+            <li key={i} className="space-y-2 p-4">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-3 w-3/4" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {!isFetching && error && (
@@ -264,9 +271,11 @@ export default function FaqManagementPage() {
       )}
 
       {!error && !(isFetching && faqs.length === 0) && groups.length === 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-          {hasFilter ? 'Không có FAQ nào khớp bộ lọc.' : 'Chưa có FAQ nào. Bấm "Thêm FAQ" để bắt đầu.'}
-        </div>
+        <EmptyState
+          icon={SearchX}
+          title={hasFilter ? 'Không có FAQ nào khớp bộ lọc' : 'Chưa có FAQ nào'}
+          description={hasFilter ? undefined : 'Bấm "Thêm FAQ" để bắt đầu.'}
+        />
       )}
 
       <div className="space-y-5">

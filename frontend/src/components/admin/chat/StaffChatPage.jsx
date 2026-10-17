@@ -91,7 +91,11 @@ export default function StaffChatPage() {
   const dispatch = useDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const { data: conversations = [] } = useGetConversationsQuery();
+  const {
+    data: conversations = [],
+    isLoading: isConversationsLoading,
+    isError: isConversationsError,
+  } = useGetConversationsQuery();
   // Nút "Xem hội thoại" từ trang /admin/refund-requests điều hướng tới
   // /admin/chat?conversationId=... — mở sẵn đúng hội thoại đó thay vì để lễ tân tự tìm
   // trong danh sách bên trái.
@@ -118,7 +122,9 @@ export default function StaffChatPage() {
     [conversations, selectedId],
   );
 
-  const { data: history } = useGetMessagesQuery(selectedId, { skip: !selectedId });
+  const { data: history, isError: isMessagesError } = useGetMessagesQuery(selectedId, {
+    skip: !selectedId,
+  });
 
   useEffect(() => {
     if (history) setMessages(history);
@@ -201,7 +207,15 @@ export default function StaffChatPage() {
         <div className="border-b border-gray-100 p-4">
           <h2 className="font-bold text-gray-900">Hội thoại đang mở</h2>
         </div>
-        {conversations.length === 0 ? (
+        {isConversationsLoading ? (
+          <div className="flex items-center justify-center p-6 text-gray-400">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        ) : isConversationsError ? (
+          <p className="p-4 text-sm text-red-500">
+            Không tải được danh sách hội thoại. Vui lòng tải lại trang.
+          </p>
+        ) : conversations.length === 0 ? (
           <p className="p-4 text-sm text-gray-400">Chưa có khách nào chat.</p>
         ) : (
           conversations.map((c) => (
@@ -246,6 +260,11 @@ export default function StaffChatPage() {
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {isMessagesError && (
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-500">
+                  Không tải được lịch sử chat. Vui lòng thử chọn lại hội thoại.
+                </p>
+              )}
               {messages.map((msg) => {
                 const isMine = msg.senderId === user?.userId;
                 return (

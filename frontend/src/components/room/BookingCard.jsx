@@ -1,46 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css"; // Import CSS của thư viện lịch
-import { ChevronDown, Minus, Plus } from 'lucide-react';
 import { vi, enUS } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useCreateBookingMutation } from '../../services/booking';
-import { useCreatePayOSLinkMutation } from '../../services/payment';
 import { toast } from 'react-toastify';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import formatCurrencyUtil from '../../utils/formatCurrency';
 import { VAT_RATE, calculateVat } from '../../utils/vat';
-
-// Component con để hiển thị từng dòng khách (Người lớn, Trẻ em...)
-const GuestCounter = ({ label, subLabel, value, onDecrease, onIncrease, max = 10 }) => (
-  <div className="flex items-center justify-between py-4 border-b border-gray-100 last:border-0">
-    <div className="flex flex-col">
-      <span className="font-semibold text-sm text-gray-900">{label}</span>
-      {subLabel && <span className="text-xs text-gray-500">{subLabel}</span>}
-    </div>
-    <div className="flex items-center gap-3">
-      <button
-        onClick={onDecrease}
-        disabled={value <= 0}
-        className={`w-8 h-8 rounded-full border flex items-center justify-center transition ${value <= 0 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-400 text-gray-600 hover:border-black hover:text-black'
-          }`}
-      >
-        <Minus size={14} />
-      </button>
-      <span className="w-4 text-center text-sm font-medium">{value}</span>
-      <button
-        onClick={onIncrease}
-        disabled={value >= max}
-        className={`w-8 h-8 rounded-full border flex items-center justify-center transition ${value >= max ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-400 text-gray-600 hover:border-black hover:text-black'
-          }`}
-      >
-        <Plus size={14} />
-      </button>
-    </div>
-  </div>
-);
 
 export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
   const navigate = useNavigate();
@@ -50,9 +17,6 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const [createBooking, { isLoading: isBookingLoading }] = useCreateBookingMutation();
-  const [createPayOSLink, { isLoading: isPaymentLoading }] = useCreatePayOSLinkMutation();
 
   const [pricePerNight] = useState(room?.basePrice || room?.base_price || 2500000);
 
@@ -103,8 +67,6 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
       });
     }
   };
-
-  const isProcessing = isBookingLoading || isPaymentLoading;
 
   return (
     <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-6 w-full max-w-[380px]">
@@ -169,12 +131,10 @@ export default function BookingCard({ room, initialCheckIn, initialCheckOut }) {
 
       {/* Button & Chi tiết giá */}
       <button
-        disabled={isProcessing}
         onClick={handleBooking}
-        className={`w-full ${isProcessing ? 'bg-gray-400' : 'bg-rose-500 hover:bg-rose-600'} transition text-white font-bold py-3.5 rounded-lg text-base shadow-md mb-3 flex items-center justify-center gap-2`}
+        className="w-full bg-rose-500 hover:bg-rose-600 transition text-white font-bold py-3.5 rounded-lg text-base shadow-md mb-3 flex items-center justify-center gap-2"
       >
-        {isProcessing && <Loader2 size={18} className="animate-spin" />}
-        {isProcessing ? t('room.booking.processing') : t('room.booking.bookNow')}
+        {t('room.booking.bookNow')}
       </button>
 
       <div className="space-y-3 pt-4 mt-4">

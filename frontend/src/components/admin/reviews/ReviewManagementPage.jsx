@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Loader2, Search, Send, Sparkles, TriangleAlert } from 'lucide-react';
+import { Loader2, Search, SearchX, Send, Sparkles, TriangleAlert } from 'lucide-react';
 import { toast } from 'react-toastify';
 import StarRating from '../../common/StarRating';
+import EmptyState from '../../common/EmptyState';
+import { Skeleton } from '../../common/Skeleton';
 import ReviewReplyModal from './ReviewReplyModal';
 import {
   useAnalyzeAllReviewsMutation,
@@ -497,9 +499,14 @@ export default function ReviewManagementPage() {
       </div>
 
       {isFetching && reviews.length === 0 && (
-        <div className="flex justify-center py-16 text-gray-400">
-          <Loader2 className="animate-spin" size={28} />
-        </div>
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          {Array.from({ length: 5 }, (_, i) => (
+            <li key={i} className="space-y-2 p-4">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-3/4" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {!isFetching && error && (
@@ -509,11 +516,19 @@ export default function ReviewManagementPage() {
       )}
 
       {!error && !(isFetching && reviews.length === 0) && filtered.length === 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-          {reviews.length === 0
-            ? 'Chưa có đánh giá nào. Khách chỉ đánh giá được sau khi đã trả phòng.'
-            : 'Không có đánh giá nào khớp bộ lọc.'}
-        </div>
+        <EmptyState
+          icon={SearchX}
+          title={
+            reviews.length === 0
+              ? 'Chưa có đánh giá nào'
+              : 'Không có đánh giá nào khớp bộ lọc'
+          }
+          description={
+            reviews.length === 0
+              ? 'Khách chỉ đánh giá được sau khi đã trả phòng.'
+              : undefined
+          }
+        />
       )}
 
       {filtered.length > 0 && (
