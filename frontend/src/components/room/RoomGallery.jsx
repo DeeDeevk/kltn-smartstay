@@ -16,10 +16,10 @@ export default function RoomGallery({ images = [], roomName = "" }) {
   }
 
   return (
-    <div className="h-[450px] grid grid-cols-2 rounded-xl overflow-hidden gap-2">
+    <div className="h-[220px] sm:h-[320px] md:h-[450px] grid grid-cols-1 md:grid-cols-2 rounded-xl overflow-hidden gap-2">
 
       {/* Cột trái */}
-      <div className="min-h-0 overflow-hidden rounded-l-xl w-full">
+      <div className="min-h-0 overflow-hidden rounded-xl md:rounded-l-xl md:rounded-r-none w-full">
         <img
           src={mainImage}
           className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
@@ -27,8 +27,8 @@ export default function RoomGallery({ images = [], roomName = "" }) {
         />
       </div>
 
-      {/* Cột phải */}
-      <div className="min-h-0 grid grid-cols-2 grid-rows-2 gap-2">
+      {/* Cột phải — chỉ hiện từ md lên, ảnh đơn trên mobile đã đủ xem trước */}
+      <div className="hidden md:grid min-h-0 grid-cols-2 grid-rows-2 gap-2">
         {subImages.map((src, i) => (
           <div key={i} className={`min-h-0 overflow-hidden ${i === 1 ? 'rounded-tr-xl' : ''} ${i === 3 ? 'rounded-br-xl' : ''}`}>
             <img

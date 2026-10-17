@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { roomTypeApi } from '../../services/roomType';
-import { ChevronRight, Loader2, Star } from 'lucide-react';
+import { ChevronRight, Loader2 } from 'lucide-react';
+import formatCurrency from '../../utils/formatCurrency';
 
 export default function FeaturedRooms() {
   const navigate = useNavigate();
@@ -90,7 +91,7 @@ export default function FeaturedRooms() {
                     <div>
                       <span className="text-gray-400 text-xs">{t('home.featured.priceFrom')}</span>
                       <p className="text-blue-600 font-bold text-lg">
-                        {new Intl.NumberFormat(i18n.language === 'en' ? 'en-US' : 'vi-VN').format(room.base_price)}{i18n.language === 'en' ? '₫' : 'đ'}
+                        {formatCurrency(room.base_price, i18n.language)}
                       </p>
                     </div>
                     <button

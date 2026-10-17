@@ -40,9 +40,23 @@ function buildService(overrides?: {
 
   const bookingSave = jest.fn((x: Booking) => Promise.resolve(x));
   const bookingFindOne = jest.fn().mockResolvedValue(booking);
+  // cancel()/markPaidByOrderCode() chạy trong 1 transaction (manager.transaction) —
+  // giả lập manager chạy callback NGAY (không thật sự mở transaction DB), trả cùng
+  // các mock save/findOne ở trên cho Booking để assertion trên bookingSave vẫn đúng
+  // dù lệnh save() giờ đi qua manager.getRepository(Booking) thay vì gọi trực tiếp.
   const bookingRepo = {
     findOne: bookingFindOne,
     save: bookingSave,
+    manager: {
+      transaction: jest.fn(async (cb: (manager: unknown) => unknown) =>
+        cb({
+          getRepository: (entity: unknown) =>
+            entity === Booking
+              ? { save: bookingSave, findOne: bookingFindOne }
+              : { save: jest.fn((x: unknown) => Promise.resolve(x)) },
+        }),
+      ),
+    },
   } as unknown as Repository<Booking>;
 
   const record = jest.fn().mockResolvedValue(undefined);
@@ -137,12 +151,15 @@ describe('BookingService.markPaidByOrderCode', () => {
 
     await service.markPaidByOrderCode(123456, payerBankInfo);
 
+    // Tham số thứ 2 là EntityManager của transaction bọc quanh save() + record() (xem
+    // markPaidByOrderCode) — không quan tâm hình dạng cụ thể, chỉ cần xác nhận có truyền.
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingId: 'booking-1',
         method: PaymentMethod.PAYOS,
         payerBankInfo,
       }),
+      expect.anything(),
     );
   });
 
@@ -153,6 +170,7 @@ describe('BookingService.markPaidByOrderCode', () => {
 
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ payerBankInfo: null }),
+      expect.anything(),
     );
   });
 

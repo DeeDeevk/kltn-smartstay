@@ -255,6 +255,7 @@
     },
     "reviews": {
       "loading": "Đang tải đánh giá...",
+      "loadError": "Không thể tải đánh giá. Vui lòng thử lại.",
       "count": "({{count}} đánh giá)",
       "empty": "Chưa có đánh giá nào cho loại phòng này.",
       "collapse": "Thu gọn đánh giá",

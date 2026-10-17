@@ -4,13 +4,13 @@ import Review from "./Review";
 import RoomReviewAiSummary from "./RoomReviewAiSummary";
 import { useGetReviewsByRoomTypeQuery } from "../../services/review";
 import { useParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function RoomReviews({ averageRating, totalReviews }) {
   const { t } = useTranslation();
   const { id } = useParams();
-  const { data: reviewsData, isLoading } = useGetReviewsByRoomTypeQuery(id);
+  const { data: reviewsData, isLoading, isError } = useGetReviewsByRoomTypeQuery(id);
   // API trả thẳng mảng đánh giá (trước đây là mock bọc trong { data }).
   const reviews = reviewsData ?? [];
 
@@ -28,6 +28,14 @@ export default function RoomReviews({ averageRating, totalReviews }) {
     return (
       <div className="flex justify-center p-10 bg-white rounded-xl border border-gray-100 italic font-medium text-gray-400">
         <Loader2 className="animate-spin mr-2" /> {t('room.reviews.loading')}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-10 bg-white rounded-xl border border-red-100 text-sm font-medium text-red-500">
+        <TriangleAlert size={18} /> {t('room.reviews.loadError')}
       </div>
     );
   }

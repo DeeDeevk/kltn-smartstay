@@ -255,6 +255,7 @@
     },
     "reviews": {
       "loading": "Loading reviews...",
+      "loadError": "Couldn't load reviews. Please try again.",
       "count": "({{count}} reviews)",
       "empty": "No reviews yet for this room type.",
       "collapse": "Show fewer reviews",

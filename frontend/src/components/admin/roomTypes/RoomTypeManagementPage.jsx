@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ImageOff, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { ImageOff, Pencil, Plus, SearchX, Trash2, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import ConfirmModal from '../../common/ConfirmModal';
+import EmptyState from '../../common/EmptyState';
+import { Skeleton } from '../../common/Skeleton';
 import RoomTypeFormModal from './RoomTypeFormModal';
 import RoomFormModal from '../rooms/RoomFormModal';
 import formatCurrency from '../../../utils/formatCurrency';
@@ -57,25 +59,32 @@ export default function RoomTypeManagementPage() {
         </div>
       </div>
 
-      {isFetching && (
-        <div className="flex justify-center py-16 text-gray-400">
-          <Loader2 className="animate-spin" size={28} />
+      {isFetching && roomTypes.length === 0 && (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <Skeleton className="h-40 w-full rounded-none" />
+              <div className="space-y-2 p-4">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {!isFetching && error && (
+      {!(isFetching && roomTypes.length === 0) && error && (
         <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
           {error?.data?.message || t('admin.roomTypes.loadError')}
         </div>
       )}
 
-      {!isFetching && !error && roomTypes.length === 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400">
-          {t('admin.roomTypes.empty')}
-        </div>
+      {!(isFetching && roomTypes.length === 0) && !error && roomTypes.length === 0 && (
+        <EmptyState icon={SearchX} title={t('admin.roomTypes.empty')} />
       )}
 
-      {!isFetching && !error && roomTypes.length > 0 && (
+      {!(isFetching && roomTypes.length === 0) && !error && roomTypes.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {roomTypes.map((room) => (
             <div
@@ -113,6 +122,8 @@ export default function RoomTypeManagementPage() {
                   <button
                     type="button"
                     onClick={() => setDeleteTarget(room)}
+                    title={t('admin.roomTypes.deactivateTitle')}
+                    aria-label={t('admin.roomTypes.deactivateTitle')}
                     className="flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
                   >
                     <Trash2 size={14} />

@@ -3,6 +3,7 @@ import { Loader2, Plus, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import Modal from '../../common/Modal';
+import Button from '../../common/Button';
 import {
   useCreateRoomTypeMutation,
   useUpdateRoomTypeMutation,
@@ -156,22 +157,12 @@ export default function RoomTypeFormModal({ open, onClose, roomType }) {
       title={isEdit ? t('admin.roomTypes.form.editTitle') : t('admin.roomTypes.form.createTitle')}
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-70"
-          >
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
             {t('admin.roomTypes.form.cancel')}
-          </button>
-          <button
-            type="submit"
-            form="room-type-form"
-            disabled={isSaving || isUploading}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-          >
+          </Button>
+          <Button type="submit" form="room-type-form" loading={isSaving} disabled={isUploading}>
             {isSaving ? t('admin.roomTypes.form.saving') : isEdit ? t('admin.roomTypes.form.save') : t('admin.roomTypes.form.create')}
-          </button>
+          </Button>
         </>
       }
     >
