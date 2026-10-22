@@ -1,28 +1,38 @@
-import { useMemo, useState } from 'react';
-import { Loader2, Search, SearchX, Send, Sparkles, TriangleAlert } from 'lucide-react';
-import { toast } from 'react-toastify';
-import StarRating from '../../common/StarRating';
-import EmptyState from '../../common/EmptyState';
-import { Skeleton } from '../../common/Skeleton';
-import ReviewReplyModal from './ReviewReplyModal';
+import { useMemo, useState } from "react";
+import {
+  Loader2,
+  Search,
+  SearchX,
+  Send,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
+import { toast } from "react-toastify";
+import StarRating from "../../common/StarRating";
+import EmptyState from "../../common/EmptyState";
+import { Skeleton } from "../../common/Skeleton";
+import ReviewReplyModal from "./ReviewReplyModal";
 import {
   useAnalyzeAllReviewsMutation,
   useGetAllReviewsQuery,
-} from '../../../services/review';
+} from "../../../services/review";
+import Pagination from "../../common/Pagination";
 
 // 'this' so sánh được với tháng trước; 'all' thì không có kỳ nào để đối chiếu nên ẩn
 // cột xu hướng đi.
 const PERIODS = [
-  { value: 'this', label: 'Tháng này' },
-  { value: 'prev', label: 'Tháng trước' },
-  { value: 'all', label: 'Tất cả' },
+  { value: "this", label: "Tháng này" },
+  { value: "prev", label: "Tháng trước" },
+  { value: "all", label: "Tất cả" },
 ];
+
+const PAGE_SIZE = 10;
 
 function monthKey(date, offset = 0) {
   const d = new Date(date);
   d.setDate(1);
   d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 // Đếm số lượt bị chê theo chủ đề. Chỉ tính aspect NEGATIVE — bảng này để biết phải
@@ -31,7 +41,7 @@ function countComplaints(list) {
   const counter = new Map();
   for (const review of list) {
     for (const aspect of review.aiAnalysis?.aspects ?? []) {
-      if (aspect.sentiment !== 'NEGATIVE') continue;
+      if (aspect.sentiment !== "NEGATIVE") continue;
       counter.set(aspect.topic, (counter.get(aspect.topic) ?? 0) + 1);
     }
   }
@@ -40,17 +50,17 @@ function countComplaints(list) {
 
 // Nhãn tiếng Việt cho các mã chủ đề AI trả về (enum ReviewTopic ở backend).
 const TOPIC_LABELS = {
-  CLEANLINESS: 'Vệ sinh',
-  ROOM_CONDITION: 'Cơ sở vật chất',
-  NOISE: 'Tiếng ồn',
-  STAFF: 'Nhân viên',
-  CHECKIN: 'Nhận/trả phòng',
-  BREAKFAST: 'Ăn uống',
-  AMENITIES: 'Tiện nghi',
-  LOCATION: 'Vị trí',
-  VALUE: 'Giá cả',
-  WIFI: 'Wifi',
-  OTHER: 'Khác',
+  CLEANLINESS: "Vệ sinh",
+  ROOM_CONDITION: "Cơ sở vật chất",
+  NOISE: "Tiếng ồn",
+  STAFF: "Nhân viên",
+  CHECKIN: "Nhận/trả phòng",
+  BREAKFAST: "Ăn uống",
+  AMENITIES: "Tiện nghi",
+  LOCATION: "Vị trí",
+  VALUE: "Giá cả",
+  WIFI: "Wifi",
+  OTHER: "Khác",
 };
 
 // Ngưỡng phân loại theo thang nửa sao (0.5 - 5). Giữ ở một chỗ duy nhất để thẻ thống
@@ -60,46 +70,56 @@ const TOPIC_LABELS = {
 // tiêu cực sẽ thổi phồng số lượng khách không hài lòng, gộp vào tích cực thì che mất
 // nhóm khách đang lưng chừng — chính là nhóm dễ kéo lên hoặc mất nhất.
 const SENTIMENTS = {
-  POSITIVE: { label: 'Tích cực', className: 'bg-green-50 text-green-700', min: 4 },
-  NEUTRAL: { label: 'Trung lập', className: 'bg-amber-50 text-amber-700', min: 3 },
-  NEGATIVE: { label: 'Tiêu cực', className: 'bg-red-50 text-red-700', min: 0 },
+  POSITIVE: {
+    label: "Tích cực",
+    className: "bg-green-50 text-green-700",
+    min: 4,
+  },
+  NEUTRAL: {
+    label: "Trung lập",
+    className: "bg-amber-50 text-amber-700",
+    min: 3,
+  },
+  NEGATIVE: { label: "Tiêu cực", className: "bg-red-50 text-red-700", min: 0 },
 };
 
 function getSentiment(rating) {
-  if (rating >= SENTIMENTS.POSITIVE.min) return 'POSITIVE';
-  if (rating >= SENTIMENTS.NEUTRAL.min) return 'NEUTRAL';
-  return 'NEGATIVE';
+  if (rating >= SENTIMENTS.POSITIVE.min) return "POSITIVE";
+  if (rating >= SENTIMENTS.NEUTRAL.min) return "NEUTRAL";
+  return "NEGATIVE";
 }
 
 const FILTERS = [
-  { value: 'all', label: 'Tất cả' },
-  { value: 'POSITIVE', label: 'Tích cực (từ 4 sao)' },
-  { value: 'NEUTRAL', label: 'Trung lập (3 – 3.5 sao)' },
-  { value: 'NEGATIVE', label: 'Tiêu cực (dưới 3 sao)' },
-  { value: 'NO_REPLY', label: 'Chưa phản hồi' },
+  { value: "all", label: "Tất cả" },
+  { value: "POSITIVE", label: "Tích cực (từ 4 sao)" },
+  { value: "NEUTRAL", label: "Trung lập (3 – 3.5 sao)" },
+  { value: "NEGATIVE", label: "Tiêu cực (dưới 3 sao)" },
+  { value: "NO_REPLY", label: "Chưa phản hồi" },
 ];
 
 function formatDate(value) {
-  return new Date(value).toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+  return new Date(value).toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 }
 
 // Bỏ dấu để tìm "phong sach" vẫn ra "phòng sạch".
 function normalize(text) {
-  return (text ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/đ/gi, 'd')
+  return (text ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/gi, "d")
     .toLowerCase();
 }
 
-function StatCard({ label, value, hint, tone = 'text-gray-900' }) {
+function StatCard({ label, value, hint, tone = "text-gray-900" }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        {label}
+      </p>
       <p className={`mt-1 text-2xl font-bold ${tone}`}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-gray-400">{hint}</p>}
     </div>
@@ -115,8 +135,12 @@ function ReviewRow({ review, onReply }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-gray-900">{review.authorName}</span>
-            <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${sentiment.className}`}>
+            <span className="font-semibold text-gray-900">
+              {review.authorName}
+            </span>
+            <span
+              className={`rounded-md px-2 py-0.5 text-xs font-semibold ${sentiment.className}`}
+            >
               {sentiment.label}
             </span>
             <StarRating value={review.rating} size={14} />
@@ -142,9 +166,9 @@ function ReviewRow({ review, onReply }) {
                   key={`${aspect.topic}-${index}`}
                   title={`"${aspect.quote}"`}
                   className={`cursor-help rounded-md px-2 py-0.5 text-xs font-semibold ${
-                    aspect.sentiment === 'NEGATIVE'
-                      ? 'bg-red-50 text-red-700'
-                      : 'bg-green-50 text-green-700'
+                    aspect.sentiment === "NEGATIVE"
+                      ? "bg-red-50 text-red-700"
+                      : "bg-green-50 text-green-700"
                   }`}
                 >
                   {TOPIC_LABELS[aspect.topic] ?? aspect.topic}
@@ -165,7 +189,9 @@ function ReviewRow({ review, onReply }) {
               <p className="text-[11px] font-bold uppercase tracking-tight text-blue-600">
                 Phản hồi của khách sạn
               </p>
-              <p className="mt-0.5 text-sm text-gray-600 wrap-anywhere">{review.reply}</p>
+              <p className="mt-0.5 text-sm text-gray-600 wrap-anywhere">
+                {review.reply}
+              </p>
             </div>
           )}
         </div>
@@ -176,7 +202,7 @@ function ReviewRow({ review, onReply }) {
           className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
         >
           <Send size={14} />
-          {review.reply ? 'Sửa phản hồi' : 'Phản hồi'}
+          {review.reply ? "Sửa phản hồi" : "Phản hồi"}
         </button>
       </div>
     </li>
@@ -185,23 +211,26 @@ function ReviewRow({ review, onReply }) {
 
 // Xem và phản hồi đánh giá của khách, phân loại theo số sao.
 export default function ReviewManagementPage() {
+  const [page, setPage] = useState(1);
   const { data: reviews = [], isFetching, error } = useGetAllReviewsQuery();
-  const [analyzeAll, { isLoading: analyzingAll }] = useAnalyzeAllReviewsMutation();
+  const [analyzeAll, { isLoading: analyzingAll }] =
+    useAnalyzeAllReviewsMutation();
   const [replyTarget, setReplyTarget] = useState(null);
-  const [period, setPeriod] = useState('this');
-  const [keyword, setKeyword] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [period, setPeriod] = useState("this");
+  const [keyword, setKeyword] = useState("");
+  const [filter, setFilter] = useState("all");
 
   const stats = useMemo(() => {
     const total = reviews.length;
     const sum = reviews.reduce((acc, r) => acc + Number(r.rating), 0);
-    const count = (key) => reviews.filter((r) => getSentiment(r.rating) === key).length;
+    const count = (key) =>
+      reviews.filter((r) => getSentiment(r.rating) === key).length;
     return {
       total,
       average: total ? sum / total : 0,
-      positive: count('POSITIVE'),
-      neutral: count('NEUTRAL'),
-      negative: count('NEGATIVE'),
+      positive: count("POSITIVE"),
+      neutral: count("NEUTRAL"),
+      negative: count("NEGATIVE"),
       noReply: reviews.filter((r) => !r.reply).length,
     };
   }, [reviews]);
@@ -209,29 +238,48 @@ export default function ReviewManagementPage() {
   const filtered = useMemo(() => {
     const needle = normalize(keyword.trim());
     return reviews.filter((review) => {
-      if (filter === 'NO_REPLY' && review.reply) return false;
-      if (filter !== 'all' && filter !== 'NO_REPLY' && getSentiment(review.rating) !== filter) {
+      if (filter === "NO_REPLY" && review.reply) return false;
+      if (
+        filter !== "all" &&
+        filter !== "NO_REPLY" &&
+        getSentiment(review.rating) !== filter
+      ) {
         return false;
       }
-      if (needle && !normalize(`${review.authorName} ${review.comment}`).includes(needle)) {
+      if (
+        needle &&
+        !normalize(`${review.authorName} ${review.comment}`).includes(needle)
+      ) {
         return false;
       }
       return true;
     });
   }, [reviews, keyword, filter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = filtered.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
 
-  const percent = (value) => (stats.total ? Math.round((value / stats.total) * 100) : 0);
+  const percent = (value) =>
+    stats.total ? Math.round((value / stats.total) * 100) : 0;
 
   // Đánh giá thuộc kỳ đang xem, và kỳ liền trước để so sánh.
   // KHÔNG gọi AI ở bước này — khía cạnh đã được bóc tách và lưu sẵn từ lúc khách gửi
   // đánh giá, ở đây chỉ đếm. Miễn phí, tức thì, cho cùng kết quả mỗi lần mở trang.
   const { periodReviews, previousReviews } = useMemo(() => {
-    if (period === 'all') return { periodReviews: reviews, previousReviews: [] };
+    if (period === "all")
+      return { periodReviews: reviews, previousReviews: [] };
     const now = new Date();
-    const current = monthKey(now, period === 'prev' ? -1 : 0);
-    const previous = monthKey(now, period === 'prev' ? -2 : -1);
-    const inMonth = (key) => reviews.filter((r) => monthKey(r.reviewDate) === key);
-    return { periodReviews: inMonth(current), previousReviews: inMonth(previous) };
+    const current = monthKey(now, period === "prev" ? -1 : 0);
+    const previous = monthKey(now, period === "prev" ? -2 : -1);
+    const inMonth = (key) =>
+      reviews.filter((r) => monthKey(r.reviewDate) === key);
+    return {
+      periodReviews: inMonth(current),
+      previousReviews: inMonth(previous),
+    };
   }, [reviews, period]);
 
   const topComplaints = useMemo(() => {
@@ -241,7 +289,7 @@ export default function ReviewManagementPage() {
       .map(([topic, count]) => ({
         topic,
         count,
-        delta: period === 'all' ? null : count - (previous.get(topic) ?? 0),
+        delta: period === "all" ? null : count - (previous.get(topic) ?? 0),
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
@@ -252,12 +300,19 @@ export default function ReviewManagementPage() {
   const byRoomType = useMemo(() => {
     const groups = new Map();
     for (const review of periodReviews) {
-      const name = review.roomTypeName ?? 'Không xác định';
-      const entry = groups.get(name) ?? { name, ratings: [], topics: new Map() };
+      const name = review.roomTypeName ?? "Không xác định";
+      const entry = groups.get(name) ?? {
+        name,
+        ratings: [],
+        topics: new Map(),
+      };
       entry.ratings.push(Number(review.rating));
       for (const aspect of review.aiAnalysis?.aspects ?? []) {
-        if (aspect.sentiment !== 'NEGATIVE') continue;
-        entry.topics.set(aspect.topic, (entry.topics.get(aspect.topic) ?? 0) + 1);
+        if (aspect.sentiment !== "NEGATIVE") continue;
+        entry.topics.set(
+          aspect.topic,
+          (entry.topics.get(aspect.topic) ?? 0) + 1,
+        );
       }
       groups.set(name, entry);
     }
@@ -265,11 +320,17 @@ export default function ReviewManagementPage() {
       .map((entry) => ({
         name: entry.name,
         reviewCount: entry.ratings.length,
-        average: entry.ratings.reduce((a, b) => a + b, 0) / entry.ratings.length,
-        complaints: [...entry.topics.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3),
+        average:
+          entry.ratings.reduce((a, b) => a + b, 0) / entry.ratings.length,
+        complaints: [...entry.topics.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3),
         totalComplaints: [...entry.topics.values()].reduce((a, b) => a + b, 0),
       }))
-      .sort((a, b) => b.totalComplaints - a.totalComplaints || a.average - b.average);
+      .sort(
+        (a, b) =>
+          b.totalComplaints - a.totalComplaints || a.average - b.average,
+      );
   }, [periodReviews]);
 
   const maxComplaint = topComplaints[0]?.count ?? 0;
@@ -283,7 +344,7 @@ export default function ReviewManagementPage() {
       // Nói đúng nguyên nhân để admin đợi rồi bấm lại, thay vì tưởng mất dữ liệu.
       if (result.abortedEarly) {
         toast.error(
-          'Dịch vụ AI đang quá tải, đã tạm dừng. Vui lòng thử lại sau vài phút.',
+          "Dịch vụ AI đang quá tải, đã tạm dừng. Vui lòng thử lại sau vài phút.",
         );
         return;
       }
@@ -294,10 +355,12 @@ export default function ReviewManagementPage() {
           : `Đã phân tích xong ${result.analyzed} đánh giá`,
       );
       if (result.failed > 0) {
-        toast.warning(`${result.failed} đánh giá phân tích lỗi, thử lại sau ít phút`);
+        toast.warning(
+          `${result.failed} đánh giá phân tích lỗi, thử lại sau ít phút`,
+        );
       }
     } catch (err) {
-      toast.error(err?.data?.message || 'Không chạy được phân tích hàng loạt');
+      toast.error(err?.data?.message || "Không chạy được phân tích hàng loạt");
     }
   };
 
@@ -305,7 +368,9 @@ export default function ReviewManagementPage() {
     <>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Đánh giá của khách</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Đánh giá của khách
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
             Phân loại theo số sao khách chấm sau khi trả phòng
           </p>
@@ -337,8 +402,8 @@ export default function ReviewManagementPage() {
             onClick={() => setPeriod(item.value)}
             className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
               period === item.value
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-50'
+                ? "bg-blue-600 text-white"
+                : "text-gray-600 hover:bg-gray-50"
             }`}
           >
             {item.label}
@@ -375,7 +440,9 @@ export default function ReviewManagementPage() {
       {topComplaints.length > 0 && (
         <div className="mb-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-bold text-gray-900">Chủ đề bị chê nhiều nhất</h2>
+            <h2 className="font-bold text-gray-900">
+              Chủ đề bị chê nhiều nhất
+            </h2>
             {unanalyzed > 0 && (
               <span className="text-xs text-gray-400">
                 {unanalyzed} đánh giá chưa phân tích, chưa được tính vào đây
@@ -404,7 +471,9 @@ export default function ReviewManagementPage() {
                   ) : delta > 0 ? (
                     <span className="text-red-600">↑ {delta} vs kỳ trước</span>
                   ) : delta < 0 ? (
-                    <span className="text-green-600">↓ {Math.abs(delta)} vs kỳ trước</span>
+                    <span className="text-green-600">
+                      ↓ {Math.abs(delta)} vs kỳ trước
+                    </span>
                   ) : (
                     <span className="text-gray-400">→ không đổi</span>
                   )}
@@ -426,9 +495,13 @@ export default function ReviewManagementPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
               <tr>
-                <th className="px-5 py-3 text-left font-semibold">Loại phòng</th>
+                <th className="px-5 py-3 text-left font-semibold">
+                  Loại phòng
+                </th>
                 <th className="px-5 py-3 text-left font-semibold">Điểm TB</th>
-                <th className="px-5 py-3 text-left font-semibold">Bị chê nhiều nhất</th>
+                <th className="px-5 py-3 text-left font-semibold">
+                  Bị chê nhiều nhất
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -436,16 +509,18 @@ export default function ReviewManagementPage() {
                 <tr key={row.name}>
                   <td className="px-5 py-3">
                     <p className="font-semibold text-gray-900">{row.name}</p>
-                    <p className="text-xs text-gray-400">{row.reviewCount} đánh giá</p>
+                    <p className="text-xs text-gray-400">
+                      {row.reviewCount} đánh giá
+                    </p>
                   </td>
                   <td className="px-5 py-3">
                     <span
                       className={`font-bold ${
                         row.average >= 4
-                          ? 'text-green-600'
+                          ? "text-green-600"
                           : row.average >= 3
-                            ? 'text-amber-600'
-                            : 'text-red-600'
+                            ? "text-amber-600"
+                            : "text-red-600"
                       }`}
                     >
                       {row.average.toFixed(1)}
@@ -453,7 +528,9 @@ export default function ReviewManagementPage() {
                   </td>
                   <td className="px-5 py-3">
                     {row.complaints.length === 0 ? (
-                      <span className="text-xs text-gray-400">Không có lời chê nào</span>
+                      <span className="text-xs text-gray-400">
+                        Không có lời chê nào
+                      </span>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {row.complaints.map(([topic, count]) => (
@@ -476,7 +553,10 @@ export default function ReviewManagementPage() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         <div className="relative min-w-60 flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
           <input
             type="text"
             value={keyword}
@@ -487,7 +567,10 @@ export default function ReviewManagementPage() {
         </div>
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setPage(1);
+          }}
           className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {FILTERS.map((f) => (
@@ -511,32 +594,46 @@ export default function ReviewManagementPage() {
 
       {!isFetching && error && (
         <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
-          {error?.data?.message || 'Không thể tải danh sách đánh giá'}
+          {error?.data?.message || "Không thể tải danh sách đánh giá"}
         </div>
       )}
 
-      {!error && !(isFetching && reviews.length === 0) && filtered.length === 0 && (
-        <EmptyState
-          icon={SearchX}
-          title={
-            reviews.length === 0
-              ? 'Chưa có đánh giá nào'
-              : 'Không có đánh giá nào khớp bộ lọc'
-          }
-          description={
-            reviews.length === 0
-              ? 'Khách chỉ đánh giá được sau khi đã trả phòng.'
-              : undefined
-          }
-        />
-      )}
+      {!error &&
+        !(isFetching && reviews.length === 0) &&
+        filtered.length === 0 && (
+          <EmptyState
+            icon={SearchX}
+            title={
+              reviews.length === 0
+                ? "Chưa có đánh giá nào"
+                : "Không có đánh giá nào khớp bộ lọc"
+            }
+            description={
+              reviews.length === 0
+                ? "Khách chỉ đánh giá được sau khi đã trả phòng."
+                : undefined
+            }
+          />
+        )}
 
       {filtered.length > 0 && (
-        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          {filtered.map((review) => (
-            <ReviewRow key={review.reviewId} review={review} onReply={setReplyTarget} />
-          ))}
-        </ul>
+        <>
+          <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            {pageItems.map((review) => (
+              <ReviewRow
+                key={review.reviewId}
+                review={review}
+                onReply={setReplyTarget}
+              />
+            ))}
+          </ul>
+          <Pagination
+            page={safePage}
+            totalPages={totalPages}
+            onChange={setPage}
+            summary={`Trang ${safePage}/${totalPages} · ${filtered.length} đánh giá`}
+          />
+        </>
       )}
 
       <ReviewReplyModal

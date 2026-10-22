@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   CalendarCheck2,
   CalendarDays,
@@ -12,42 +12,46 @@ import {
   RefreshCw,
   Search,
   SearchX,
-} from 'lucide-react';
-import { useGetBookingByIdQuery, useGetBookingsQuery } from '../../../services/booking';
-import useAdminOverviewStats from '../dashboard/useAdminOverviewStats';
-import BookingAdminDetailModal from './BookingAdminDetailModal';
-import StatusPill from '../../booking/StatusPill';
-import { BOOKING_STATUS_STYLES } from '../../../utils/bookingStatusStyles';
-import formatCurrency from '../../../utils/formatCurrency';
-import formatDate from '../../../utils/formatDate';
-import getBookingCode from '../../../utils/bookingCode';
-import { stagger } from '../../../utils/motion';
-import { inputClass } from '../../common/formStyles';
-import Field from '../../common/Field';
-import SearchInput from '../../common/SearchInput';
-import Button from '../../common/Button';
-import EmptyState from '../../common/EmptyState';
-import AnimatedNumber from '../../common/AnimatedNumber';
-import { TableSkeletonRows } from '../../common/Skeleton';
+} from "lucide-react";
+import {
+  useGetBookingByIdQuery,
+  useGetBookingsQuery,
+} from "../../../services/booking";
+import useAdminOverviewStats from "../dashboard/useAdminOverviewStats";
+import BookingAdminDetailModal from "./BookingAdminDetailModal";
+import StatusPill from "../../booking/StatusPill";
+import { BOOKING_STATUS_STYLES } from "../../../utils/bookingStatusStyles";
+import formatCurrency from "../../../utils/formatCurrency";
+import formatDate from "../../../utils/formatDate";
+import getBookingCode from "../../../utils/bookingCode";
+import { stagger } from "../../../utils/motion";
+import { inputClass } from "../../common/formStyles";
+import Field from "../../common/Field";
+import SearchInput from "../../common/SearchInput";
+import Button from "../../common/Button";
+import EmptyState from "../../common/EmptyState";
+import AnimatedNumber from "../../common/AnimatedNumber";
+import { TableSkeletonRows } from "../../common/Skeleton";
+import Pagination from "../../common/Pagination";
 
 const BOOKING_STATUS_LABELS = {
-  PENDING: 'Chờ xác nhận',
-  CONFIRMED: 'Đã xác nhận',
-  CHECKED_IN: 'Đang lưu trú',
-  CHECKED_OUT: 'Đã hoàn thành',
-  CANCELLED: 'Đã huỷ',
+  PENDING: "Chờ xác nhận",
+  CONFIRMED: "Đã xác nhận",
+  CHECKED_IN: "Đang lưu trú",
+  CHECKED_OUT: "Đã hoàn thành",
+  CANCELLED: "Đã huỷ",
 };
 
 const TABS = [
-  { key: 'all', label: 'Tất cả' },
-  { key: 'pending', label: 'Chờ xác nhận', status: 'PENDING' },
-  { key: 'confirmed', label: 'Đã xác nhận', status: 'CONFIRMED' },
-  { key: 'staying', label: 'Đang lưu trú', status: 'CHECKED_IN' },
-  { key: 'done', label: 'Hoàn thành', status: 'CHECKED_OUT' },
-  { key: 'cancelled', label: 'Đã huỷ', status: 'CANCELLED' },
+  { key: "all", label: "Tất cả" },
+  { key: "pending", label: "Chờ xác nhận", status: "PENDING" },
+  { key: "confirmed", label: "Đã xác nhận", status: "CONFIRMED" },
+  { key: "staying", label: "Đang lưu trú", status: "CHECKED_IN" },
+  { key: "done", label: "Hoàn thành", status: "CHECKED_OUT" },
+  { key: "cancelled", label: "Đã huỷ", status: "CANCELLED" },
 ];
 
-const EMPTY_SEARCH = { keyword: '', from: '', to: '' };
+const EMPTY_SEARCH = { keyword: "", from: "", to: "" };
 const PAGE_SIZE = 10;
 
 function nights(a, b) {
@@ -56,7 +60,7 @@ function nights(a, b) {
 }
 
 export default function BookingManagementPage() {
-  const [tab, setTab] = useState('all');
+  const [tab, setTab] = useState("all");
   const [draft, setDraft] = useState(EMPTY_SEARCH);
   const [applied, setApplied] = useState(EMPTY_SEARCH);
   const [page, setPage] = useState(1);
@@ -67,18 +71,21 @@ export default function BookingManagementPage() {
   // nằm ở trang/tab đang hiển thị. Mở xong thì bỏ tham số khỏi URL, để F5 hay đóng modal
   // không bật lại nó lần nữa.
   const [searchParams, setSearchParams] = useSearchParams();
-  const focusBookingId = searchParams.get('bookingId');
-  const { data: focusBooking, isError: focusError } = useGetBookingByIdQuery(focusBookingId, {
-    skip: !focusBookingId,
-  });
+  const focusBookingId = searchParams.get("bookingId");
+  const { data: focusBooking, isError: focusError } = useGetBookingByIdQuery(
+    focusBookingId,
+    {
+      skip: !focusBookingId,
+    },
+  );
   useEffect(() => {
     if (!focusBookingId || (!focusBooking && !focusError)) return;
     if (focusBooking) setDetail(focusBooking);
-    else toast.error('Không tìm thấy đơn đặt phòng này');
+    else toast.error("Không tìm thấy đơn đặt phòng này");
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        next.delete('bookingId');
+        next.delete("bookingId");
         return next;
       },
       { replace: true },
@@ -105,7 +112,7 @@ export default function BookingManagementPage() {
 
   const applySearch = () => {
     if (Boolean(draft.from) !== Boolean(draft.to)) {
-      toast.error('Chọn cả từ ngày và đến ngày');
+      toast.error("Chọn cả từ ngày và đến ngày");
       return;
     }
     setPage(1);
@@ -128,7 +135,8 @@ export default function BookingManagementPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
-            <CalendarDays size={24} className="text-blue-600" /> Quản lý đặt phòng
+            <CalendarDays size={24} className="text-blue-600" /> Quản lý đặt
+            phòng
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             Xem, tìm kiếm và xử lý toàn bộ lịch sử đặt phòng của khách sạn
@@ -248,8 +256,8 @@ export default function BookingManagementPage() {
               }}
               className={`press rounded-lg px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
                 tab === t.key
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  ? "bg-blue-600 text-white shadow-sm shadow-blue-600/30"
+                  : "bg-gray-50 text-gray-600 hover:bg-gray-100"
               }`}
             >
               {t.label}
@@ -269,7 +277,7 @@ export default function BookingManagementPage() {
           // Đang làm mới khi đã có dữ liệu: mờ nhẹ thay vì xoá bảng, để không bị giật.
           <div
             className={`overflow-x-auto transition-opacity duration-200 ${
-              isFetching && !isFirstLoad ? 'opacity-60' : 'opacity-100'
+              isFetching && !isFirstLoad ? "opacity-60" : "opacity-100"
             }`}
           >
             <table className="w-full min-w-[820px] text-sm">
@@ -279,9 +287,13 @@ export default function BookingManagementPage() {
                   <th className="px-4 py-3 font-semibold">Khách hàng</th>
                   <th className="px-4 py-3 font-semibold">Ngày ở</th>
                   <th className="px-4 py-3 font-semibold">Phòng</th>
-                  <th className="px-4 py-3 text-right font-semibold">Tổng tiền</th>
+                  <th className="px-4 py-3 text-right font-semibold">
+                    Tổng tiền
+                  </th>
                   <th className="px-4 py-3 font-semibold">Trạng thái</th>
-                  <th className="px-4 py-3 text-right font-semibold">Thao tác</th>
+                  <th className="px-4 py-3 text-right font-semibold">
+                    Thao tác
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -302,16 +314,17 @@ export default function BookingManagementPage() {
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">
-                          {b.guestInfo?.fullName || '—'}
+                          {b.guestInfo?.fullName || "—"}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {b.guestInfo?.phone || 'Không có SĐT'}
+                          {b.guestInfo?.phone || "Không có SĐT"}
                         </p>
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-1.5 text-gray-600">
                           <CalendarDays size={13} className="text-gray-400" />
-                          {formatDate(b.checkInDate)} → {formatDate(b.checkOutDate)}
+                          {formatDate(b.checkInDate)} →{" "}
+                          {formatDate(b.checkOutDate)}
                         </span>
                         <span className="text-xs text-gray-400">
                           {nights(b.checkInDate, b.checkOutDate)} đêm
@@ -323,7 +336,9 @@ export default function BookingManagementPage() {
                             {b.room.roomNumber}
                           </span>
                         ) : (
-                          <span className="text-xs text-gray-400">Chưa gán</span>
+                          <span className="text-xs text-gray-400">
+                            Chưa gán
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">
@@ -353,32 +368,12 @@ export default function BookingManagementPage() {
             </table>
           </div>
         )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm">
-            <span className="text-gray-500">
-              Trang {page}/{totalPages} · {total} đơn
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Trước
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Sau
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onChange={setPage}
+          summary={`Trang ${page}/${totalPages} · ${total} đơn`}
+        />
       </div>
 
       <BookingAdminDetailModal
@@ -400,7 +395,9 @@ function StatCard({ index, icon: Icon, label, value, tone, bg }) {
         <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
           {label}
         </p>
-        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg}`}>
+        <span
+          className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg}`}
+        >
           <Icon size={16} />
         </span>
       </div>

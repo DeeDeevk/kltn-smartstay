@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from "react";
+import { useDispatch } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarDays,
@@ -11,30 +11,34 @@ import {
   Loader2,
   MessageCircle,
   SearchX,
-} from 'lucide-react';
-import { toast } from 'react-toastify';
-import { useTranslation } from 'react-i18next';
-import Header from '../layout/Header';
-import Footer from '../layout/Footer';
-import ConfirmModal from '../common/ConfirmModal';
-import EmptyState from '../common/EmptyState';
-import BookingDetailModal from '../booking/BookingDetailModal';
-import ReviewModal from '../room/ReviewModal';
-import StatusPill from '../booking/StatusPill';
-import { BOOKING_STATUS_STYLES, PAYMENT_STATUS_STYLES } from '../../utils/bookingStatusStyles';
+} from "lucide-react";
+import { toast } from "react-toastify";
+import { useTranslation } from "react-i18next";
+import Header from "../layout/Header";
+import Footer from "../layout/Footer";
+import ConfirmModal from "../common/ConfirmModal";
+import EmptyState from "../common/EmptyState";
+import BookingDetailModal from "../booking/BookingDetailModal";
+import ReviewModal from "../room/ReviewModal";
+import StatusPill from "../booking/StatusPill";
+import {
+  BOOKING_STATUS_STYLES,
+  PAYMENT_STATUS_STYLES,
+} from "../../utils/bookingStatusStyles";
 import {
   bookingApi,
   useCancelBookingMutation,
   useGetCancellationPreviewQuery,
   useGetMyBookingsQuery,
-} from '../../services/booking';
-import { useSocket } from '../../context/SocketContext';
-import { useGetMyReviewsQuery } from '../../services/review';
-import { useGetMyRefundRequestsQuery } from '../../services/refundRequest';
-import formatCurrency from '../../utils/formatCurrency';
-import formatDate from '../../utils/formatDate';
-import getBookingCode from '../../utils/bookingCode';
-import openReceptionChat from '../../utils/openReceptionChat';
+} from "../../services/booking";
+import { useSocket } from "../../context/SocketContext";
+import { useGetMyReviewsQuery } from "../../services/review";
+import { useGetMyRefundRequestsQuery } from "../../services/refundRequest";
+import formatCurrency from "../../utils/formatCurrency";
+import formatDate from "../../utils/formatDate";
+import getBookingCode from "../../utils/bookingCode";
+import openReceptionChat from "../../utils/openReceptionChat";
+import Pagination from "../common/Pagination";
 
 // Icon + màu riêng cho từng trạng thái RefundRequest — KHÔNG dùng pill badge như
 // booking.status/paymentStatus (StatusPill) để tránh xếp chồng 3 pill nhìn rối; đây là 1
@@ -42,31 +46,38 @@ import openReceptionChat from '../../utils/openReceptionChat';
 // PENDING_OVERDUE là trạng thái "ảo" (không có thật ở backend) — chỉ để chọn style khác
 // cho đúng cùng 1 refund.status='PENDING' khi đã quá SLA xử lý (KAN-122).
 const REFUND_STATUS_CONFIG = {
-  PENDING: { icon: Clock, className: 'text-amber-600', labelKey: 'booking.history.refundPending' },
+  PENDING: {
+    icon: Clock,
+    className: "text-amber-600",
+    labelKey: "booking.history.refundPending",
+  },
   PENDING_OVERDUE: {
     icon: AlertTriangle,
-    className: 'text-red-600',
-    labelKey: 'booking.history.refundOverdue',
+    className: "text-red-600",
+    labelKey: "booking.history.refundOverdue",
   },
   COMPLETED: {
     icon: CheckCircle2,
-    className: 'text-green-600',
-    labelKey: 'booking.history.refundCompleted',
+    className: "text-green-600",
+    labelKey: "booking.history.refundCompleted",
   },
   REJECTED: {
     icon: AlertTriangle,
-    className: 'text-red-600',
-    labelKey: 'booking.history.refundRejected',
+    className: "text-red-600",
+    labelKey: "booking.history.refundRejected",
   },
 };
+
+const PAGE_SIZE = 10;
 
 // Còn PENDING nhưng đã quá refundProcessingSlaHours (HotelConfig, KAN-122) kể từ lúc tạo ->
 // coi là quá hạn, khách cần được nhắc chủ động liên hệ thay vì chờ im lặng. Tính lại mỗi lần
 // render (không polling) — F5/mở lại trang là đủ cập nhật đúng, không cần real-time.
 function isRefundOverdue(refund) {
-  if (!refund || refund.status !== 'PENDING') return false;
+  if (!refund || refund.status !== "PENDING") return false;
   const slaHours = refund.refundProcessingSlaHours ?? 24;
-  const hoursSincePending = (Date.now() - new Date(refund.createdAt).getTime()) / (60 * 60 * 1000);
+  const hoursSincePending =
+    (Date.now() - new Date(refund.createdAt).getTime()) / (60 * 60 * 1000);
   return hoursSincePending >= slaHours;
 }
 
@@ -76,17 +87,25 @@ function isRefundOverdue(refund) {
 // trong trường hợp đó.
 function RefundStatus({ refund, t }) {
   if (!refund) return null;
-  const configKey = refund.status === 'PENDING' && isRefundOverdue(refund) ? 'PENDING_OVERDUE' : refund.status;
+  const configKey =
+    refund.status === "PENDING" && isRefundOverdue(refund)
+      ? "PENDING_OVERDUE"
+      : refund.status;
   const config = REFUND_STATUS_CONFIG[configKey];
   if (!config) return null;
   const Icon = config.icon;
   return (
-    <div className={`mt-1.5 flex items-center gap-1 text-[12px] font-semibold ${config.className}`}>
+    <div
+      className={`mt-1.5 flex items-center gap-1 text-[12px] font-semibold ${config.className}`}
+    >
       <Icon size={13} className="shrink-0" />
       <span>{t(config.labelKey)}</span>
-      {refund.status === 'REJECTED' && refund.adminNote && (
+      {refund.status === "REJECTED" && refund.adminNote && (
         <span className="font-normal text-gray-400">
-          · {t('booking.history.refundRejectedReason', { reason: refund.adminNote })}
+          ·{" "}
+          {t("booking.history.refundRejectedReason", {
+            reason: refund.adminNote,
+          })}
         </span>
       )}
     </div>
@@ -114,7 +133,7 @@ function BookingActions({
           onClick={() => onPayNow(booking.bookingId)}
           className="rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700"
         >
-          {t('booking.history.payNow')}
+          {t("booking.history.payNow")}
         </button>
       )}
       {canCancel && (
@@ -123,7 +142,7 @@ function BookingActions({
           onClick={() => onCancel(booking)}
           className="rounded-lg bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
         >
-          {t('booking.history.cancel')}
+          {t("booking.history.cancel")}
         </button>
       )}
       {canReview && (
@@ -132,7 +151,7 @@ function BookingActions({
           onClick={() => onReview(booking)}
           className="rounded-lg bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
         >
-          {t('booking.history.review')}
+          {t("booking.history.review")}
         </button>
       )}
       {/* Chỉ hiện khi RefundRequest còn PENDING VÀ đã quá SLA xử lý (xem isRefundOverdue) —
@@ -145,7 +164,7 @@ function BookingActions({
           onClick={() => onContactReception(booking)}
           className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700"
         >
-          <MessageCircle size={14} /> {t('booking.history.contactReception')}
+          <MessageCircle size={14} /> {t("booking.history.contactReception")}
         </button>
       )}
       <button
@@ -153,7 +172,7 @@ function BookingActions({
         onClick={() => onViewDetail(booking)}
         className="rounded-lg border border-gray-200 px-3.5 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
       >
-        {t('booking.history.viewDetail')}
+        {t("booking.history.viewDetail")}
       </button>
     </div>
   );
@@ -161,25 +180,33 @@ function BookingActions({
 
 export default function BookingHistoryPage() {
   const { t, i18n } = useTranslation();
-  const { data, isFetching, error } = useGetMyBookingsQuery();
-  const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
+  const [page, setPage] = useState(1);
+  const { data, isFetching, error } = useGetMyBookingsQuery({
+    page,
+    limit: PAGE_SIZE,
+  });
+  const [cancelBooking, { isLoading: isCancelling }] =
+    useCancelBookingMutation();
   const navigate = useNavigate();
   const [cancelTarget, setCancelTarget] = useState(null);
-  const [cancelReasonInput, setCancelReasonInput] = useState('');
+  const [cancelReasonInput, setCancelReasonInput] = useState("");
   const [detailBookingId, setDetailBookingId] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
 
   // Reset ô nhập lý do mỗi khi mở dialog huỷ cho 1 đơn khác hoặc đóng dialog lại —
   // tránh lý do của lần huỷ trước còn sót lại khi mở dialog mới.
   useEffect(() => {
-    setCancelReasonInput('');
+    setCancelReasonInput("");
   }, [cancelTarget]);
 
   // Xem trước mức hoàn tiền nếu huỷ ngay lúc này (KAN-117) — chỉ cần gọi khi đơn đã thanh
   // toán (đơn chưa thanh toán thì huỷ không có gì để hoàn, không cần hỏi backend).
-  const { data: cancellationPreview } = useGetCancellationPreviewQuery(cancelTarget?.bookingId, {
-    skip: !cancelTarget || !cancelTarget.paidAmount,
-  });
+  const { data: cancellationPreview } = useGetCancellationPreviewQuery(
+    cancelTarget?.bookingId,
+    {
+      skip: !cancelTarget || !cancelTarget.paidAmount,
+    },
+  );
 
   // Đánh giá khách đã viết — để ẩn nút "Đánh giá" ở những đơn đã đánh giá rồi (backend
   // cũng chặn, nhưng để nút ở đó rồi báo lỗi khi bấm thì khó chịu).
@@ -195,10 +222,13 @@ export default function BookingHistoryPage() {
   );
 
   const bookings = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // Lấy lại object từ danh sách mới nhất thay vì giữ 1 bản chụp tĩnh — nếu socket
   // 'booking:updated' làm mới danh sách trong lúc modal đang mở (lễ tân xác nhận/huỷ
   // đơn này), modal chi tiết đổi trạng thái theo ngay thay vì hiện dữ liệu cũ.
-  const detailBooking = bookings.find((b) => b.bookingId === detailBookingId) ?? null;
+  const detailBooking =
+    bookings.find((b) => b.bookingId === detailBookingId) ?? null;
 
   // Lễ tân xác nhận/check-in/check-out/huỷ đơn ở phía họ -> đơn của mình đổi trạng
   // thái ngay trên máy khác, tự làm mới danh sách thay vì bắt khách F5 lại trang.
@@ -206,10 +236,12 @@ export default function BookingHistoryPage() {
   const socket = useSocket();
   useEffect(() => {
     const handleBookingUpdated = () => {
-      dispatch(bookingApi.util.invalidateTags([{ type: 'Booking', id: 'MY_LIST' }]));
+      dispatch(
+        bookingApi.util.invalidateTags([{ type: "Booking", id: "MY_LIST" }]),
+      );
     };
-    socket.on('booking:updated', handleBookingUpdated);
-    return () => socket.off('booking:updated', handleBookingUpdated);
+    socket.on("booking:updated", handleBookingUpdated);
+    return () => socket.off("booking:updated", handleBookingUpdated);
   }, [socket, dispatch]);
 
   // "Liên hệ lễ tân" chỉ cần mở đúng widget chat lễ tân — khách chỉ có DUY NHẤT 1 hội thoại
@@ -229,12 +261,12 @@ export default function BookingHistoryPage() {
     try {
       await cancelBooking({
         bookingId: cancelTarget.bookingId,
-        reason: trimmedReason || t('booking.history.cancelReason'),
+        reason: trimmedReason || t("booking.history.cancelReason"),
       }).unwrap();
-      toast.success(t('booking.history.cancelSuccess'));
+      toast.success(t("booking.history.cancelSuccess"));
       setCancelTarget(null);
     } catch (err) {
-      toast.error(err?.data?.message || t('booking.history.cancelError'));
+      toast.error(err?.data?.message || t("booking.history.cancelError"));
     }
   };
 
@@ -243,9 +275,12 @@ export default function BookingHistoryPage() {
       <Header />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">{t('booking.history.title')}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {t("booking.history.title")}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
-            {bookings.length > 0 && `${bookings.length} ${i18n.language === 'en' ? 'bookings' : 'đơn đặt phòng'}`}
+            {total > 0 &&
+              `${total} ${i18n.language === "en" ? "bookings" : "đơn đặt phòng"}`}
           </p>
         </div>
 
@@ -257,14 +292,14 @@ export default function BookingHistoryPage() {
 
         {!isFetching && error && (
           <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">
-            {error?.data?.message || t('booking.history.loadError')}
+            {error?.data?.message || t("booking.history.loadError")}
           </div>
         )}
 
         {!isFetching && !error && bookings.length === 0 && (
           <EmptyState
             icon={SearchX}
-            title={t('booking.history.empty')}
+            title={t("booking.history.empty")}
             className="rounded-2xl border border-gray-200 bg-white p-16"
           />
         )}
@@ -277,28 +312,49 @@ export default function BookingHistoryPage() {
                 <table className="w-full min-w-[860px] border-collapse text-left">
                   <thead>
                     <tr className="whitespace-nowrap border-b border-gray-100 bg-gray-50/80 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-                      <th className="px-6 py-4">{t('booking.history.table.room')}</th>
-                      <th className="px-4 py-4">{t('booking.history.table.code')}</th>
-                      <th className="px-4 py-4">{t('booking.history.table.dates')}</th>
-                      <th className="px-4 py-4 text-right">{t('booking.history.table.total')}</th>
-                      <th className="px-4 py-4">{t('booking.history.table.payment')}</th>
-                      <th className="px-4 py-4">{t('booking.history.table.status')}</th>
-                      <th className="px-6 py-4 text-right">{t('booking.history.table.actions')}</th>
+                      <th className="px-6 py-4">
+                        {t("booking.history.table.room")}
+                      </th>
+                      <th className="px-4 py-4">
+                        {t("booking.history.table.code")}
+                      </th>
+                      <th className="px-4 py-4">
+                        {t("booking.history.table.dates")}
+                      </th>
+                      <th className="px-4 py-4 text-right">
+                        {t("booking.history.table.total")}
+                      </th>
+                      <th className="px-4 py-4">
+                        {t("booking.history.table.payment")}
+                      </th>
+                      <th className="px-4 py-4">
+                        {t("booking.history.table.status")}
+                      </th>
+                      <th className="px-6 py-4 text-right">
+                        {t("booking.history.table.actions")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {bookings.map((booking) => {
                       const canPayNow =
-                        booking.paymentMethod === 'PAYOS' &&
-                        booking.paymentStatus === 'UNPAID' &&
-                        booking.status === 'PENDING';
-                      const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
-                      const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
+                        booking.paymentMethod === "PAYOS" &&
+                        booking.paymentStatus === "UNPAID" &&
+                        booking.status === "PENDING";
+                      const canCancel =
+                        booking.status === "PENDING" ||
+                        booking.status === "CONFIRMED";
+                      const canReview =
+                        booking.status === "CHECKED_OUT" &&
+                        !reviewedBookingIds.has(booking.bookingId);
                       const refund = refundByBookingId.get(booking.bookingId);
                       const showContactReception = isRefundOverdue(refund);
 
                       return (
-                        <tr key={booking.bookingId} className="transition-colors hover:bg-gray-50/60">
+                        <tr
+                          key={booking.bookingId}
+                          className="transition-colors hover:bg-gray-50/60"
+                        >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
@@ -315,7 +371,9 @@ export default function BookingHistoryPage() {
                                   </div>
                                 )}
                               </div>
-                              <span className="font-semibold text-gray-900">{booking.roomType?.name}</span>
+                              <span className="font-semibold text-gray-900">
+                                {booking.roomType?.name}
+                              </span>
                             </div>
                           </td>
                           <td className="px-4 py-4">
@@ -325,27 +383,40 @@ export default function BookingHistoryPage() {
                           </td>
                           <td className="px-4 py-4">
                             <span className="flex items-center gap-1.5 text-sm text-gray-600">
-                              <CalendarDays size={14} className="text-gray-400" />
-                              {formatDate(booking.checkInDate, i18n.language)} – {formatDate(booking.checkOutDate, i18n.language)}
+                              <CalendarDays
+                                size={14}
+                                className="text-gray-400"
+                              />
+                              {formatDate(booking.checkInDate, i18n.language)} –{" "}
+                              {formatDate(booking.checkOutDate, i18n.language)}
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right">
                             <span className="text-base font-bold tabular-nums text-blue-600">
-                              {formatCurrency(booking.totalAmount, i18n.language)}
+                              {formatCurrency(
+                                booking.totalAmount,
+                                i18n.language,
+                              )}
                             </span>
                           </td>
                           <td className="px-4 py-4">
                             <StatusPill
                               value={booking.paymentStatus}
                               styles={PAYMENT_STATUS_STYLES}
-                              label={t(`booking.payment.${booking.paymentStatus}`, booking.paymentStatus)}
+                              label={t(
+                                `booking.payment.${booking.paymentStatus}`,
+                                booking.paymentStatus,
+                              )}
                             />
                           </td>
                           <td className="px-4 py-4">
                             <StatusPill
                               value={booking.status}
                               styles={BOOKING_STATUS_STYLES}
-                              label={t(`booking.status.${booking.status}`, booking.status)}
+                              label={t(
+                                `booking.status.${booking.status}`,
+                                booking.status,
+                              )}
                             />
                             <RefundStatus refund={refund} t={t} />
                           </td>
@@ -360,7 +431,9 @@ export default function BookingHistoryPage() {
                               onPayNow={handlePayNow}
                               onCancel={setCancelTarget}
                               onReview={setReviewTarget}
-                              onViewDetail={(b) => setDetailBookingId(b.bookingId)}
+                              onViewDetail={(b) =>
+                                setDetailBookingId(b.bookingId)
+                              }
                               t={t}
                             />
                           </td>
@@ -376,16 +449,23 @@ export default function BookingHistoryPage() {
             <div className="space-y-4 md:hidden">
               {bookings.map((booking) => {
                 const canPayNow =
-                  booking.paymentMethod === 'PAYOS' &&
-                  booking.paymentStatus === 'UNPAID' &&
-                  booking.status === 'PENDING';
-                const canCancel = booking.status === 'PENDING' || booking.status === 'CONFIRMED';
-                const canReview = booking.status === 'CHECKED_OUT' && !reviewedBookingIds.has(booking.bookingId);
+                  booking.paymentMethod === "PAYOS" &&
+                  booking.paymentStatus === "UNPAID" &&
+                  booking.status === "PENDING";
+                const canCancel =
+                  booking.status === "PENDING" ||
+                  booking.status === "CONFIRMED";
+                const canReview =
+                  booking.status === "CHECKED_OUT" &&
+                  !reviewedBookingIds.has(booking.bookingId);
                 const refund = refundByBookingId.get(booking.bookingId);
                 const showContactReception = isRefundOverdue(refund);
 
                 return (
-                  <div key={booking.bookingId} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div
+                    key={booking.bookingId}
+                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+                  >
                     <div className="flex gap-3 p-4">
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
                         {booking.roomType?.images?.[0] ? (
@@ -402,23 +482,33 @@ export default function BookingHistoryPage() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold text-gray-900">{booking.roomType?.name}</p>
+                        <p className="truncate font-bold text-gray-900">
+                          {booking.roomType?.name}
+                        </p>
                         <p className="mt-0.5 font-mono text-[11px] font-bold text-blue-600">
                           {getBookingCode(booking.bookingId)}
                         </p>
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                          <CalendarDays size={12} /> {formatDate(booking.checkInDate, i18n.language)} – {formatDate(booking.checkOutDate, i18n.language)}
+                          <CalendarDays size={12} />{" "}
+                          {formatDate(booking.checkInDate, i18n.language)} –{" "}
+                          {formatDate(booking.checkOutDate, i18n.language)}
                         </p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <StatusPill
                             value={booking.status}
                             styles={BOOKING_STATUS_STYLES}
-                            label={t(`booking.status.${booking.status}`, booking.status)}
+                            label={t(
+                              `booking.status.${booking.status}`,
+                              booking.status,
+                            )}
                           />
                           <StatusPill
                             value={booking.paymentStatus}
                             styles={PAYMENT_STATUS_STYLES}
-                            label={t(`booking.payment.${booking.paymentStatus}`, booking.paymentStatus)}
+                            label={t(
+                              `booking.payment.${booking.paymentStatus}`,
+                              booking.paymentStatus,
+                            )}
                           />
                         </div>
                         <RefundStatus refund={refund} t={t} />
@@ -427,9 +517,13 @@ export default function BookingHistoryPage() {
                     <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
                       <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400">
                         <CreditCard size={12} />
-                        {booking.paymentMethod === 'PAYOS' ? t('booking.payment.payos') : t('booking.payment.cash')}
+                        {booking.paymentMethod === "PAYOS"
+                          ? t("booking.payment.payos")
+                          : t("booking.payment.cash")}
                       </span>
-                      <span className="text-base font-bold tabular-nums text-blue-600">{formatCurrency(booking.totalAmount, i18n.language)}</span>
+                      <span className="text-base font-bold tabular-nums text-blue-600">
+                        {formatCurrency(booking.totalAmount, i18n.language)}
+                      </span>
                     </div>
                     <div className="border-t border-gray-100 px-4 py-3">
                       <BookingActions
@@ -450,6 +544,14 @@ export default function BookingHistoryPage() {
                 );
               })}
             </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onChange={setPage}
+              summary={`${page}/${totalPages}`}
+              prevLabel={i18n.language === "en" ? "Previous" : "Trước"}
+              nextLabel={i18n.language === "en" ? "Next" : "Sau"}
+            />
           </>
         )}
       </main>
@@ -457,9 +559,11 @@ export default function BookingHistoryPage() {
 
       <ConfirmModal
         open={Boolean(cancelTarget)}
-        title={t('booking.history.cancelTitle')}
-        message={t('booking.history.cancelMessage', { roomName: cancelTarget?.roomType?.name })}
-        confirmLabel={t('booking.history.cancel')}
+        title={t("booking.history.cancelTitle")}
+        message={t("booking.history.cancelMessage", {
+          roomName: cancelTarget?.roomType?.name,
+        })}
+        confirmLabel={t("booking.history.cancel")}
         danger
         loading={isCancelling}
         onConfirm={handleConfirmCancel}
@@ -471,45 +575,58 @@ export default function BookingHistoryPage() {
               <div className="mt-3 flex items-start gap-2 rounded-xl bg-green-50 px-3 py-2.5 text-sm text-green-700">
                 <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
                 <span>
-                  {t('booking.history.cancellationPreviewFull', {
-                    amount: formatCurrency(cancellationPreview.refundAmount, i18n.language),
+                  {t("booking.history.cancellationPreviewFull", {
+                    amount: formatCurrency(
+                      cancellationPreview.refundAmount,
+                      i18n.language,
+                    ),
                     hours: Math.floor(cancellationPreview.hoursUntilCheckIn),
                   })}
                 </span>
               </div>
             )}
-            {cancellationPreview.refundPercent > 0 && cancellationPreview.refundPercent < 100 && (
-              <div className="mt-3 flex items-start gap-2 rounded-xl bg-orange-50 px-3 py-2.5 text-sm font-medium text-orange-700">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                <span>
-                  {t('booking.history.cancellationPreviewPartial', {
-                    percent: cancellationPreview.refundPercent,
-                    amount: formatCurrency(cancellationPreview.refundAmount, i18n.language),
-                    paidAmount: formatCurrency(cancelTarget?.paidAmount, i18n.language),
-                    freeHours: cancellationPreview.freeCancellationHours,
-                  })}
-                </span>
-              </div>
-            )}
+            {cancellationPreview.refundPercent > 0 &&
+              cancellationPreview.refundPercent < 100 && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl bg-orange-50 px-3 py-2.5 text-sm font-medium text-orange-700">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                  <span>
+                    {t("booking.history.cancellationPreviewPartial", {
+                      percent: cancellationPreview.refundPercent,
+                      amount: formatCurrency(
+                        cancellationPreview.refundAmount,
+                        i18n.language,
+                      ),
+                      paidAmount: formatCurrency(
+                        cancelTarget?.paidAmount,
+                        i18n.language,
+                      ),
+                      freeHours: cancellationPreview.freeCancellationHours,
+                    })}
+                  </span>
+                </div>
+              )}
           </>
         )}
         <div className="mt-3">
           <label className="mb-1 block text-xs font-semibold text-gray-500">
-            {t('booking.history.cancelReasonInputLabel')}
+            {t("booking.history.cancelReasonInputLabel")}
           </label>
           <textarea
             rows={3}
             maxLength={500}
             value={cancelReasonInput}
             onChange={(e) => setCancelReasonInput(e.target.value)}
-            placeholder={t('booking.history.cancelReasonInputPlaceholder')}
+            placeholder={t("booking.history.cancelReasonInputPlaceholder")}
             className="w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </ConfirmModal>
 
       {detailBooking && (
-        <BookingDetailModal booking={detailBooking} onClose={() => setDetailBookingId(null)} />
+        <BookingDetailModal
+          booking={detailBooking}
+          onClose={() => setDetailBookingId(null)}
+        />
       )}
 
       <ReviewModal
