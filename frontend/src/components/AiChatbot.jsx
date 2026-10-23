@@ -20,6 +20,8 @@ import {
 import useDraggableWidget from "../hooks/useDraggableWidget";
 import useExclusiveChatPanel from "../hooks/useExclusiveChatPanel";
 import useMediaQuery from "../hooks/useMediaQuery";
+import aiIcon from "../assets/icon/smartstay-ai.svg";
+import aiIconBordered from "../assets/icon/smartstay-ai-bordered.svg";
 import {
   buildMessagesFromHistory,
   clearStoredConversationId,
@@ -407,11 +409,9 @@ const AiChatbot = () => {
               : "origin-bottom-right rounded-2xl border border-gray-100"
           }`}
         >
-          <div className="bg-gradient-to-r from-blue-600 via-violet-600 to-blue-600 p-4 flex items-center justify-between text-white shadow-md z-10">
+          <div className="bg-indigo-600 p-4 flex items-center justify-between text-white shadow-md z-10">
             <div className="flex items-center gap-3">
-              <div className="bg-white p-1.5 rounded-full">
-                <BotMessageSquare className="w-6 h-6 text-blue-600" />
-              </div>
+              <img src={aiIconBordered} alt="" className="w-10 h-10 shrink-0" />
               <div>
                 <h3 className="font-bold text-lg">Trợ lý ảo Vika Hotel</h3>
                 <p className="text-xs text-blue-100 flex items-center gap-1">
@@ -666,12 +666,14 @@ const AiChatbot = () => {
         className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-[60] cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-blue-500 via-violet-500 to-blue-600 text-white shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? "ring-4 ring-blue-200" : ""}`}
       >
         {!isOpen && (
-          <span className="absolute inset-0 rounded-full bg-blue-400 opacity-60 animate-ping" />
+          <span className="absolute inset-0 rounded-full bg-violet-400 opacity-60 animate-ping" />
         )}
-        <BotMessageSquare className="w-7 h-7 relative" />
-        <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-blue-900 ring-2 ring-white">
-          <Sparkles className="w-3 h-3" />
-        </span>
+        <img
+          src={aiIcon}
+          alt="SmartStay AI"
+          draggable={false}
+          className="w-16 h-16 relative"
+        />
       </button>
     </>
   );
