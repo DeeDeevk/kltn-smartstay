@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDispatch } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { MessageCircle, Send, Paperclip, X, Loader2, Link2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
 import {
-  chatApi,
   useGetConversationsQuery,
   useGetMessagesQuery,
   useGetUnlinkedRefundRequestsQuery,
+  useMarkConversationReadMutation,
   useUploadChatAttachmentMutation,
 } from '../../../services/chat';
 import { useLinkRefundRequestConversationMutation } from '../../../services/refundRequest';
@@ -88,7 +87,6 @@ function LinkRefundRequestPopover({ conversationId }) {
 export default function StaffChatPage() {
   const { user } = useAuth();
   const socket = useSocket();
-  const dispatch = useDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const {
@@ -107,6 +105,7 @@ export default function StaffChatPage() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const [uploadAttachment, { isLoading: isUploading }] = useUploadChatAttachmentMutation();
+  const [markRead] = useMarkConversationReadMutation();
 
   // Đã áp dụng xong conversationId từ URL -> xoá khỏi URL, không để link cũ ghi đè lựa
   // chọn thủ công sau này của lễ tân khi quay lại trang (VD bấm Back).
@@ -122,6 +121,9 @@ export default function StaffChatPage() {
     [conversations, selectedId],
   );
 
+  // Hội thoại đang mở luôn coi như đã đọc — tránh số nháy lên trong lúc chờ markRead xong.
+  const unreadOf = (c) => (c.conversationId === selectedId ? 0 : c.unreadCount || 0);
+
   const { data: history, isError: isMessagesError } = useGetMessagesQuery(selectedId, {
     skip: !selectedId,
   });
@@ -133,23 +135,20 @@ export default function StaffChatPage() {
   useEffect(() => {
     if (!selectedId) return;
     socket.emit('chat:join', { conversationId: selectedId });
+    markRead(selectedId); // mở hội thoại = đã đọc (markRead tự làm mới danh sách)
 
+    // Thứ tự/tin mới nhất của danh sách: useAdminRealtimeNotifications làm mới qua
+    // 'chat:conversation-updated' (mọi tin, mọi hội thoại) — ở đây chỉ lo hội thoại đang mở.
     const handleIncoming = (message) => {
       if (message.conversationId !== selectedId) return;
       setMessages((prev) => [...prev, message]);
+      if (message.senderRole === 'CUSTOMER') {
+        markRead(selectedId); // khách nhắn lúc đang mở hội thoại -> vẫn là đã đọc
+      }
     };
     socket.on('chat:message', handleIncoming);
     return () => socket.off('chat:message', handleIncoming);
-  }, [selectedId, socket]);
-
-  // Có khách mới nhắn (chưa ai nhận) -> tự làm mới danh sách hội thoại bên trái.
-  useEffect(() => {
-    const handleNewConversation = () => {
-      dispatch(chatApi.util.invalidateTags([{ type: 'Conversation', id: 'LIST' }]));
-    };
-    socket.on('chat:new-conversation', handleNewConversation);
-    return () => socket.off('chat:new-conversation', handleNewConversation);
-  }, [socket, dispatch]);
+  }, [selectedId, socket, markRead]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -229,14 +228,25 @@ export default function StaffChatPage() {
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1b6b50]/10 text-[#1b6b50]">
                 <MessageCircle size={18} />
               </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-gray-900">
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-sm text-gray-900 ${unreadOf(c) ? 'font-bold' : 'font-semibold'}`}>
                   {c.customer?.fullName || 'Khách hàng'}
                 </p>
+                {c.lastMessage && (
+                  <p className={`truncate text-xs ${unreadOf(c) ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                    {!c.lastMessage.fromCustomer && 'Lễ tân: '}
+                    {c.lastMessage.content || (c.lastMessage.hasAttachment ? '[Ảnh]' : '')}
+                  </p>
+                )}
                 <p className="truncate text-xs text-gray-400">
                   {c.staff ? `Đang hỗ trợ: ${c.staff.fullName}` : 'Chưa ai nhận'}
                 </p>
               </div>
+              {unreadOf(c) > 0 && (
+                <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#1b6b50] px-1.5 text-xs font-bold text-white">
+                  {unreadOf(c) > 99 ? '99+' : unreadOf(c)}
+                </span>
+              )}
             </button>
           ))
         )}

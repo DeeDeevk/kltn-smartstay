@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  BotMessageSquare,
   X,
   Send,
   LogIn,
@@ -663,7 +662,7 @@ const AiChatbot = () => {
           dragHandlers.onPointerUp(e, () => setIsOpen((prev) => !prev))
         }
         style={buttonStyle}
-        className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-[60] cursor-grab active:cursor-grabbing select-none touch-none bg-gradient-to-br from-blue-500 via-violet-500 to-blue-600 text-white shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? "ring-4 ring-blue-200" : ""}`}
+        className={`fixed w-16 h-16 flex items-center justify-center rounded-full z-[60] cursor-grab active:cursor-grabbing select-none touch-none shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-[transform,box-shadow] duration-200 ${isOpen ? "ring-4 ring-blue-200" : ""}`}
       >
         {!isOpen && (
           <span className="absolute inset-0 rounded-full bg-violet-400 opacity-60 animate-ping" />
