@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Headset, X, Send, Loader2, LogIn, Paperclip } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
@@ -21,12 +21,14 @@ import {
 // vẫn là nơi kiểm tra thật sự.
 const MAX_ATTACHMENT_SIZE_MB = 5;
 const ACCEPTED_ATTACHMENT_TYPES = "image/jpeg,image/png,image/webp";
+const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
 
 // Chat thật 2 chiều với lễ tân (trước đây là bot giả echo lại tin nhắn). Chỉ
 // khách đã đăng nhập mới chat được — khách vãng lai được mời đăng nhập trước.
 const Chatbot = () => {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const socket = useSocket();
 
   const [isOpen, setIsOpen] = useExclusiveChatPanel("reception");
@@ -158,7 +160,7 @@ const Chatbot = () => {
     setPendingAttachment(null);
   };
 
-  if (isStaffAccount) return null;
+  if (isStaffAccount || AUTH_ROUTES.includes(location.pathname)) return null;
 
   return (
     <>
