@@ -9,6 +9,7 @@ import { UserModule } from '../users/user.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { UploadModule } from '../uploads/upload.module';
 import { RefundRequestModule } from '../refund-requests/refund-request.module';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RefundRequestModule } from '../refund-requests/refund-request.module';
     // refund-requests) — không tạo vòng lặp vì RefundRequestModule không phụ thuộc ngược
     // lại ChatModule (chỉ dùng entity Conversation, không import ChatModule).
     RefundRequestModule,
+    RedisModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],

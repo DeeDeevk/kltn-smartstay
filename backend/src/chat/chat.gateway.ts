@@ -8,7 +8,6 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
-import { UserRole } from '../common/enums/user-role.enum';
 import { MessageAttachmentType } from '../common/enums/message-attachment-type.enum';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { WsUser } from '../realtime/ws-auth.service';
@@ -117,13 +116,10 @@ export class ChatGateway {
         this.chatService.toMessageResponse(body.conversationId, message),
       );
 
-    // Hội thoại chưa có lễ tân nào nhận -> báo cho mọi lễ tân (STAFF) online biết có
-    // khách đang chờ. Admin không có trang trả lời chat nên không nhận thông báo này.
-    if (!conversation.staff && user.role === UserRole.CUSTOMER) {
-      this.realtimeGateway.emitToChatStaff('chat:new-conversation', {
-        conversationId: body.conversationId,
-        customerName: conversation.customer.fullName,
-      });
-    }
+    // Mọi tin (của khách lẫn của lễ tân khác) đều báo cho lễ tân (STAFF) online, để danh
+    // sách hội thoại cập nhật tin mới nhất, thứ tự và số chưa đọc. Admin không nhận.
+    this.realtimeGateway.emitToChatStaff('chat:conversation-updated', {
+      conversationId: body.conversationId,
+    });
   }
 }

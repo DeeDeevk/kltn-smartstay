@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +15,8 @@ import { Message } from './entities/message.entity';
 import { UserService } from '../users/user.service';
 import { UserRole } from '../common/enums/user-role.enum';
 import { MessageAttachmentType } from '../common/enums/message-attachment-type.enum';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.module';
 
 interface Requester {
   userId: string;
@@ -21,6 +24,7 @@ interface Requester {
 }
 
 const MAX_MESSAGE_LENGTH = 2000;
+const readKey = (conversationId: string) => `chat:read:${conversationId}`;
 
 @Injectable()
 export class ChatService {
@@ -30,6 +34,8 @@ export class ChatService {
     @InjectRepository(Message)
     private readonly messageRepo: Repository<Message>,
     private readonly userService: UserService,
+    @Inject(REDIS_CLIENT)
+    private readonly redisClient: Redis,
   ) {}
 
   // Mỗi khách chỉ có 1 hội thoại OPEN tại 1 thời điểm — gọi lại thì trả về hội
@@ -50,10 +56,66 @@ export class ChatService {
     );
   }
 
-  async listOpenConversations(): Promise<Conversation[]> {
-    return this.conversationRepo.find({
+  // Kèm tin nhắn mới nhất của từng hội thoại để danh sách bên trái của lễ tân hiện xem trước.
+  async listOpenConversations() {
+    const conversations = await this.conversationRepo.find({
       where: { status: ConversationStatus.OPEN },
-      order: { lastMessageAt: 'DESC', createdAt: 'DESC' },
+      // Postgres mặc định đặt NULL lên đầu khi DESC — hội thoại chưa có tin nào phải xuống
+      // cuối, nhường đầu danh sách cho hội thoại vừa có tin mới.
+      order: {
+        lastMessageAt: { direction: 'DESC', nulls: 'LAST' },
+        createdAt: 'DESC',
+      },
+    });
+    if (conversations.length === 0) return [];
+
+    // 1 query cho mọi hội thoại (DISTINCT ON của Postgres) thay vì N query.
+    const lastRows: {
+      conversationId: string;
+      senderId: string;
+      content: string;
+      attachmentUrl: string | null;
+    }[] = await this.messageRepo.query(
+      `SELECT DISTINCT ON ("conversationId") "conversationId", "senderId", "content", "attachmentUrl"
+       FROM "Message"
+       WHERE "conversationId" = ANY($1)
+       ORDER BY "conversationId", "createdAt" DESC`,
+      [conversations.map((c) => c.conversationId)],
+    );
+    const lastByConversation = new Map(
+      lastRows.map((row) => [row.conversationId, row]),
+    );
+
+    const ids = conversations.map((c) => c.conversationId);
+    const readAts = (await this.redisClient.mget(ids.map(readKey))).map(
+      (v) => v ?? new Date(0).toISOString(),
+    );
+    const unreadRows: { conversationId: string; unread: number }[] =
+      await this.messageRepo.query(
+        `SELECT m."conversationId", COUNT(*)::int AS "unread"
+      FROM "Message" m
+      JOIN "Conversation" c ON c."conversationId" = m."conversationId"
+      JOIN unnest($1::uuid[], $2::timestamptz[]) AS r(id, "readAt") ON r.id = m."conversationId"
+      WHERE m."senderId" = c."customerId" AND m."createdAt" > r."readAt"
+      GROUP BY m."conversationId"`,
+        [ids, readAts],
+      );
+    const unreadByConversation = new Map(
+      unreadRows.map((row) => [row.conversationId, row.unread]),
+    );
+    return conversations.map((c) => {
+      const last = lastByConversation.get(c.conversationId);
+      return {
+        ...c,
+        lastMessage: last
+          ? {
+              content: last.content,
+              hasAttachment: !!last.attachmentUrl,
+              fromCustomer: last.senderId === c.customer.userId,
+            }
+          : null,
+        unreadCount: unreadByConversation.get(c.conversationId) ?? 0,
+      };
     });
   }
 
@@ -138,5 +200,12 @@ export class ChatService {
     await this.conversationRepo.save(conversation);
 
     return message;
+  }
+
+  async markRead(conversationId: string) {
+    await this.redisClient.set(
+      readKey(conversationId),
+      new Date().toISOString(),
+    );
   }
 }

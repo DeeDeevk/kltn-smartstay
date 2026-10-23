@@ -1,28 +1,28 @@
-import { createApi } from '@reduxjs/toolkit/query/react';
-import axiosBaseQuery from './axiosBaseQuery';
+import { createApi } from "@reduxjs/toolkit/query/react";
+import axiosBaseQuery from "./axiosBaseQuery";
 
 // Chat thật giữa khách hàng và lễ tân (thay bot echo giả trước đây) — nội dung tin
 // nhắn gửi/nhận qua socket (xem Chatbot.jsx, StaffChatPage.jsx), slice này chỉ lo
 // phần REST: lấy/tạo hội thoại và tải lịch sử tin nhắn.
 export const chatApi = createApi({
-  reducerPath: 'chatApi',
+  reducerPath: "chatApi",
   baseQuery: axiosBaseQuery(),
-  tagTypes: ['Conversation'],
+  tagTypes: ["Conversation"],
   endpoints: (builder) => ({
     getOrCreateConversation: builder.mutation({
-      query: () => ({ url: '/chat/conversations', method: 'post' }),
+      query: () => ({ url: "/chat/conversations", method: "post" }),
     }),
     getConversations: builder.query({
-      query: () => ({ url: '/chat/conversations', method: 'get' }),
-      providesTags: [{ type: 'Conversation', id: 'LIST' }],
+      query: () => ({ url: "/chat/conversations", method: "get" }),
+      providesTags: [{ type: "Conversation", id: "LIST" }],
     }),
     getMessages: builder.query({
       query: (conversationId) => ({
         url: `/chat/conversations/${conversationId}/messages`,
-        method: 'get',
+        method: "get",
       }),
       providesTags: (result, error, conversationId) => [
-        { type: 'Conversation', id: conversationId },
+        { type: "Conversation", id: conversationId },
       ],
     }),
     // Yêu cầu hoàn tiền PENDING của khách trong hội thoại này, CHƯA gắn hội thoại nào — lễ
@@ -30,17 +30,25 @@ export const chatApi = createApi({
     getUnlinkedRefundRequests: builder.query({
       query: (conversationId) => ({
         url: `/chat/conversations/${conversationId}/refund-requests`,
-        method: 'get',
+        method: "get",
       }),
     }),
+    markConversationRead: builder.mutation({
+      query: (conversationId) => ({
+        url: `/chat/conversations/${conversationId}/read`,
+        method: "post",
+      }),
+      invalidatesTags: [{ type: "Conversation", id: "LIST" }],
+    }),
+
     // Upload ảnh TRƯỚC (cùng kiểu FormData như uploadRoomTypeImage/extractLocalEventsFromFile),
     // lấy url rồi tự gửi tin nhắn kèm attachmentUrl qua socket (xem Chatbot.jsx/
     // StaffChatPage.jsx) — ảnh không gửi trực tiếp qua socket vì multipart cần HTTP.
     uploadChatAttachment: builder.mutation({
       query: (file) => {
         const formData = new FormData();
-        formData.append('file', file);
-        return { url: '/chat/attachments', method: 'post', data: formData };
+        formData.append("file", file);
+        return { url: "/chat/attachments", method: "post", data: formData };
       },
     }),
   }),
@@ -52,4 +60,5 @@ export const {
   useGetMessagesQuery,
   useGetUnlinkedRefundRequestsQuery,
   useUploadChatAttachmentMutation,
+  useMarkConversationReadMutation,
 } = chatApi;
