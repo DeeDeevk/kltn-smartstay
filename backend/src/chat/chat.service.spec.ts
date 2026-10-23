@@ -55,7 +55,12 @@ function buildService(overrides?: {
     findById: jest.fn().mockResolvedValue(sender),
   } as unknown as UserService;
 
-  const service = new ChatService(conversationRepo, messageRepo, userService);
+  const service = new ChatService(
+    conversationRepo,
+    messageRepo,
+    userService,
+    {} as never,
+  );
   return {
     service,
     conversationSave,

@@ -29,7 +29,10 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import vikaLogo from '../../../assets/icon/icon.png';
 import { useAuth } from '../../../context/AuthContext';
+import { useGetConversationsQuery } from '../../../services/chat';
 import ConfirmModal from '../../common/ConfirmModal';
+
+const CHAT_PATH = '/admin/chat';
 
 // Đường dẫn (path) cho từng mục menu, kèm roles được thấy mục đó. NavLink tự xử lý
 // trạng thái active nên không cần cờ 'active' cứng.
@@ -115,6 +118,13 @@ const ROLE_LABELS = {
 // mobileOpen/onClose: dưới 1024px sidebar là ngăn kéo trượt từ mép trái.
 export default function Sidebar({ collapsed = false, onToggle, mobileOpen = false, onClose }) {
   const { user, logout } = useAuth();
+  // Tổng tin chưa đọc cho mục "Chat với khách" — dùng chung cache với trang chat nên không
+  // gọi API thêm; useAdminRealtimeNotifications làm mới khi khách nhắn. API chỉ cho STAFF.
+  const { data: conversations = [] } = useGetConversationsQuery(undefined, {
+    skip: user?.role !== 'STAFF',
+  });
+  const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const unreadLabel = totalUnread > 99 ? '99+' : totalUnread;
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -229,11 +239,24 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
                   }`
                 }
               >
-                <item.icon
-                  size={20}
-                  className="shrink-0 transition-transform duration-200 group-hover:scale-110"
-                />
-                {!collapsed && item.label}
+                <span className="relative shrink-0">
+                  <item.icon
+                    size={20}
+                    className="transition-transform duration-200 group-hover:scale-110"
+                  />
+                  {/* Thu gọn: chấm số nhỏ đè góc icon, như icon app nhắn tin. */}
+                  {collapsed && item.path === CHAT_PATH && totalUnread > 0 && (
+                    <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1b6b50] px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                      {unreadLabel}
+                    </span>
+                  )}
+                </span>
+                {!collapsed && <span className="flex-1">{item.label}</span>}
+                {!collapsed && item.path === CHAT_PATH && totalUnread > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1b6b50] px-1.5 text-xs font-bold text-white">
+                    {unreadLabel}
+                  </span>
+                )}
               </NavLink>
             );
           }

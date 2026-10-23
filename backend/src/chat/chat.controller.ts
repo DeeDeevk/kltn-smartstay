@@ -93,4 +93,14 @@ export class ChatController {
       conversation.customer.userId,
     );
   }
+
+  // Lễ tân mở hội thoại -> đánh dấu đã đọc cho cả nhóm lễ tân.
+  @Post('conversations/:id/read')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF)
+  async markRead(@Param('id') id: string) {
+    await this.chatService.findConversationById(id); // 404 nếu id sai
+    await this.chatService.markRead(id);
+    return { success: true };
+  }
 }
