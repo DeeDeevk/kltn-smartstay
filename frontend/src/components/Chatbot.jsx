@@ -230,7 +230,7 @@ const Chatbot = () => {
                       >
                         {!isMine && (
                           <p className="text-[11px] font-bold text-[#1b6b50] mb-0.5">
-                            Nhân viên hỗ trợ
+                            Lễ tân khách sạn
                           </p>
                         )}
                         {msg.attachmentUrl && (
