@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Hook dùng chung cho các nút chat nổi (Chatbot, AiChatbot): cho phép kéo-thả nút đi
 // khắp màn hình, đồng thời bấm (không kéo) vào nút sẽ đóng/mở bảng chat. Bảng chat
@@ -30,6 +30,32 @@ export default function useDraggableWidget({
         ),
     }));
     const dragRef = useRef(null);
+    const viewportRef = useRef({ width: window.innerWidth, height: window.innerHeight });
+
+    useEffect(() => {
+        const handleResize = () => {
+        const dx = window.innerWidth - viewportRef.current.width;
+        const dy = window.innerHeight - viewportRef.current.height;
+        viewportRef.current = {
+            width: window.innerWidth,
+            height: window.innerHeight,
+        };
+        setPos((prev) => ({
+            x: clamp(
+            prev.x + dx,
+            EDGE_MARGIN,
+            window.innerWidth - BUTTON_SIZE - EDGE_MARGIN,
+            ),
+            y: clamp(
+            prev.y + dy,
+            EDGE_MARGIN,
+            window.innerHeight - BUTTON_SIZE - EDGE_MARGIN,
+            ),
+        }));
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     const handlePointerDown = useCallback(
         (e) => {
