@@ -16,6 +16,8 @@ import {
   REQUEST_OPEN_EVENT,
   RECEPTION_WIDGET_ID,
 } from "../utils/openReceptionChat";
+import useChatTyping from "../hooks/useChatTyping";
+import TypingBubble from "./common/TypingBubble";
 
 // Khớp đúng giới hạn backend (ChatController.uploadAttachment) — chặn sớm ở form, backend
 // vẫn là nơi kiểm tra thật sự.
@@ -44,9 +46,14 @@ const Chatbot = () => {
     useGetOrCreateConversationMutation();
   const { data: history } = useGetMessagesQuery(conversationId, {
     skip: !conversationId,
+    refetchOnMountOrArgChange: true,
   });
   const [uploadAttachment, { isLoading: isUploading }] =
     useUploadChatAttachmentMutation();
+  const { isOtherTyping, notifyTyping, stopTyping } = useChatTyping(
+    socket,
+    conversationId,
+  );
 
   const { buttonStyle, panelStyle, dragHandlers } = useDraggableWidget({
     initialBottom: 24,
@@ -149,7 +156,7 @@ const Chatbot = () => {
         return;
       }
     }
-
+    stopTyping();
     socket.emit("chat:message", {
       conversationId,
       content,
@@ -250,6 +257,7 @@ const Chatbot = () => {
                     </div>
                   );
                 })}
+                {isOtherTyping && <TypingBubble />}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -302,7 +310,11 @@ const Chatbot = () => {
                   <input
                     type="text"
                     value={inputStr}
-                    onChange={(e) => setInputStr(e.target.value)}
+                    onChange={(e) => {
+                      setInputStr(e.target.value);
+                      if (e.target.value.trim()) notifyTyping();
+                      else stopTyping();
+                    }}
                     placeholder="Nhắn tin để tìm và đặt phòng..."
                     className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1b6b50] focus:border-transparent transition-all"
                     disabled={!conversationId}
