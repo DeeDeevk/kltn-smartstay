@@ -13,6 +13,8 @@ import {
 } from '../../../services/chat';
 import { useLinkRefundRequestConversationMutation } from '../../../services/refundRequest';
 import ImageLightbox from '../../common/ImageLightbox';
+import useChatTyping from '../../../hooks/useChatTyping';
+import TypingBubble from '../../common/TypingBubble';
 
 // Khớp đúng giới hạn backend (ChatController.uploadAttachment).
 const MAX_ATTACHMENT_SIZE_MB = 5;
@@ -106,6 +108,7 @@ export default function StaffChatPage() {
   const fileInputRef = useRef(null);
   const [uploadAttachment, { isLoading: isUploading }] = useUploadChatAttachmentMutation();
   const [markRead] = useMarkConversationReadMutation();
+  const {isOtherTyping, notifyTyping, stopTyping} = useChatTyping(socket, selectedId);
 
   // Đã áp dụng xong conversationId từ URL -> xoá khỏi URL, không để link cũ ghi đè lựa
   // chọn thủ công sau này của lễ tân khi quay lại trang (VD bấm Back).
@@ -126,6 +129,7 @@ export default function StaffChatPage() {
 
   const { data: history, isError: isMessagesError } = useGetMessagesQuery(selectedId, {
     skip: !selectedId,
+    refetchOnMountOrArgChange: true,
   });
 
   useEffect(() => {
@@ -152,7 +156,7 @@ export default function StaffChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isOtherTyping]);
 
   useEffect(() => {
     return () => {
@@ -194,7 +198,7 @@ export default function StaffChatPage() {
         return;
       }
     }
-
+    stopTyping();
     socket.emit('chat:message', { conversationId: selectedId, content, attachmentUrl, attachmentType });
     setInputStr('');
     setPendingAttachment(null);
@@ -304,6 +308,7 @@ export default function StaffChatPage() {
                   </div>
                 );
               })}
+              {isOtherTyping && <TypingBubble/>}
               <div ref={messagesEndRef} />
             </div>
 
@@ -351,7 +356,11 @@ export default function StaffChatPage() {
               <input
                 type="text"
                 value={inputStr}
-                onChange={(e) => setInputStr(e.target.value)}
+                onChange={(e) => {
+                  setInputStr(e.target.value);
+                  if(e.target.value.trim()) notifyTyping();
+                  else stopTyping();
+                }}
                 placeholder="Nhập trả lời..."
                 className="flex-1 rounded-full border border-gray-200 bg-gray-50 px-5 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1b6b50]"
               />

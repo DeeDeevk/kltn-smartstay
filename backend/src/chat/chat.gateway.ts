@@ -42,7 +42,10 @@ export class ChatGateway {
   private sanitizeAttachment(
     attachmentUrl?: string,
     attachmentType?: MessageAttachmentType,
-  ): { attachmentUrl: string | null; attachmentType: MessageAttachmentType | null } {
+  ): {
+    attachmentUrl: string | null;
+    attachmentType: MessageAttachmentType | null;
+  } {
     if (!attachmentUrl) return { attachmentUrl: null, attachmentType: null };
     const validType = Object.values(MessageAttachmentType).includes(
       attachmentType as MessageAttachmentType,
@@ -78,6 +81,21 @@ export class ChatGateway {
     );
     this.chatService.assertCanAccess(conversation, user);
     await client.join(`conversation:${body.conversationId}`);
+  }
+
+  @SubscribeMessage('chat:typing')
+  handleTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { conversationId: string; isTyping: boolean },
+  ) {
+    const user = this.requireUser(client);
+    const room = `conversation:${body?.conversationId}`;
+    if (!client.rooms.has(room)) return;
+    client.to(room).emit('chat:typing', {
+      conversationId: body.conversationId,
+      userId: user.userId,
+      isTyping: body.isTyping === true,
+    });
   }
 
   @SubscribeMessage('chat:message')
