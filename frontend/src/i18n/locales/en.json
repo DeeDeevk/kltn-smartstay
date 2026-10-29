@@ -100,7 +100,15 @@
   },
   "userMenu": {
     "profile": "My Profile",
-    "bookingHistory": "Booking History"
+    "bookingHistory": "Booking History",
+    "favorites": "Favorites"
+  },
+  "favorites": {
+    "title": "Favorites",
+    "count": "{{count}} room types",
+    "empty": "You haven't saved any rooms yet.",
+    "explore": "Explore rooms",
+    "loadError": "Could not load your favorites"
   },
   "language": {
     "vi": "Vietnamese",
@@ -227,6 +235,7 @@
     "maxGuests": "Up to {{count}} guests",
     "addToFavorites": "Save to favorites",
     "removeFromFavorites": "Remove from favorites",
+    "favoriteLoginRequired": "Please log in to save favorite rooms",
     "about": "About this room",
     "defaultDescription": "Enjoy a premium getaway where modern luxury blends with natural beauty. The space is thoughtfully designed to bring you maximum comfort. Modern amenities, stunning views and attentive service will satisfy even the most discerning guests.",
     "amenities": {

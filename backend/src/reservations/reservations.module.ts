@@ -33,6 +33,9 @@ import { RefundRequestModule } from '../refund-requests/refund-request.module';
 // Cung cấp GeminiProvider cho ReviewAnalysisService — module riêng nên import được
 // mà không tạo vòng lặp với AiAgentModule (HotelConfigModule cũng dùng cách này).
 import { LlmModule } from '../ai-agent/llm/llm.module';
+import { FavoriteRoomType } from 'src/room-types/entities/favorite-room-type.entity';
+import { FavoriteController } from 'src/room-types/favorite.controller';
+import { FavoriteService } from 'src/room-types/favorite.service';
 
 // Bounded context "Đặt phòng": Room, RoomType, Booking (+ BookingServiceItem) và
 // Promotion là các aggregate của cùng một nghiệp vụ và tham chiếu vòng lẫn nhau
@@ -52,6 +55,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
       BookingServiceItem,
       Promotion,
       Review,
+      FavoriteRoomType,
     ]),
     ServiceModule,
     UserModule,
@@ -69,6 +73,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     BookingController,
     PromotionController,
     ReviewController,
+    FavoriteController,
   ],
   providers: [
     RoomService,
@@ -78,6 +83,7 @@ import { LlmModule } from '../ai-agent/llm/llm.module';
     ReviewService,
     ReviewAnalysisService,
     RoomTypeReviewSummaryService,
+    FavoriteService,
   ],
   exports: [RoomService, RoomTypeService, BookingService, PromotionService],
 })
