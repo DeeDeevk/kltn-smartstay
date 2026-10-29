@@ -100,7 +100,15 @@
   },
   "userMenu": {
     "profile": "Hồ sơ của tôi",
-    "bookingHistory": "Lịch sử đặt phòng"
+    "bookingHistory": "Lịch sử đặt phòng",
+    "favorites": "Danh sách yêu thích"
+  },
+  "favorites": {
+    "title": "Danh sách yêu thích",
+    "count": "{{count}} loại phòng",
+    "empty": "Bạn chưa lưu phòng nào vào yêu thích.",
+    "explore": "Khám phá phòng",
+    "loadError": "Không thể tải danh sách yêu thích"
   },
   "language": {
     "vi": "Tiếng Việt",
@@ -227,6 +235,7 @@
     "maxGuests": "Tối đa {{count}} khách",
     "addToFavorites": "Lưu vào yêu thích",
     "removeFromFavorites": "Bỏ yêu thích",
+    "favoriteLoginRequired": "Vui lòng đăng nhập để lưu phòng yêu thích",
     "about": "Giới thiệu về phòng này",
     "defaultDescription": "Tận hưởng kỳ nghỉ dưỡng đẳng cấp, nơi sự sang trọng hiện đại hòa quyện cùng vẻ đẹp thiên nhiên. Không gian được thiết kế tinh tế để mang lại sự thoải mái tối đa cho quý khách. Trang thiết bị hiện đại, tầm nhìn tuyệt đẹp và dịch vụ chu đáo sẽ làm hài lòng những vị khách khó tính nhất.",
     "amenities": {

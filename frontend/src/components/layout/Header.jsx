@@ -1,26 +1,26 @@
-import React, { useState } from 'react';
-import { Menu, X, User, History, LogOut } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { NAV_LINKS } from '../../data/mockData';
-import { useAuth } from '../../context/AuthContext';
-import { useLocation, useNavigate } from 'react-router-dom';
-import logoIcon from '../../assets/icon/icon.png';
-import UserMenu from './UserMenu';
-import LanguageSwitcher from './LanguageSwitcher';
-import NotificationBell from './NotificationBell';
-import ConfirmModal from '../common/ConfirmModal';
+import React, { useState } from "react";
+import { Menu, X, User, History, LogOut, Heart } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { NAV_LINKS } from "../../data/mockData";
+import { useAuth } from "../../context/AuthContext";
+import { useLocation, useNavigate } from "react-router-dom";
+import logoIcon from "../../assets/icon/icon.png";
+import UserMenu from "./UserMenu";
+import LanguageSwitcher from "./LanguageSwitcher";
+import NotificationBell from "./NotificationBell";
+import ConfirmModal from "../common/ConfirmModal";
 
 const NAV_LABEL_KEYS = {
-  'Trang chủ': 'nav.home',
-  'Phòng nghỉ': 'nav.rooms',
-  'Ưu đãi': 'nav.promotions',
-  'Liên hệ': 'nav.contact',
+  "Trang chủ": "nav.home",
+  "Phòng nghỉ": "nav.rooms",
+  "Ưu đãi": "nav.promotions",
+  "Liên hệ": "nav.contact",
 };
 
 // Trang con vẫn được tính là thuộc mục menu tương ứng: đang xem chi tiết một phòng
 // (/rooms/:id) thì mục "Phòng nghỉ" vẫn sáng.
 const NAV_EXTRA_MATCH = {
-  '/searchrooms': ['/rooms'],
+  "/searchrooms": ["/rooms"],
 };
 
 export default function Header() {
@@ -39,20 +39,25 @@ export default function Header() {
   // "Ưu đãi" và "Liên hệ" là hai khu vực trên chính trang chủ (/#uu-dai, /#lien-he)
   // nên phải so khớp cả hash, nếu không "Trang chủ" sẽ sáng cùng lúc với chúng.
   const isNavActive = (to) => {
-    const [rawPath, hash] = to.split('#');
-    const path = rawPath || '/';
+    const [rawPath, hash] = to.split("#");
+    const path = rawPath || "/";
 
     if (hash) {
       return location.pathname === path && location.hash === `#${hash}`;
     }
-    if (path === '/') {
-      return location.pathname === '/' && !location.hash;
+    if (path === "/") {
+      return location.pathname === "/" && !location.hash;
     }
-    if (location.pathname === path || location.pathname.startsWith(`${path}/`)) {
+    if (
+      location.pathname === path ||
+      location.pathname.startsWith(`${path}/`)
+    ) {
       return true;
     }
     return (NAV_EXTRA_MATCH[path] || []).some(
-      (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
+      (prefix) =>
+        location.pathname === prefix ||
+        location.pathname.startsWith(`${prefix}/`),
     );
   };
 
@@ -66,14 +71,13 @@ export default function Header() {
             TRỐNG còn lại giữa 2 bên, không phải canh giữa trang thật, nên bị kéo lệch
             sang trái rõ rệt sau khi đăng nhập). */}
         <div className="grid grid-cols-[1fr_auto_1fr] items-center h-20">
-
           {/* LEFT: LOGO — xếp icon + chữ "VIKA" theo chiều dọc, vẫn gọn trong h-20 của
               header (icon 36px + chữ nhỏ bên dưới, gộp lại vẫn thấp hơn 80px nhiều). Màu
               chữ #0C1A30 lấy đúng từ nền navy của icon.png (xem RGB mẫu tại tâm hình tròn)
               để đồng bộ màu thương hiệu, không phải màu đoán chừng. */}
           <div
             className="justify-self-start flex flex-col items-center justify-center gap-0.5 cursor-pointer group"
-            onClick={() => navigate('/')}
+            onClick={() => navigate("/")}
           >
             <img
               src={logoIcon}
@@ -94,9 +98,11 @@ export default function Header() {
                 <button
                   key={item.label}
                   onClick={() => navigate(item.to)}
-                  aria-current={active ? 'page' : undefined}
+                  aria-current={active ? "page" : undefined}
                   className={`relative font-medium text-sm transition-colors uppercase tracking-wide ${
-                    active ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
+                    active
+                      ? "text-blue-600"
+                      : "text-gray-600 hover:text-blue-600"
                   }`}
                 >
                   {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
@@ -122,16 +128,16 @@ export default function Header() {
               ) : (
                 <>
                   <button
-                    onClick={() => navigate('/login')}
+                    onClick={() => navigate("/login")}
                     className="text-gray-600 hover:text-blue-600 font-medium text-sm"
                   >
-                    {t('auth.login')}
+                    {t("auth.login")}
                   </button>
                   <button
-                    onClick={() => navigate('/register')} // Update to /register if separate
+                    onClick={() => navigate("/register")} // Update to /register if separate
                     className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-lg shadow-blue-200"
                   >
-                    {t('auth.register')}
+                    {t("auth.register")}
                   </button>
                 </>
               )}
@@ -141,7 +147,10 @@ export default function Header() {
             {/* MOBILE MENU BUTTON */}
             <div className="md:hidden flex items-center gap-3">
               <LanguageSwitcher />
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-600">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="text-gray-600"
+              >
                 {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
             </div>
@@ -159,11 +168,11 @@ export default function Header() {
                 <button
                   key={item.label}
                   onClick={() => handleNavClick(item.to)}
-                  aria-current={active ? 'page' : undefined}
+                  aria-current={active ? "page" : undefined}
                   className={`block w-full text-left px-3 py-3 text-base rounded-md transition-colors ${
                     active
-                      ? 'bg-blue-50 font-semibold text-blue-600'
-                      : 'font-medium text-gray-700 hover:bg-gray-50'
+                      ? "bg-blue-50 font-semibold text-blue-600"
+                      : "font-medium text-gray-700 hover:bg-gray-50"
                   }`}
                 >
                   {t(NAV_LABEL_KEYS[item.label] ?? item.label)}
@@ -174,28 +183,47 @@ export default function Header() {
               <div className="pt-2 mt-2 border-t border-gray-100">
                 <div className="flex items-center gap-3 px-3 py-3">
                   <img
-                    src={user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.username || 'Tài khoản')}&background=2563eb&color=fff`}
+                    src={
+                      user?.avatar ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.username || "Tài khoản")}&background=2563eb&color=fff`
+                    }
                     alt={user?.name || user?.username}
                     className="w-11 h-11 rounded-full object-cover shrink-0"
                   />
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-gray-900 truncate">{user?.name || user?.username}</p>
-                    {user?.email && <p className="text-xs text-gray-500 truncate">{user.email}</p>}
+                    <p className="text-sm font-bold text-gray-900 truncate">
+                      {user?.name || user?.username}
+                    </p>
+                    {user?.email && (
+                      <p className="text-xs text-gray-500 truncate">
+                        {user.email}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <button
-                  onClick={() => handleNavClick('/user/profile')}
+                  onClick={() => handleNavClick("/user/profile")}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
                 >
-                  <User size={18} className="text-gray-400" /> {t('userMenu.profile')}
+                  <User size={18} className="text-gray-400" />{" "}
+                  {t("userMenu.profile")}
                 </button>
                 <button
-                  onClick={() => handleNavClick('/user/historybooking')}
+                  onClick={() => handleNavClick("/user/historybooking")}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
                 >
-                  <History size={18} className="text-gray-400" /> {t('userMenu.bookingHistory')}
+                  <History size={18} className="text-gray-400" />{" "}
+                  {t("userMenu.bookingHistory")}
                 </button>
+                <button
+                  onClick={() => handleNavClick("/user/favorites")}
+                  className="w-full flex items-center gap-2.5 text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 rounded-md"
+                >
+                  <Heart size={18} className="text-gray-400" />{" "}
+                  {t("userMenu.favorites")}
+                </button>
+
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -203,13 +231,23 @@ export default function Header() {
                   }}
                   className="w-full flex items-center gap-2.5 text-left px-3 py-3 mt-1 text-base font-bold text-red-600 hover:bg-red-50 rounded-md"
                 >
-                  <LogOut size={18} /> {t('auth.logout')}
+                  <LogOut size={18} /> {t("auth.logout")}
                 </button>
               </div>
             ) : (
               <div className="mt-4 flex flex-col gap-3">
-                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 border border-gray-300 rounded-lg font-bold text-gray-700">{t('auth.login')}</button>
-                <button onClick={() => handleNavClick('/login')} className="w-full text-center py-3 bg-blue-600 text-white rounded-lg font-bold">{t('auth.register')}</button>
+                <button
+                  onClick={() => handleNavClick("/login")}
+                  className="w-full text-center py-3 border border-gray-300 rounded-lg font-bold text-gray-700"
+                >
+                  {t("auth.login")}
+                </button>
+                <button
+                  onClick={() => handleNavClick("/login")}
+                  className="w-full text-center py-3 bg-blue-600 text-white rounded-lg font-bold"
+                >
+                  {t("auth.register")}
+                </button>
               </div>
             )}
           </div>
@@ -219,14 +257,14 @@ export default function Header() {
       <ConfirmModal
         open={confirmLogout}
         danger
-        title={t('auth.logoutConfirmTitle')}
-        message={t('auth.logoutConfirmMessage')}
-        confirmLabel={t('auth.logout')}
+        title={t("auth.logoutConfirmTitle")}
+        message={t("auth.logoutConfirmMessage")}
+        confirmLabel={t("auth.logout")}
         onConfirm={async () => {
           setConfirmLogout(false);
           await logout();
           // replace: bấm Back sau khi đăng xuất không quay lại trang cần đăng nhập vừa rời.
-          navigate('/login', { replace: true });
+          navigate("/login", { replace: true });
         }}
         onClose={() => setConfirmLogout(false)}
       />
