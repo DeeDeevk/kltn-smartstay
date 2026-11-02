@@ -8,6 +8,7 @@ import { NotificationModule } from '../notifications/notification.module';
 import { HotelConfigModule } from '../hotel-config/hotel-config.module';
 import { CashLedgerModule } from '../cash-ledger/cash-ledger.module';
 import { UploadModule } from '../uploads/upload.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 // Module độc lập, KHÔNG phụ thuộc PaymentModule/ChatModule (chỉ cần entity Conversation để
 // tìm/liên kết hội thoại, không cần ChatService) — payments thuộc Khoa, bookings thuộc
@@ -24,6 +25,9 @@ import { UploadModule } from '../uploads/upload.module';
     // Để POST /refund-requests/attachments tái dùng UploadService.uploadImage() (ảnh biên
     // lai chuyển khoản) — cùng cách ChatModule đã dùng cho ảnh đính kèm chat (KAN-112).
     UploadModule,
+    // Để báo ngay cho khách qua socket khi admin đánh dấu đã hoàn tiền/từ chối, thay vì
+    // khách phải F5 lại trang "Lịch sử đặt phòng" mới thấy trạng thái mới.
+    RealtimeModule,
   ],
   controllers: [RefundRequestController],
   providers: [RefundRequestService],

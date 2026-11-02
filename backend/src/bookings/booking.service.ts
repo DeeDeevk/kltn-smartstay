@@ -163,40 +163,42 @@ export class BookingService {
       // Lưu booking + service items trong 1 transaction: crash/lỗi giữa 2 lệnh save() rời
       // rạc trước đây có thể để lại đơn đã tạo nhưng thiếu dịch vụ đi kèm (hoặc ngược lại),
       // cùng kiểu lỗi mà checkOut() đã được vá — xem comment ở checkOut().
-      const saved = await this.bookingRepo.manager.transaction(async (manager) => {
-        const bookingRepo = manager.getRepository(Booking);
-        const serviceItemRepo = manager.getRepository(BookingServiceItem);
+      const saved = await this.bookingRepo.manager.transaction(
+        async (manager) => {
+          const bookingRepo = manager.getRepository(Booking);
+          const serviceItemRepo = manager.getRepository(BookingServiceItem);
 
-        const booking = bookingRepo.create({
-          user,
-          roomType,
-          room: null,
-          checkInDate: dto.checkIn,
-          checkOutDate: dto.checkOut,
-          guestInfo: dto.guestInfo,
-          promotion: promotionId ? { promotionId } : null,
-          discountAmount,
-          roomAmount,
-          status: BookingStatus.PENDING,
-          paymentMethod,
-          paymentStatus: PaymentStatus.UNPAID,
-          payosOrderCode,
-        } as Partial<Booking>);
-        const savedBooking = await bookingRepo.save(booking);
+          const booking = bookingRepo.create({
+            user,
+            roomType,
+            room: null,
+            checkInDate: dto.checkIn,
+            checkOutDate: dto.checkOut,
+            guestInfo: dto.guestInfo,
+            promotion: promotionId ? { promotionId } : null,
+            discountAmount,
+            roomAmount,
+            status: BookingStatus.PENDING,
+            paymentMethod,
+            paymentStatus: PaymentStatus.UNPAID,
+            payosOrderCode,
+          } as Partial<Booking>);
+          const savedBooking = await bookingRepo.save(booking);
 
-        if (extraServices.length > 0) {
-          const items = extraServices.map((service) =>
-            serviceItemRepo.create({
-              booking: savedBooking,
-              service,
-              quantity: 1,
-              unitPrice: service.price,
-            }),
-          );
-          await serviceItemRepo.save(items);
-        }
-        return savedBooking;
-      });
+          if (extraServices.length > 0) {
+            const items = extraServices.map((service) =>
+              serviceItemRepo.create({
+                booking: savedBooking,
+                service,
+                quantity: 1,
+                unitPrice: service.price,
+              }),
+            );
+            await serviceItemRepo.save(items);
+          }
+          return savedBooking;
+        },
+      );
 
       if (promotionId) {
         await this.promotionService.incrementUsage(promotionId);
@@ -288,51 +290,53 @@ export class BookingService {
       // trạng thái phòng và lưu dịch vụ đi kèm có thể để lại phòng "Đã giữ chỗ" mà
       // không có đơn tương ứng, hoặc đơn thiếu dịch vụ đã chọn.
       const willReserveRoom = room.status === RoomStatus.AVAILABLE;
-      const saved = await this.bookingRepo.manager.transaction(async (manager) => {
-        const bookingRepo = manager.getRepository(Booking);
-        const roomRepo = manager.getRepository(Room);
-        const serviceItemRepo = manager.getRepository(BookingServiceItem);
+      const saved = await this.bookingRepo.manager.transaction(
+        async (manager) => {
+          const bookingRepo = manager.getRepository(Booking);
+          const roomRepo = manager.getRepository(Room);
+          const serviceItemRepo = manager.getRepository(BookingServiceItem);
 
-        const booking = bookingRepo.create({
-          user: staff,
-          staff,
-          roomType: room.roomType,
-          room,
-          checkInDate: dto.checkIn,
-          checkOutDate: dto.checkOut,
-          guestInfo: dto.guestInfo,
-          promotion: null,
-          discountAmount: 0,
-          roomAmount,
-          status: BookingStatus.CONFIRMED,
-          paymentMethod: dto.paymentMethod ?? PaymentMethod.CASH,
-          paymentStatus: PaymentStatus.UNPAID,
-          payosOrderCode: null,
-        } as Partial<Booking>);
-        const savedBooking = await bookingRepo.save(booking);
+          const booking = bookingRepo.create({
+            user: staff,
+            staff,
+            roomType: room.roomType,
+            room,
+            checkInDate: dto.checkIn,
+            checkOutDate: dto.checkOut,
+            guestInfo: dto.guestInfo,
+            promotion: null,
+            discountAmount: 0,
+            roomAmount,
+            status: BookingStatus.CONFIRMED,
+            paymentMethod: dto.paymentMethod ?? PaymentMethod.CASH,
+            paymentStatus: PaymentStatus.UNPAID,
+            payosOrderCode: null,
+          } as Partial<Booking>);
+          const savedBooking = await bookingRepo.save(booking);
 
-        // Phòng đã được giữ cho khách vãng lai -> đánh dấu "Đã giữ chỗ" để sơ đồ phòng
-        // phản ánh đúng, tránh lễ tân khác đặt trùng. Chuyển AVAILABLE khi huỷ / OCCUPIED
-        // khi check-in.
-        if (willReserveRoom) {
-          room.status = RoomStatus.RESERVED;
-          await roomRepo.save(room);
-        }
+          // Phòng đã được giữ cho khách vãng lai -> đánh dấu "Đã giữ chỗ" để sơ đồ phòng
+          // phản ánh đúng, tránh lễ tân khác đặt trùng. Chuyển AVAILABLE khi huỷ / OCCUPIED
+          // khi check-in.
+          if (willReserveRoom) {
+            room.status = RoomStatus.RESERVED;
+            await roomRepo.save(room);
+          }
 
-        if (extraServices.length > 0) {
-          await serviceItemRepo.save(
-            extraServices.map((service) =>
-              serviceItemRepo.create({
-                booking: savedBooking,
-                service,
-                quantity: 1,
-                unitPrice: service.price,
-              }),
-            ),
-          );
-        }
-        return savedBooking;
-      });
+          if (extraServices.length > 0) {
+            await serviceItemRepo.save(
+              extraServices.map((service) =>
+                serviceItemRepo.create({
+                  booking: savedBooking,
+                  service,
+                  quantity: 1,
+                  unitPrice: service.price,
+                }),
+              ),
+            );
+          }
+          return savedBooking;
+        },
+      );
 
       if (willReserveRoom) {
         this.realtimeGateway.emitRoomStatusChanged({
@@ -1000,22 +1004,24 @@ export class BookingService {
     // Lưu đơn + ghi sổ thu tiền trong 1 transaction: webhook PayOS gọi hàm này có thể
     // trùng lúc với lượt đồng bộ thủ công (PaymentService) cho CÙNG orderCode — tách rời
     // 2 lệnh có thể để đơn đã PAID nhưng thiếu dòng giao dịch tương ứng nếu crash giữa chừng.
-    const saved = await this.bookingRepo.manager.transaction(async (manager) => {
-      const bookingRepo = manager.getRepository(Booking);
-      const savedBooking = await bookingRepo.save(booking);
-      // Khách tự chuyển khoản qua PayOS — không có nhân viên cầm tiền.
-      await this.paymentTransactionService.record(
-        {
-          bookingId: savedBooking.bookingId,
-          amount: collected,
-          method: PaymentMethod.PAYOS,
-          collectedByUserId: null,
-          payerBankInfo,
-        },
-        manager,
-      );
-      return savedBooking;
-    });
+    const saved = await this.bookingRepo.manager.transaction(
+      async (manager) => {
+        const bookingRepo = manager.getRepository(Booking);
+        const savedBooking = await bookingRepo.save(booking);
+        // Khách tự chuyển khoản qua PayOS — không có nhân viên cầm tiền.
+        await this.paymentTransactionService.record(
+          {
+            bookingId: savedBooking.bookingId,
+            amount: collected,
+            method: PaymentMethod.PAYOS,
+            collectedByUserId: null,
+            payerBankInfo,
+          },
+          manager,
+        );
+        return savedBooking;
+      },
+    );
     this.realtimeGateway.emitBookingPaid({
       bookingId: saved.bookingId,
       guestName: saved.guestInfo?.fullName,
@@ -1341,11 +1347,13 @@ export class BookingService {
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
-  // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Chỉ báo cho nhân viên
-  // lễ tân (người xác nhận đơn), không báo admin. Đơn walk-in do chính lễ tân tạo nên
-  // không báo. Bỏ qua người vừa đặt nếu họ cũng là nhân viên (tự đặt
-  // phòng cho mình thì không cần tự báo cho mình). Lỗi ở đây không được làm hỏng việc
-  // đặt phòng — đơn đã tạo xong rồi.
+  // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Báo cho nhân viên lễ
+  // tân (người xác nhận đơn) VÀ admin đang hoạt động (theo dõi hoạt động khách sạn). Đơn
+  // walk-in do chính lễ tân tạo nên không báo (không gọi hàm này). Bỏ qua người vừa đặt
+  // khỏi danh sách nhận nếu họ cũng là nhân viên/admin (tự đặt phòng cho mình thì không
+  // cần tự báo cho mình). Lỗi ở mỗi nhánh (nhân viên/admin) được bắt riêng — lỗi 1 nhánh
+  // không chặn nhánh còn lại, và không nhánh nào được làm hỏng việc đặt phòng vì đơn đã
+  // tạo xong rồi.
   private async notifyStaffOfNewBooking(
     bookerUserId: string,
     booking: {
@@ -1364,6 +1372,16 @@ export class BookingService {
     } catch (error) {
       this.logger.warn(
         `Không báo được đơn mới ${booking.bookingId} cho nhân viên: ${(error as Error).message}`,
+      );
+    }
+    try {
+      await this.notificationService.notifyAdminNewBooking(
+        booking,
+        bookerUserId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Không báo được đơn mới ${booking.bookingId} cho admin: ${(error as Error).message}`,
       );
     }
   }

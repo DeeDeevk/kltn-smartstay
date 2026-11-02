@@ -105,6 +105,13 @@ export class RealtimeGateway
     this.emit(userRoom(userId), 'notification:new', payload);
   }
 
+  // Báo cho đúng khách hàng biết danh sách yêu thích của họ vừa đổi (thêm/bỏ
+  // ở 1 thiết bị/tab khác — web hoặc mobile), để các thiết bị còn lại tự
+  // đồng bộ lại mà không cần khách F5/mở lại màn Yêu thích.
+  emitFavoriteUpdated(userId: string, payload: unknown) {
+    this.emit(userRoom(userId), 'favorite:updated', payload);
+  }
+
   emitToChatStaff(event: string, payload: unknown) {
     this.emit(CHAT_STAFF_ROOM, event, payload);
   }

@@ -45,6 +45,7 @@ const TYPE_META = {
   PAYMENT_FAILED: { Icon: CircleAlert, label: 'Thanh toán lỗi', tone: 'bg-red-100 text-red-600' },
   REVIEW_REPLIED: { Icon: MessageSquareReply, label: 'Đánh giá', tone: 'bg-amber-100 text-amber-600' },
   STAFF_NEW_BOOKING: { Icon: CalendarPlus, label: 'Đơn mới', tone: 'bg-blue-100 text-blue-600' },
+  ADMIN_NEW_BOOKING: { Icon: CalendarPlus, label: 'Đơn mới', tone: 'bg-blue-100 text-blue-600' },
 };
 const DEFAULT_META = { Icon: Bell, label: 'Thông báo', tone: 'bg-gray-100 text-gray-500' };
 

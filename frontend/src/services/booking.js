@@ -1,6 +1,7 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
 import axiosBaseQuery from './axiosBaseQuery';
 import { adminRoomApi } from './adminRoom';
+import { refundRequestApi } from './refundRequest';
 
 // Booking trả về từ checkIn/cancel/walk-in là 1 object phẳng (có .room), còn checkOut bọc
 // trong { booking, finalInvoice } — dò cả 2 dạng cho gọn thay vì viết riêng mỗi chỗ gọi.
@@ -22,6 +23,18 @@ const refreshRoomMap = async (_arg, { dispatch, queryFulfilled }) => {
     dispatch(adminRoomApi.util.invalidateTags(tags));
   } catch {
     /* mutation lỗi -> giữ nguyên cache sơ đồ phòng */
+  }
+};
+
+// Huỷ đơn đã thanh toán -> backend tự tạo RefundRequest (KAN-114), nhưng nó nằm ở slice
+// refundRequestApi khác, không tự được invalidatesTags của bookingApi đụng tới -> làm mới
+// luôn để khách thấy ngay dòng "Đang chờ hoàn tiền" ở Lịch sử đặt phòng, khỏi phải F5.
+const refreshMyRefundRequests = async (_arg, { dispatch, queryFulfilled }) => {
+  try {
+    await queryFulfilled;
+    dispatch(refundRequestApi.util.invalidateTags([{ type: 'RefundRequest', id: 'MINE' }]));
+  } catch {
+    /* huỷ đơn lỗi -> không có RefundRequest mới, giữ nguyên cache */
   }
 };
 
@@ -93,7 +106,9 @@ export const bookingApi = createApi({
         { type: 'Booking', id: 'MY_LIST' },
         { type: 'Booking', id: 'STAFF_LIST' },
       ],
-      onQueryStarted: refreshRoomMap,
+      onQueryStarted: async (arg, api) => {
+        await Promise.all([refreshRoomMap(arg, api), refreshMyRefundRequests(arg, api)]);
+      },
     }),
     // Xác nhận thủ công 1 booking đang PENDING (VD: đơn CASH sẽ không bao giờ tự chuyển
     // CONFIRMED như đơn PayOS thanh toán thành công — lễ tân phải xác nhận tay).

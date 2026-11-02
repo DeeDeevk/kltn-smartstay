@@ -18,7 +18,7 @@ export enum NotificationType {
   // theo adminNote nên không nằm trong BOOKING_MESSAGES cố định, xem notifyRefund().
   REFUND_COMPLETED = 'REFUND_COMPLETED',
   REFUND_REJECTED = 'REFUND_REJECTED',
-  // Gửi cho nhân viên lễ tân (không gửi admin, không gửi khách): có khách vừa đặt phòng.
+  // Gửi cho nhân viên lễ tân (không gửi khách): có khách vừa đặt phòng.
   STAFF_NEW_BOOKING = 'STAFF_NEW_BOOKING',
   // --- Chỉ gửi ADMIN: việc cần quyền quản lý mới xử lý được ---
   ADMIN_CASH_MISMATCH = 'ADMIN_CASH_MISMATCH',
@@ -26,6 +26,10 @@ export enum NotificationType {
   ADMIN_SHIFT_AUTO_CLOSED = 'ADMIN_SHIFT_AUTO_CLOSED',
   ADMIN_PAID_BOOKING_CANCELLED = 'ADMIN_PAID_BOOKING_CANCELLED',
   ADMIN_NEGATIVE_REVIEW = 'ADMIN_NEGATIVE_REVIEW',
+  // Cùng sự kiện với STAFF_NEW_BOOKING (có khách vừa đặt phòng) nhưng gửi riêng cho admin
+  // đang hoạt động — admin cũng cần biết đơn mới để theo dõi hoạt động khách sạn, không chỉ
+  // lễ tân mới xác nhận đơn.
+  ADMIN_NEW_BOOKING = 'ADMIN_NEW_BOOKING',
 }
 
 export type AdminNotificationType =
@@ -33,7 +37,8 @@ export type AdminNotificationType =
   | NotificationType.ADMIN_SHIFT_ABSENT
   | NotificationType.ADMIN_SHIFT_AUTO_CLOSED
   | NotificationType.ADMIN_PAID_BOOKING_CANCELLED
-  | NotificationType.ADMIN_NEGATIVE_REVIEW;
+  | NotificationType.ADMIN_NEGATIVE_REVIEW
+  | NotificationType.ADMIN_NEW_BOOKING;
 
 // Các loại phát sinh từ vòng đời đơn đặt phòng — nội dung soạn sẵn theo tên loại phòng.
 // REVIEW_REPLIED không nằm ở đây vì nội dung của nó là câu trả lời của khách sạn, phải
@@ -164,6 +169,20 @@ export class NotificationService {
     await this.create(userId, type, title, body, refund.bookingId);
   }
 
+  // Tiêu đề/nội dung dùng chung cho STAFF_NEW_BOOKING và ADMIN_NEW_BOOKING — cùng 1 sự
+  // kiện (có khách vừa đặt phòng), chỉ khác người nhận, nên phải cùng 1 câu chữ.
+  private buildNewBookingMessage(booking: {
+    guestName?: string | null;
+    roomTypeName?: string | null;
+    checkIn: string;
+    checkOut: string;
+  }): { title: string; body: string } {
+    return {
+      title: 'Có đơn đặt phòng mới',
+      body: `${booking.guestName ?? 'Khách hàng'} vừa đặt ${booking.roomTypeName ?? 'phòng'}, ${formatDay(booking.checkIn)} → ${formatDay(booking.checkOut)}. Đơn đang chờ xác nhận.`,
+    };
+  }
+
   // Báo cho TỪNG nhân viên lễ tân là có đơn mới. Mỗi người một dòng riêng để trạng thái
   // đã đọc tách bạch — lễ tân A đọc rồi thì lễ tân B vẫn thấy chưa đọc.
   async notifyStaffNewBooking(
@@ -176,8 +195,7 @@ export class NotificationService {
       checkOut: string;
     },
   ): Promise<void> {
-    const title = 'Có đơn đặt phòng mới';
-    const body = `${booking.guestName ?? 'Khách hàng'} vừa đặt ${booking.roomTypeName ?? 'phòng'}, ${formatDay(booking.checkIn)} → ${formatDay(booking.checkOut)}. Đơn đang chờ xác nhận.`;
+    const { title, body } = this.buildNewBookingMessage(booking);
     await Promise.all(
       staffIds.map((staffId) =>
         this.create(
@@ -191,17 +209,46 @@ export class NotificationService {
     );
   }
 
+  // Báo cho TỪNG admin đang hoạt động là có đơn mới — cùng nội dung với
+  // notifyStaffNewBooking(), chỉ khác loại thông báo (ADMIN_NEW_BOOKING) và người nhận.
+  // excludeUserId: bỏ qua người vừa đặt nếu họ cũng là admin (tự đặt phòng cho mình thì
+  // không cần tự báo cho mình), cùng cách notifyStaffOfNewBooking() lọc staffIds.
+  async notifyAdminNewBooking(
+    booking: {
+      bookingId: string;
+      guestName?: string | null;
+      roomTypeName?: string | null;
+      checkIn: string;
+      checkOut: string;
+    },
+    excludeUserId?: string,
+  ): Promise<void> {
+    const { title, body } = this.buildNewBookingMessage(booking);
+    await this.notifyAdmins(
+      NotificationType.ADMIN_NEW_BOOKING,
+      title,
+      body,
+      booking.bookingId,
+      excludeUserId,
+    );
+  }
+
   // Báo cho TỪNG admin đang hoạt động. Chỉ dùng cho loại ADMIN_* — admin không nhận
   // các thông báo vận hành hằng ngày của lễ tân. Không ném lỗi ra ngoài: nơi gọi là
-  // nghiệp vụ chính (kết ca, huỷ đơn, gửi đánh giá), không được hỏng vì thông báo.
+  // nghiệp vụ chính (kết ca, huỷ đơn, gửi đánh giá, đặt phòng), không được hỏng vì thông
+  // báo. excludeUserId (optional): bỏ 1 admin cụ thể ra khỏi danh sách nhận, dùng khi
+  // chính admin đó vừa là người gây ra sự kiện (VD admin tự đặt phòng).
   async notifyAdmins(
     type: AdminNotificationType,
     title: string,
     body: string,
     bookingId: string | null = null,
+    excludeUserId?: string,
   ): Promise<void> {
     try {
-      const adminIds = await this.userService.findActiveAdminIds();
+      const adminIds = (await this.userService.findActiveAdminIds()).filter(
+        (id) => id !== excludeUserId,
+      );
       await Promise.all(
         adminIds.map((adminId) =>
           this.create(adminId, type, title, body, bookingId),
