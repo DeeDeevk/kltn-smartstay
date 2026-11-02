@@ -3,6 +3,7 @@ import { FavoriteRoomType } from './entities/favorite-room-type.entity';
 import { Repository } from 'typeorm';
 import { RoomTypeService } from './room-type.service';
 import { Injectable } from '@nestjs/common';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class FavoriteService {
@@ -10,6 +11,7 @@ export class FavoriteService {
     @InjectRepository(FavoriteRoomType)
     private readonly favoriteRepo: Repository<FavoriteRoomType>,
     private readonly roomTypeService: RoomTypeService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async findMine(userId: string) {
@@ -29,11 +31,15 @@ export class FavoriteService {
       .values({ userId, roomTypeId })
       .orIgnore()
       .execute();
-    return { roomTypeId, isFavorite: true };
+    const result = { roomTypeId, isFavorite: true };
+    this.realtimeGateway.emitFavoriteUpdated(userId, result);
+    return result;
   }
 
   async remove(userId: string, roomTypeId: string) {
     await this.favoriteRepo.delete({ userId, roomTypeId });
-    return { roomTypeId, isFavorite: false };
+    const result = { roomTypeId, isFavorite: false };
+    this.realtimeGateway.emitFavoriteUpdated(userId, result);
+    return result;
   }
 }
