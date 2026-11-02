@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Download, QrCode, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Copy, Download, QrCode, RotateCcw, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -21,6 +22,7 @@ import BookingPriceSummary from './BookingPriceSummary';
 export default function BookingDetailModal({ booking, onClose }) {
   const { t } = useTranslation();
   const qrRef = useRef(null);
+  const navigate = useNavigate();
 
   // Đóng bằng phím Esc + khoá scroll nền trong lúc modal mở, dọn dẹp khi đóng/unmount
   // để không rò rỉ listener hay để body kẹt lại overflow:hidden.
@@ -44,6 +46,20 @@ export default function BookingDetailModal({ booking, onClose }) {
 
   const bookingCode = getBookingCode(booking.bookingId);
   const qrValue = getBookingQrPayload(booking);
+
+  // Chỉ cho đặt lại khi đơn đã kết thúc vòng đời (đã trả phòng hoặc đã huỷ) — đơn còn hiệu
+  // lực (PENDING/CONFIRMED/CHECKED_IN) thì khách sửa/huỷ đơn hiện có, không cần đặt lại.
+  const canRebook =
+    (booking.status === 'CHECKED_OUT' || booking.status === 'CANCELLED') &&
+    Boolean(booking.roomType?.roomTypeId);
+
+  const handleRebook = () => {
+    onClose();
+    // Không mang theo checkIn/checkOut của đơn cũ: ngày đó đã ở quá khứ, backend chặn đặt
+    // phòng ngày quá khứ (BookingService.create) nên sẽ chỉ báo lỗi — để khách tự chọn
+    // ngày mới trên trang loại phòng.
+    navigate(`/rooms/${booking.roomType.roomTypeId}`);
+  };
 
   const handleSaveQr = () =>
     downloadQrPng(qrRef.current?.querySelector('svg'), `vika-qr-${bookingCode}.png`);
@@ -123,6 +139,15 @@ export default function BookingDetailModal({ booking, onClose }) {
             vatAmount={booking.vatAmount}
             totalAmount={booking.totalAmount}
           />
+          {canRebook && (
+            <button
+              type="button"
+              onClick={handleRebook}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            >
+              <RotateCcw size={16} /> {t('booking.history.detail.rebook')}
+            </button>
+          )}
         </div>
       </div>
     </div>,
