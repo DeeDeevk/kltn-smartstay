@@ -22,6 +22,8 @@ export const TYPE_DOT_CLASSES = {
   ADMIN_NEGATIVE_REVIEW: 'bg-red-500',
   ADMIN_SHIFT_ABSENT: 'bg-amber-500',
   ADMIN_SHIFT_AUTO_CLOSED: 'bg-amber-500',
+  // Cùng sự kiện với STAFF_NEW_BOOKING, gửi riêng cho admin -> cùng màu xanh.
+  ADMIN_NEW_BOOKING: 'bg-blue-500',
 };
 
 // Thông báo nội bộ (nhân viên/admin) -> trang quản lý tương ứng để xử lý ngay.
@@ -32,10 +34,15 @@ const ADMIN_TARGETS = {
   ADMIN_CASH_MISMATCH: '/admin/schedule',
   ADMIN_SHIFT_ABSENT: '/admin/schedule',
   ADMIN_SHIFT_AUTO_CLOSED: '/admin/schedule',
+  ADMIN_NEW_BOOKING: '/admin/bookings',
 };
 
 // Các loại thông báo nội bộ gắn với đúng 1 đơn đặt phòng.
-const BOOKING_DETAIL_TYPES = new Set(['STAFF_NEW_BOOKING', 'ADMIN_PAID_BOOKING_CANCELLED']);
+const BOOKING_DETAIL_TYPES = new Set([
+  'STAFF_NEW_BOOKING',
+  'ADMIN_PAID_BOOKING_CANCELLED',
+  'ADMIN_NEW_BOOKING',
+]);
 
 // "3 phút trước", "2 giờ trước"... Thông báo mới là thứ khách quan tâm nhất nên hiện
 // khoảng cách thời gian dễ đọc hơn là ngày giờ đầy đủ.

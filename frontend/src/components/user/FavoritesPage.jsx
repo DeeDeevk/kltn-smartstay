@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useDispatch } from "react-redux";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Heart, Loader2 } from "lucide-react";
@@ -5,9 +7,12 @@ import Header from "../layout/Header";
 import Footer from "../layout/Footer";
 import RoomCard from "../searchroom/RoomCard";
 import { favoriteApi } from "../../services/favorite";
+import { useSocket } from "../../context/SocketContext";
 
 // Các loại phòng khách đã bấm tim. Bỏ tim ở trang chi tiết phòng thì danh sách tự cập nhật
-// nhờ invalidatesTags ['Favorite'].
+// nhờ invalidatesTags ['Favorite']. Thêm/bỏ tim ở thiết bị khác (mobile, hoặc tab/máy
+// khác) thì không có mutation nào ở đây để invalidate -> nghe socket 'favorite:updated'
+// (bắn vào room riêng của user, xem RealtimeGateway) để tự làm mới theo.
 export default function FavoritesPage() {
   const { t } = useTranslation();
   const {
@@ -15,6 +20,16 @@ export default function FavoritesPage() {
     isLoading,
     isError,
   } = favoriteApi.useGetMyFavoritesQuery();
+
+  const dispatch = useDispatch();
+  const socket = useSocket();
+  useEffect(() => {
+    const handleFavoriteUpdated = () => {
+      dispatch(favoriteApi.util.invalidateTags(["Favorite"]));
+    };
+    socket.on("favorite:updated", handleFavoriteUpdated);
+    return () => socket.off("favorite:updated", handleFavoriteUpdated);
+  }, [socket, dispatch]);
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -1,10 +1,12 @@
-import { createApi } from '@reduxjs/toolkit/query/react';
-import axiosBaseQuery from './axiosBaseQuery';
-import { adminRoomApi } from './adminRoom';
+import { createApi } from "@reduxjs/toolkit/query/react";
+import axiosBaseQuery from "./axiosBaseQuery";
+import { adminRoomApi } from "./adminRoom";
+import { refundRequestApi } from "./refundRequest";
 
 // Booking trả về từ checkIn/cancel/walk-in là 1 object phẳng (có .room), còn checkOut bọc
 // trong { booking, finalInvoice } — dò cả 2 dạng cho gọn thay vì viết riêng mỗi chỗ gọi.
-const extractRoomId = (data) => data?.room?.roomId ?? data?.booking?.room?.roomId;
+const extractRoomId = (data) =>
+  data?.room?.roomId ?? data?.booking?.room?.roomId;
 
 // Các thao tác đổi trạng thái phòng gián tiếp (check-in -> OCCUPIED, check-out ->
 // CLEANING, walk-in/huỷ -> gán/bỏ phòng) nằm ở slice booking, nên phải chủ động
@@ -16,55 +18,74 @@ const extractRoomId = (data) => data?.room?.roomId ?? data?.booking?.room?.roomI
 const refreshRoomMap = async (_arg, { dispatch, queryFulfilled }) => {
   try {
     const { data } = await queryFulfilled;
-    const tags = [{ type: 'AdminRoom', id: 'LIST' }];
+    const tags = [{ type: "AdminRoom", id: "LIST" }];
     const roomId = extractRoomId(data);
-    if (roomId) tags.push({ type: 'AdminRoom', id: roomId });
+    if (roomId) tags.push({ type: "AdminRoom", id: roomId });
     dispatch(adminRoomApi.util.invalidateTags(tags));
   } catch {
     /* mutation lỗi -> giữ nguyên cache sơ đồ phòng */
   }
 };
 
+// Huỷ đơn đã thanh toán -> backend tự tạo RefundRequest (KAN-114), nhưng nó nằm ở slice
+// refundRequestApi khác, không tự được invalidatesTags của bookingApi đụng tới -> làm mới
+// luôn để khách thấy ngay dòng "Đang chờ hoàn tiền" ở Lịch sử đặt phòng, khỏi phải F5.
+const refreshMyRefundRequests = async (_arg, { dispatch, queryFulfilled }) => {
+  try {
+    await queryFulfilled;
+    dispatch(
+      refundRequestApi.util.invalidateTags([
+        { type: "RefundRequest", id: "MINE" },
+      ]),
+    );
+  } catch {
+    /* huỷ đơn lỗi -> không có RefundRequest mới, giữ nguyên cache */
+  }
+};
+
 export const bookingApi = createApi({
-  reducerPath: 'bookingApi',
+  reducerPath: "bookingApi",
   baseQuery: axiosBaseQuery(),
-  tagTypes: ['Booking'],
+  tagTypes: ["Booking", "Service"],
   endpoints: (builder) => ({
     createBooking: builder.mutation({
-      query: (data) => ({ url: '/bookings', method: 'post', data }),
-      invalidatesTags: [{ type: 'Booking', id: 'MY_LIST' }],
+      query: (data) => ({ url: "/bookings", method: "post", data }),
+      invalidatesTags: [{ type: "Booking", id: "MY_LIST" }],
     }),
     // Lễ tân/Admin đặt phòng hộ khách vãng lai cho 1 phòng cụ thể (từ trang Sơ đồ phòng).
     createWalkInBooking: builder.mutation({
-      query: (data) => ({ url: '/bookings/walk-in', method: 'post', data }),
-      invalidatesTags: [{ type: 'Booking', id: 'STAFF_LIST' }],
+      query: (data) => ({ url: "/bookings/walk-in", method: "post", data }),
+      invalidatesTags: [{ type: "Booking", id: "STAFF_LIST" }],
       onQueryStarted: refreshRoomMap,
     }),
     getMyBookings: builder.query({
-      query: (params) => ({ url: '/bookings/my', method: 'get', params }),
-      providesTags: [{ type: 'Booking', id: 'MY_LIST' }],
+      query: (params) => ({ url: "/bookings/my", method: "get", params }),
+      providesTags: [{ type: "Booking", id: "MY_LIST" }],
     }),
     // Lễ tân/Admin xem toàn bộ đơn theo trạng thái (VD status=CHECKED_IN để liệt kê
     // phòng đang có khách ở, phục vụ check-out không cần quét lại QR).
     getBookings: builder.query({
-      query: (params) => ({ url: '/bookings', method: 'get', params }),
+      query: (params) => ({ url: "/bookings", method: "get", params }),
       providesTags: (result) => [
-        { type: 'Booking', id: 'STAFF_LIST' },
-        ...(result?.data ?? []).map((b) => ({ type: 'Booking', id: b.bookingId })),
+        { type: "Booking", id: "STAFF_LIST" },
+        ...(result?.data ?? []).map((b) => ({
+          type: "Booking",
+          id: b.bookingId,
+        })),
       ],
     }),
     getBookingById: builder.query({
-      query: (id) => ({ url: `/bookings/${id}`, method: 'get' }),
-      providesTags: (result, error, id) => [{ type: 'Booking', id }],
+      query: (id) => ({ url: `/bookings/${id}`, method: "get" }),
+      providesTags: (result, error, id) => [{ type: "Booking", id }],
     }),
     // Hoá đơn xem trước khi trả phòng (phụ thu trả muộn + dịch vụ đã ghi nhận).
     getCheckoutPreview: builder.query({
       query: (bookingId) => ({
         url: `/bookings/${bookingId}/checkout-preview`,
-        method: 'get',
+        method: "get",
       }),
       providesTags: (result, error, bookingId) => [
-        { type: 'Booking', id: bookingId },
+        { type: "Booking", id: bookingId },
       ],
     }),
     // Xem trước mức hoàn tiền nếu huỷ ngay lúc này (KAN-117) — không huỷ/tạo gì cả, chỉ
@@ -72,51 +93,75 @@ export const bookingApi = createApi({
     getCancellationPreview: builder.query({
       query: (bookingId) => ({
         url: `/bookings/${bookingId}/cancellation-preview`,
-        method: 'get',
+        method: "get",
       }),
       providesTags: (result, error, bookingId) => [
-        { type: 'Booking', id: bookingId },
+        { type: "Booking", id: bookingId },
       ],
     }),
     // Danh sách dịch vụ / minibar đang cung cấp (dùng ở màn Check-out).
     getServices: builder.query({
-      query: (params) => ({ url: '/services', method: 'get', params }),
+      query: (params) => ({ url: "/services", method: "get", params }),
+      providesTags: ["Service"],
+    }),
+    // Admin: lấy cả dịch vụ đã ngưng để bật lại.
+    getAdminServices: builder.query({
+      query: (params) => ({ url: "/services/admin", method: "get", params }),
+      providesTags: ["Service"],
+    }),
+    createService: builder.mutation({
+      query: (data) => ({ url: "/services", method: "post", data }),
+      invalidatesTags: ["Service"],
+    }),
+    // Sửa thông tin hoặc bật/tắt (gửi { isActive }).
+    updateService: builder.mutation({
+      query: ({ serviceId, data }) => ({
+        url: `/services/${serviceId}`,
+        method: "patch",
+        data,
+      }),
+      invalidatesTags: ["Service"],
     }),
     cancelBooking: builder.mutation({
       query: ({ bookingId, reason }) => ({
         url: `/bookings/${bookingId}/cancel`,
-        method: 'patch',
+        method: "patch",
         data: { reason },
       }),
       invalidatesTags: (result, error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        { type: 'Booking', id: 'MY_LIST' },
-        { type: 'Booking', id: 'STAFF_LIST' },
+        { type: "Booking", id: bookingId },
+        { type: "Booking", id: "MY_LIST" },
+        { type: "Booking", id: "STAFF_LIST" },
       ],
-      onQueryStarted: refreshRoomMap,
+      onQueryStarted: async (arg, api) => {
+        await Promise.all([
+          refreshRoomMap(arg, api),
+          refreshMyRefundRequests(arg, api),
+        ]);
+      },
     }),
     // Xác nhận thủ công 1 booking đang PENDING (VD: đơn CASH sẽ không bao giờ tự chuyển
     // CONFIRMED như đơn PayOS thanh toán thành công — lễ tân phải xác nhận tay).
     confirmBooking: builder.mutation({
       query: (bookingId) => ({
         url: `/bookings/${bookingId}/confirm`,
-        method: 'patch',
+        method: "patch",
       }),
       invalidatesTags: (result, error, bookingId) => [
-        { type: 'Booking', id: bookingId },
-        { type: 'Booking', id: 'STAFF_LIST' },
+        { type: "Booking", id: bookingId },
+        { type: "Booking", id: "STAFF_LIST" },
       ],
     }),
     // Lễ tân check-in: gán phòng vật lý cụ thể (roomId) cho 1 booking đã CONFIRMED.
     checkIn: builder.mutation({
       query: ({ bookingId, roomId }) => ({
         url: `/bookings/${bookingId}/check-in`,
-        method: 'post',
+        method: "post",
         data: { roomId },
       }),
       invalidatesTags: (result, error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        { type: 'Booking', id: 'STAFF_LIST' },
+        { type: "Booking", id: bookingId },
+        { type: "Booking", id: "STAFF_LIST" },
       ],
       onQueryStarted: refreshRoomMap,
     }),
@@ -124,15 +169,28 @@ export const bookingApi = createApi({
     checkOut: builder.mutation({
       query: ({ bookingId, ...body }) => ({
         url: `/bookings/${bookingId}/check-out`,
-        method: 'post',
+        method: "post",
         data: body,
       }),
       invalidatesTags: (result, error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        { type: 'Booking', id: 'STAFF_LIST' },
-        { type: 'Booking', id: 'MY_LIST' },
+        { type: "Booking", id: bookingId },
+        { type: "Booking", id: "STAFF_LIST" },
+        { type: "Booking", id: "MY_LIST" },
       ],
       onQueryStarted: refreshRoomMap,
+    }),
+    // Lễ tân ghi dịch vụ / minibar khách dùng trong lúc ở (POST /bookings/:id/services).
+    addBookingServices: builder.mutation({
+      query: ({ bookingId, items }) => ({
+        url: `/bookings/${bookingId}/services`,
+        method: "post",
+        data: { items },
+      }),
+      invalidatesTags: (result, error, { bookingId }) => [
+        { type: "Booking", id: bookingId },
+        { type: "Booking", id: "STAFF_LIST" },
+        { type: "Booking", id: "MY_LIST" },
+      ],
     }),
   }),
 });
@@ -150,4 +208,8 @@ export const {
   useConfirmBookingMutation,
   useCheckInMutation,
   useCheckOutMutation,
+  useAddBookingServicesMutation,
+    useGetAdminServicesQuery,
+  useCreateServiceMutation,
+  useUpdateServiceMutation,
 } = bookingApi;

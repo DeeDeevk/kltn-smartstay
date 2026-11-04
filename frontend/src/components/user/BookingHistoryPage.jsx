@@ -33,7 +33,7 @@ import {
 } from "../../services/booking";
 import { useSocket } from "../../context/SocketContext";
 import { useGetMyReviewsQuery } from "../../services/review";
-import { useGetMyRefundRequestsQuery } from "../../services/refundRequest";
+import { refundRequestApi, useGetMyRefundRequestsQuery } from "../../services/refundRequest";
 import formatCurrency from "../../utils/formatCurrency";
 import formatDate from "../../utils/formatDate";
 import getBookingCode from "../../utils/bookingCode";
@@ -230,14 +230,19 @@ export default function BookingHistoryPage() {
   const detailBooking =
     bookings.find((b) => b.bookingId === detailBookingId) ?? null;
 
-  // Lễ tân xác nhận/check-in/check-out/huỷ đơn ở phía họ -> đơn của mình đổi trạng
-  // thái ngay trên máy khác, tự làm mới danh sách thay vì bắt khách F5 lại trang.
+  // Lễ tân xác nhận/check-in/check-out/huỷ đơn ở phía họ, hoặc admin đánh dấu đã hoàn
+  // tiền/từ chối (RefundRequestService.complete/reject) -> đơn/yêu cầu hoàn tiền của
+  // mình đổi trạng thái ngay trên máy khác, tự làm mới danh sách thay vì bắt khách F5
+  // lại trang.
   const dispatch = useDispatch();
   const socket = useSocket();
   useEffect(() => {
     const handleBookingUpdated = () => {
       dispatch(
         bookingApi.util.invalidateTags([{ type: "Booking", id: "MY_LIST" }]),
+      );
+      dispatch(
+        refundRequestApi.util.invalidateTags([{ type: "RefundRequest", id: "MINE" }]),
       );
     };
     socket.on("booking:updated", handleBookingUpdated);

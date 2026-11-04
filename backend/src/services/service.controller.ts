@@ -13,6 +13,7 @@ import { ServiceService } from './service.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { QueryServiceDto } from './dto/query-service.dto';
+import { QueryAdminServiceDto } from './dto/query-admin-service.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/role.decorator';
@@ -25,6 +26,13 @@ export class ServiceController {
   @Get()
   findAll(@Query() query: QueryServiceDto) {
     return this.serviceService.findAllActive(query);
+  }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  findAllForAdmin(@Query() query: QueryAdminServiceDto) {
+    return this.serviceService.findAllForAdmin(query);
   }
 
   @Post()

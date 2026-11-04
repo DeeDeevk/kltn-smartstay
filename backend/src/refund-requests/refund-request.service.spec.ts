@@ -9,6 +9,7 @@ import {
 import { NotificationService } from '../notifications/notification.service';
 import { HotelConfigService } from '../hotel-config/hotel-config.service';
 import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RefundRequestStatus } from '../common/enums/refund-request-status.enum';
 
 const BOOKING_USER_ID = 'user-1';
@@ -92,12 +93,18 @@ function buildService(overrides?: {
     findLatestForBooking,
   } as unknown as PaymentTransactionService;
 
+  const emitBookingUpdatedForCustomer = jest.fn();
+  const realtimeGateway = {
+    emitBookingUpdatedForCustomer,
+  } as unknown as RealtimeGateway;
+
   const service = new RefundRequestService(
     refundRequestRepo,
     conversationRepo,
     notificationService,
     hotelConfigService,
     paymentTransactionService,
+    realtimeGateway,
   );
   return {
     service,
@@ -106,6 +113,7 @@ function buildService(overrides?: {
     refundRequestFind,
     conversationRepo,
     notifyRefund,
+    emitBookingUpdatedForCustomer,
     hotelConfigGetOrCreate,
     findLatestForBooking,
   };

@@ -23,6 +23,7 @@ import {
 } from '../notifications/notification.service';
 import { HotelConfigService } from '../hotel-config/hotel-config.service';
 import { PaymentTransactionService } from '../cash-ledger/payment-transaction.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 // Giờ nhận phòng tiêu chuẩn (giờ Việt Nam) — mốc dùng để tính "huỷ trước giờ nhận phòng bao
 // lâu" cho chính sách hoàn tiền theo thời điểm huỷ (KAN-117).
@@ -43,6 +44,7 @@ export class RefundRequestService {
     private readonly notificationService: NotificationService,
     private readonly hotelConfigService: HotelConfigService,
     private readonly paymentTransactionService: PaymentTransactionService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   // Tính số giờ còn lại tới giờ nhận phòng + % hoàn tiền áp dụng theo chính sách huỷ đơn
@@ -336,6 +338,13 @@ export class RefundRequestService {
         adminNote: refund.adminNote,
       },
     );
+    // Báo ngay qua socket để trang "Lịch sử đặt phòng" tự làm mới dòng "Đang chờ hoàn
+    // tiền" -> "Đã hoàn tiền" mà khách không cần F5 lại — dùng chung sự kiện
+    // 'booking:updated' vì FE (BookingHistoryPage.jsx) đã lắng nghe sẵn sự kiện này.
+    this.realtimeGateway.emitBookingUpdatedForCustomer(refund.booking.user.userId, {
+      bookingId: refund.booking.bookingId,
+      refundStatus: saved.status,
+    });
     return saved;
   }
 
@@ -360,6 +369,10 @@ export class RefundRequestService {
         adminNote: refund.adminNote,
       },
     );
+    this.realtimeGateway.emitBookingUpdatedForCustomer(refund.booking.user.userId, {
+      bookingId: refund.booking.bookingId,
+      refundStatus: saved.status,
+    });
     return saved;
   }
 

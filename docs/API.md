@@ -323,8 +323,8 @@ Body: `{ "reason": "Đổi lịch trình" }`. Chủ đơn hoặc `STAFF`/`ADMIN`
 - `GET /bookings/:id/checkout-preview` — xem trước hoá đơn trả phòng (phụ thu trễ giờ + dịch vụ).
 - `PATCH /bookings/:id/confirm` — xác nhận đơn (`PENDING` → `CONFIRMED`).
 - `POST /bookings/:id/check-in` — body `{ "roomId": "..." }`, gán phòng vật lý + đổi trạng thái.
-- `POST /bookings/:id/check-out` — body tuỳ chọn `{ extraServices?, paymentMethod?, markPaid? }`.
-- `POST /bookings/:id/services` — thêm dịch vụ vào đơn đang ở, body `{ "serviceId", "quantity" }`.
+- `POST /bookings/:id/check-out` — body tuỳ chọn `{ extraServices?, paymentMethod?, markPaid? }`. Mỗi phần tử `extraServices` là `{ serviceId, quantity }`, `quantity` 1–100.
+- `POST /bookings/:id/services` — lễ tân ghi dịch vụ / minibar khách dùng trong lúc ở. `STAFF` phải đang trong ca (`ADMIN` không cần). Body `{ "items": [{ "serviceId": "<uuid>", "quantity": 2 }] }` — ít nhất 1 phần tử, `quantity` 1–100; đơn giá chốt theo giá dịch vụ tại thời điểm ghi. Response: `Booking` (shape mục 5.6) đã có `serviceItems` mới và tiền tính lại. Lỗi: `400` khi đơn không ở `CHECKED_IN`, dịch vụ không tồn tại/đã ngưng hoặc body sai; `403` khi nhân viên ngoài ca; `404` khi không tìm thấy đơn.
 
 ### 5.6. Shape đầy đủ của `Booking` (trả về từ mọi endpoint booking ở trên)
 

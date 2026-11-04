@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronLeft,
   X,
+  ConciergeBell,
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +54,7 @@ const MENU_ITEMS = [
     children: [
       { icon: Tag, label: 'Loại phòng', path: '/admin/room-types', roles: ['ADMIN'] },
       { icon: TicketPercent, label: 'Khuyến mãi', path: '/admin/promotions', roles: ['ADMIN'] },
+      { icon: ConciergeBell, label: 'Dịch vụ', path: '/admin/services', roles: ['ADMIN'] },
       { icon: Star, label: 'Đánh giá của khách', path: '/admin/reviews', roles: ['ADMIN'] },
     ],
   },

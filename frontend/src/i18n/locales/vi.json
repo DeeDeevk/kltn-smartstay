@@ -432,7 +432,8 @@
         "cancelReason": "Lý do hủy",
         "qrHint": "Đưa mã này cho lễ tân để quét nhận phòng",
         "copyCode": "Sao chép mã đặt phòng",
-        "codeCopied": "Đã sao chép mã đặt phòng"
+        "codeCopied": "Đã sao chép mã đặt phòng",
+        "rebook": "Đặt lại"
       }
     }
   },
