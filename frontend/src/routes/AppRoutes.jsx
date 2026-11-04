@@ -168,6 +168,9 @@ const DashboardLayout = lazy(
   () => import("../components/admin/layout/DashboardLayout"),
 );
 const FavoritesPage = lazy(() => import("../components/user/FavoritesPage"));
+const ServiceManagementPage = lazy(
+  () => import("../components/admin//services/ServiceManagementPage"),
+);
 
 const paymentMethods = [
   { value: "cash", labelKey: "checkout.paymentCash", icon: Banknote },
@@ -1127,6 +1130,14 @@ export default function AppRoutes() {
                 element={
                   <ProtectedRoute roles={["ADMIN"]}>
                     <PromotionManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="services"
+                element={
+                  <ProtectedRoute roles={["ADMIN"]}>
+                    <ServiceManagementPage/>
                   </ProtectedRoute>
                 }
               />
