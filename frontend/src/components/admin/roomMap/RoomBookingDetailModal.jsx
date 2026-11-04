@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Loader2, LogIn, LogOut, CheckCircle2 } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle2, PlusCircle } from 'lucide-react';
 import Modal from '../../common/Modal';
 import StatusPill from '../../booking/StatusPill';
+import BookingServiceItemsTable from '../../booking/BookingServiceItemsTable';
+import AddServiceModal from './AddServiceModal';
 import {
   BOOKING_STATUS_STYLES,
   PAYMENT_STATUS_STYLES,
@@ -14,6 +17,7 @@ import getBookingCode from '../../../utils/bookingCode';
 import {
   useCheckInMutation,
   useConfirmBookingMutation,
+  useGetBookingByIdQuery,
 } from '../../../services/booking';
 
 // Modal chi tiết đơn trong trang Sơ đồ phòng > phòng: ngoài thông tin đơn còn cho lễ tân
@@ -28,6 +32,12 @@ export default function RoomBookingDetailModal({
   const [confirmBooking, { isLoading: confirming }] = useConfirmBookingMutation();
   const [checkIn, { isLoading: checkingIn }] = useCheckInMutation();
   const busy = confirming || checkingIn;
+  const [addingService, setAddingService] = useState(false);
+  const isStaying = booking?.status === 'CHECKED_IN';
+  // Danh sách đơn của phòng không kèm serviceItems -> lấy chi tiết riêng, chỉ khi đang ở.
+  const { data: detail } = useGetBookingByIdQuery(booking?.bookingId, {
+    skip: !isStaying,
+  });
 
   if (!booking) return null;
 
@@ -90,6 +100,12 @@ export default function RoomBookingDetailModal({
         </Info>
       </div>
 
+      {isStaying && (
+        <div className="mt-6">
+          <BookingServiceItemsTable items={detail?.serviceItems ?? []} />
+        </div>
+      )}
+
       <div className="mt-8 flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 pt-5">
         <button
           type="button"
@@ -135,12 +151,28 @@ export default function RoomBookingDetailModal({
           </ActionButton>
         )}
 
-        {booking.status === 'CHECKED_IN' && (
-          <ActionButton icon={LogOut} tone="amber" busy={busy} onClick={goCheckout}>
-            Làm thủ tục trả phòng
-          </ActionButton>
+        {isStaying && (
+          <>
+            <ActionButton
+              icon={PlusCircle}
+              tone="blue"
+              busy={false}
+              onClick={() => setAddingService(true)}
+            >
+              Thêm dịch vụ
+            </ActionButton>
+            <ActionButton icon={LogOut} tone="amber" busy={busy} onClick={goCheckout}>
+              Làm thủ tục trả phòng
+            </ActionButton>
+          </>
         )}
       </div>
+
+      <AddServiceModal
+        booking={booking}
+        open={addingService}
+        onClose={() => setAddingService(false)}
+      />
     </Modal>
   );
 }

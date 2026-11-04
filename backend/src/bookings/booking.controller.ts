@@ -116,8 +116,8 @@ export class BookingController {
   @Post(':id/services')
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
-  addService(@Param('id') id: string, @Body() dto: AddServiceDto) {
-    return this.bookingService.addService(id, dto);
+  addService(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: AddServiceDto) {
+    return this.bookingService.addService(id, dto, req.user);
   }
 
   @Patch(':id/cancel')

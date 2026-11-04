@@ -8,7 +8,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  Brackets,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import Redis from 'ioredis';
 import { Booking } from './entities/booking.entity';
 import { BookingServiceItem } from './entities/booking-service-item.entity';
@@ -17,7 +22,7 @@ import { CreateWalkInBookingDto } from './dto/create-walk-in-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { QueryMyBookingDto } from './dto/query-my-booking.dto';
 import { CheckInDto } from './dto/check-in.dto';
-import { CheckOutDto } from './dto/check-out.dto';
+import { CheckOutDto, CheckoutServiceItemDto } from './dto/check-out.dto';
 import { AddServiceDto } from './dto/add-service.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { Room } from 'src/rooms/entities/room.entity';
@@ -91,6 +96,36 @@ export class BookingService {
     if ((actor.role as UserRole) === UserRole.STAFF) {
       await this.shiftAssignmentService.assertOnDuty(actor.userId, action);
     }
+  }
+
+  // dùng chung cho checkOut và addService, phải gọi bên trong transaction của nơi gọi, và tự cập nhật booking.serviceItems trong bộ nhớ.
+  private async saveServiceItems(
+    manager: EntityManager,
+    booking: Booking,
+    items: CheckoutServiceItemDto[],
+  ) {
+    const ids = items.map((item) => item.serviceId);
+    const services = await this.serviceService.findActiveByIds(ids);
+    const byId = new Map(services.map((s) => [s.serviceId, s]));
+    if (services.length !== new Set(ids).size) {
+      throw new BadRequestException(
+        'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
+      );
+    }
+    const serviceItemRepo = manager.getRepository(BookingServiceItem);
+    const newItems = await serviceItemRepo.save(
+      items.map((item) =>
+        serviceItemRepo.create({
+          booking,
+          service: byId.get(item.serviceId),
+          quantity: item.quantity,
+          unitPrice: byId.get(item.serviceId)!.price,
+        }),
+      ),
+    );
+    // Cập nhật thẳng vào bộ nhớ để toDetailResponse() bên dưới tính đúng ngay,
+    // khỏi phải load lại từ DB.
+    booking.serviceItems = [...booking.serviceItems, ...newItems];
   }
 
   async create(userId: string, dto: CreateBookingDto) {
@@ -767,28 +802,7 @@ export class BookingService {
 
         // Ghi nhận dịch vụ / minibar khách tiêu dùng thêm ngay lúc trả phòng.
         if (dto.extraServices?.length) {
-          const ids = dto.extraServices.map((item) => item.serviceId);
-          const services = await this.serviceService.findActiveByIds(ids);
-          const byId = new Map(services.map((s) => [s.serviceId, s]));
-          if (services.length !== new Set(ids).size) {
-            throw new BadRequestException(
-              'Một số dịch vụ không tồn tại hoặc đã ngưng cung cấp',
-            );
-          }
-          const serviceItemRepo = manager.getRepository(BookingServiceItem);
-          const newItems = await serviceItemRepo.save(
-            dto.extraServices.map((item) =>
-              serviceItemRepo.create({
-                booking,
-                service: byId.get(item.serviceId),
-                quantity: item.quantity,
-                unitPrice: byId.get(item.serviceId)!.price,
-              }),
-            ),
-          );
-          // Cập nhật thẳng vào bộ nhớ để toDetailResponse() bên dưới tính đúng ngay,
-          // khỏi phải load lại từ DB.
-          booking.serviceItems = [...booking.serviceItems, ...newItems];
+          await this.saveServiceItems(manager, booking, dto.extraServices);
         }
 
         // Chốt phụ thu trả phòng muộn tại thời điểm này.
@@ -866,24 +880,28 @@ export class BookingService {
     return result;
   }
 
-  async addService(bookingId: string, dto: AddServiceDto) {
-    const booking = await this.findByIdRaw(bookingId);
-    if (booking.status !== BookingStatus.CHECKED_IN) {
-      throw new BadRequestException(
-        'Chỉ có thể thêm dịch vụ khi khách đang lưu trú',
-      );
-    }
+  // Lễ tân ghi dịch vụ khách dùng trong lúc ở — cùng transaction + kiểm tra ca như checkOut.
+  async addService(bookingId: string, dto: AddServiceDto, actor: Requester) {
+    await this.assertStaffOnDuty(actor, 'thêm dịch vụ');
+    const result = await this.bookingRepo.manager.transaction(
+      async (manager) => {
+        const bookingRepo = manager.getRepository(Booking);
 
-    const service = await this.serviceService.findActiveById(dto.serviceId);
-    const item = this.bookingServiceItemRepo.create({
-      booking,
-      service,
-      quantity: dto.quantity,
-      unitPrice: service.price,
-    });
-    await this.bookingServiceItemRepo.save(item);
+        const booking = await bookingRepo.findOne({ where: { bookingId } });
+        if (!booking) {
+          throw new NotFoundException('Không tìm thấy đơn đặt phòng');
+        }
+        if (booking.status !== BookingStatus.CHECKED_IN) {
+          throw new BadRequestException(
+            'Chỉ có thể thêm dịch vụ khi khách đang lưu trú',
+          );
+        }
 
-    return this.toDetailResponse(await this.findByIdRaw(bookingId));
+        await this.saveServiceItems(manager, booking, dto.items);
+        return this.toDetailResponse(booking);
+      },
+    );
+    return result;
   }
 
   async cancel(bookingId: string, requester: Requester, dto: CancelBookingDto) {

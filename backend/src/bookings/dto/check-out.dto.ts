@@ -6,17 +6,19 @@ import {
   IsInt,
   IsOptional,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod } from 'src/common/enums/payment-method.enum';
 
-class CheckoutServiceItemDto {
+export class CheckoutServiceItemDto {
   @IsUUID()
   serviceId!: string;
 
   @IsInt()
   @Min(1)
+  @Max(100)
   quantity!: number;
 }
 

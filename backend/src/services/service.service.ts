@@ -5,6 +5,7 @@ import { Service } from './entities/service.entity';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { QueryServiceDto } from './dto/query-service.dto';
+import { QueryAdminServiceDto } from './dto/query-admin-service.dto';
 
 @Injectable()
 export class ServiceService {
@@ -31,6 +32,34 @@ export class ServiceService {
     }
 
     return qb.orderBy('service.name', 'ASC').getMany();
+  }
+
+  async findAllForAdmin(
+    query: QueryAdminServiceDto,
+  ): Promise<{ data: Service[]; total: number }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const qb = this.serviceRepo.createQueryBuilder('service');
+
+    if (query.search) {
+      qb.andWhere('service.name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
+    }
+    if (query.category) {
+      qb.andWhere('service.category = :category', {
+        category: query.category,
+      });
+    }
+
+    const [data, total] = await qb
+      .orderBy('service.isActive', 'DESC')
+      .addOrderBy('service.category', 'ASC')
+      .addOrderBy('service.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { data, total };
   }
 
   async findByIdForAdmin(serviceId: string): Promise<Service> {

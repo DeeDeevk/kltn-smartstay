@@ -11,15 +11,18 @@ import { PaymentTransactionService } from '../cash-ledger/payment-transaction.se
 import { NotificationService } from '../notifications/notification.service';
 import { RefundRequestService } from '../refund-requests/refund-request.service';
 import { UserService } from '../users/user.service';
+import { ServiceService } from '../services/service.service';
 
-// Chỉ test markPaidByOrderCode(), findById() và cancel() — các hàm có đổi hành vi trong
-// KAN-117/KAN-121/kiểm tra ca làm khi huỷ đơn. Các dependency khác của BookingService
+// Chỉ test markPaidByOrderCode(), findById(), cancel() và addService() — các hàm có đổi
+// hành vi trong KAN-117/KAN-121/kiểm tra ca làm. Các dependency khác của BookingService
 // không được những hàm này gọi tới, nên chỉ cần stub rỗng để constructor không ném lỗi.
 function buildService(overrides?: {
   booking?: Partial<Booking> | null;
   refundRequestByBookingId?: Record<string, unknown> | null;
   // true (mặc định) = nhân viên đang trong ca, assertOnDuty() không ném lỗi.
   shiftOnDuty?: boolean;
+  // Dịch vụ đang bán mà findActiveByIds() trả về (mặc định rỗng).
+  activeServices?: { serviceId: string; name: string; price: number }[];
 }) {
   const booking: Booking | null =
     overrides?.booking === undefined
@@ -41,6 +44,8 @@ function buildService(overrides?: {
 
   const bookingSave = jest.fn((x: Booking) => Promise.resolve(x));
   const bookingFindOne = jest.fn().mockResolvedValue(booking);
+  const itemSave = jest.fn((x: unknown) => Promise.resolve(x));
+  const itemCreate = jest.fn((x: unknown) => x);
   // cancel()/markPaidByOrderCode() chạy trong 1 transaction (manager.transaction) —
   // giả lập manager chạy callback NGAY (không thật sự mở transaction DB), trả cùng
   // các mock save/findOne ở trên cho Booking để assertion trên bookingSave vẫn đúng
@@ -54,7 +59,7 @@ function buildService(overrides?: {
           getRepository: (entity: unknown) =>
             entity === Booking
               ? { save: bookingSave, findOne: bookingFindOne }
-              : { save: jest.fn((x: unknown) => Promise.resolve(x)) },
+              : { save: itemSave, create: itemCreate },
         }),
       ),
     },
@@ -112,13 +117,19 @@ function buildService(overrides?: {
     assertOnDuty,
   } as unknown as ShiftAssignmentService;
 
+  // addService()/checkOut() gọi findActiveByIds() để kiểm tra dịch vụ còn bán và lấy đơn giá.
+  const findActiveByIds = jest
+    .fn()
+    .mockResolvedValue(overrides?.activeServices ?? []);
+  const serviceService = { findActiveByIds } as unknown as ServiceService;
+
   const service = new BookingService(
     bookingRepo,
     {} as never, // bookingServiceItemRepo
     {} as never, // roomRepo
     {} as never, // redisClient
     {} as never, // roomTypeService
-    {} as never, // serviceService
+    serviceService,
     {} as never, // promotionService
     {} as never, // userService
     realtimeGateway,
@@ -139,6 +150,8 @@ function buildService(overrides?: {
     assertOnDuty,
     notifyAdmins,
     createForCancelledBooking,
+    itemSave,
+    findActiveByIds,
   };
 }
 
@@ -306,6 +319,91 @@ describe('BookingService.cancel', () => {
       expect.objectContaining({ status: BookingStatus.CANCELLED }),
     );
     expect(result).toEqual({ message: 'Đã huỷ đơn đặt phòng' });
+  });
+});
+
+describe('BookingService.addService', () => {
+  const staff = { userId: 'staff-1', role: 'STAFF' };
+  const admin = { userId: 'admin-1', role: 'ADMIN' };
+  const water = { serviceId: 'svc-1', name: 'Nước suối', price: 20000 };
+  const dto = { items: [{ serviceId: 'svc-1', quantity: 2 }] };
+  // Hàm (không phải hằng) vì saveServiceItems() ghi thẳng vào booking.serviceItems —
+  // dùng chung 1 object thì test sau dính dịch vụ của test trước.
+  const checkedInBooking = () =>
+    ({
+      bookingId: 'booking-1',
+      status: BookingStatus.CHECKED_IN,
+      roomAmount: 500000,
+      lateCheckoutFee: 0,
+      discountAmount: 0,
+      paidAmount: 0,
+      serviceItems: [],
+    }) as unknown as Booking;
+
+  it('STAFF chưa vô ca -> 403, không đọc đơn', async () => {
+    const { service, assertOnDuty, bookingFindOne } = buildService({
+      shiftOnDuty: false,
+      booking: checkedInBooking(),
+    });
+
+    await expect(service.addService('booking-1', dto, staff)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(assertOnDuty).toHaveBeenCalledWith('staff-1', 'thêm dịch vụ');
+    expect(bookingFindOne).not.toHaveBeenCalled();
+  });
+
+  it('đơn chưa nhận phòng -> 400, không lưu dịch vụ', async () => {
+    // Đơn mặc định của buildService() đang PENDING.
+    const { service, itemSave } = buildService({ activeServices: [water] });
+
+    await expect(service.addService('booking-1', dto, staff)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(itemSave).not.toHaveBeenCalled();
+  });
+
+  it('dịch vụ không tồn tại / đã ngưng -> 400, không lưu dịch vụ', async () => {
+    const { service, itemSave } = buildService({
+      booking: checkedInBooking(),
+      activeServices: [],
+    });
+
+    await expect(service.addService('booking-1', dto, staff)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(itemSave).not.toHaveBeenCalled();
+  });
+
+  it('hợp lệ -> lưu đúng đơn giá, cộng tiền dịch vụ (không tính VAT trên dịch vụ)', async () => {
+    const { service, itemSave } = buildService({
+      booking: checkedInBooking(),
+      activeServices: [water],
+    });
+
+    const res = await service.addService('booking-1', dto, staff);
+
+    expect(itemSave).toHaveBeenCalledTimes(1);
+    expect(itemSave).toHaveBeenCalledWith([
+      expect.objectContaining({ quantity: 2, unitPrice: 20000 }),
+    ]);
+    expect(res.serviceItems).toHaveLength(1);
+    expect(res.serviceAmount).toBe(40000);
+    // 500000 phòng + 40000 VAT 8% tiền phòng + 40000 dịch vụ.
+    expect(res.totalAmount).toBe(580000);
+  });
+
+  it('ADMIN không có ca -> vẫn thêm được (admin bỏ qua check ca)', async () => {
+    const { service, assertOnDuty } = buildService({
+      shiftOnDuty: false,
+      booking: checkedInBooking(),
+      activeServices: [water],
+    });
+
+    const res = await service.addService('booking-1', dto, admin);
+
+    expect(assertOnDuty).not.toHaveBeenCalled();
+    expect(res.serviceAmount).toBe(40000);
   });
 });
 
