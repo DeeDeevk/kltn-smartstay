@@ -818,10 +818,6 @@ export class BookingService {
         );
       }
       room.status = RoomStatus.OCCUPIED;
-      this.realtimeGateway.emitRoomStatusChanged({
-        roomId: room.roomId,
-        status: room.status,
-      });
 
       booking.room = room;
       booking.status = BookingStatus.CHECKED_IN;
@@ -848,11 +844,18 @@ export class BookingService {
         },
         manager,
       );
-      this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
-        bookingId: booking.bookingId,
-        status: booking.status,
-        paymentStatus: booking.paymentStatus,
-      });
+    });
+
+    // Bắn socket SAU commit: bắn trong transaction thì client gọi lại API trước khi dữ
+    // liệu được commit và đọc phải số liệu cũ (sơ đồ phòng, doanh thu nhân viên...).
+    this.realtimeGateway.emitRoomStatusChanged({
+      roomId: room.roomId,
+      status: room.status,
+    });
+    this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
+      bookingId: booking.bookingId,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus,
     });
 
     // Sau khi transaction commit — tránh thông báo cho lần check-in bị rollback.
@@ -921,26 +924,16 @@ export class BookingService {
           },
           manager,
         );
-        this.realtimeGateway.emitBookingUpdatedForCustomer(
-          booking.user.userId,
-          {
-            bookingId: booking.bookingId,
-            status: booking.status,
-            paymentStatus: booking.paymentStatus,
-          },
-        );
 
         if (booking.room) {
           booking.room.status = RoomStatus.CLEANING;
           await roomRepo.save(booking.room);
-          this.realtimeGateway.emitRoomStatusChanged({
-            roomId: booking.room.roomId,
-            status: booking.room.status,
-          });
         }
 
         const finalDetail = this.toDetailResponse(booking);
         return {
+          customerUserId: booking.user.userId,
+          roomId: booking.room?.roomId ?? null,
           booking: finalDetail,
           finalInvoice: {
             roomAmount: booking.roomAmount,
@@ -957,16 +950,31 @@ export class BookingService {
       },
     );
 
+    const { customerUserId, roomId, ...response } = result;
+
+    // Bắn socket SAU commit (xem checkIn()) — tránh client đọc phải số liệu cũ.
+    this.realtimeGateway.emitBookingUpdatedForCustomer(customerUserId, {
+      bookingId: response.booking.bookingId,
+      status: response.booking.status,
+      paymentStatus: response.booking.paymentStatus,
+    });
+    if (roomId) {
+      this.realtimeGateway.emitRoomStatusChanged({
+        roomId,
+        status: RoomStatus.CLEANING,
+      });
+    }
+
     // Sau khi transaction commit — tránh tạo thông báo cho lần trả phòng bị rollback.
     void this.notificationService.notifyBooking(
-      result.booking.user.userId,
+      customerUserId,
       NotificationType.BOOKING_CHECKED_OUT,
       {
-        bookingId: result.booking.bookingId,
-        roomTypeName: result.booking.roomType?.name,
+        bookingId: response.booking.bookingId,
+        roomTypeName: response.booking.roomType?.name,
       },
     );
-    return result;
+    return response;
   }
 
   // Lễ tân ghi dịch vụ khách dùng trong lúc ở — cùng transaction + kiểm tra ca như checkOut.
@@ -990,6 +998,8 @@ export class BookingService {
         return this.toDetailResponse(booking);
       },
     );
+    // Đơn CHECKED_IN đã được tính doanh thu -> dịch vụ thêm vào phải hiện ngay ở báo cáo.
+    this.realtimeGateway.emitBookingServicesChanged({ bookingId });
     return result;
   }
 

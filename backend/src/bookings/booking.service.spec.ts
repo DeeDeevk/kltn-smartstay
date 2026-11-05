@@ -80,6 +80,7 @@ function buildService(overrides?: {
     emitBookingUpdatedForCustomer: jest.fn(),
     emitBookingCancelled: jest.fn(),
     emitRoomStatusChanged: jest.fn(),
+    emitBookingServicesChanged: jest.fn(),
   } as unknown as RealtimeGateway;
 
   const notifyAdmins = jest.fn().mockResolvedValue(undefined);
@@ -383,12 +384,17 @@ describe('BookingService.addService', () => {
   });
 
   it('hợp lệ -> lưu đúng đơn giá, cộng tiền dịch vụ (không tính VAT trên dịch vụ)', async () => {
-    const { service, itemSave } = buildService({
+    const { service, itemSave, realtimeGateway } = buildService({
       booking: checkedInBooking(),
       activeServices: [water],
     });
 
     const res = await service.addService('booking-1', dto, staff);
+
+    // Báo nhân viên để báo cáo doanh thu cập nhật ngay phần dịch vụ.
+    expect(realtimeGateway.emitBookingServicesChanged).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+    });
 
     expect(itemSave).toHaveBeenCalledTimes(1);
     expect(itemSave).toHaveBeenCalledWith([
@@ -675,7 +681,7 @@ describe('BookingService.checkIn — 2 lễ tân cùng xếp 1 phòng', () => {
     roomStatus = RoomStatus.AVAILABLE,
     bookingRoomId?: string,
   ) {
-    const { service, bookingRepo, bookingSave } = buildService({
+    const { service, bookingRepo, bookingSave, realtimeGateway } = buildService({
       booking: {
         bookingId: 'booking-1',
         status: BookingStatus.CONFIRMED,
@@ -714,16 +720,18 @@ describe('BookingService.checkIn — 2 lễ tân cùng xếp 1 phòng', () => {
             entity === Booking ? { save: bookingSave } : { update: roomUpdate },
         }),
     );
-    return { service, roomUpdate, bookingSave };
+    return { service, roomUpdate, bookingSave, realtimeGateway };
   }
   const staff = { userId: 'staff-1', role: 'STAFF' };
 
   it('UPDATE có điều kiện trả 0 dòng (người khác vừa lấy phòng) -> ConflictException, không lưu đơn', async () => {
-    const { service, bookingSave } = setup(0);
+    const { service, bookingSave, realtimeGateway } = setup(0);
     await expect(
       service.checkIn('booking-1', { roomId: 'room-1' }, staff),
     ).rejects.toThrow(ConflictException);
     expect(bookingSave).not.toHaveBeenCalled();
+    // Socket chỉ bắn sau commit -> rollback thì không ai nhận sự kiện sai.
+    expect(realtimeGateway.emitRoomStatusChanged).not.toHaveBeenCalled();
   });
 
   it('UPDATE thành công -> check-in bình thường', async () => {
