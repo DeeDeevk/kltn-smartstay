@@ -81,7 +81,8 @@ const QUICK_LINKS = [
     label: 'Báo cáo doanh thu',
     description: 'Thống kê doanh thu, so sánh theo kỳ',
     icon: BarChart3,
-    ready: false,
+    path: '/admin/revenue',
+    ready: true,
     roles: ['ADMIN'],
   },
 ];

@@ -96,6 +96,10 @@ export class RealtimeGateway
     this.emit(STAFF_ROOM, 'booking:cancelled', payload);
   }
 
+  emitBookingServicesChanged(payload: unknown) {
+    this.emit(STAFF_ROOM, 'booking:services-changed', payload);
+  }
+
   // Báo cho đúng khách hàng sở hữu đơn biết đơn của họ vừa đổi trạng thái/thanh
   // toán (xác nhận, check-in, check-out, huỷ, thanh toán...).
   emitBookingUpdatedForCustomer(userId: string, payload: unknown) {
