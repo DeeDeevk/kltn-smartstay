@@ -10,7 +10,6 @@ import { Room } from './entities/room.entity';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomStatusDto } from './dto/update-room-status.dto';
-import { QueryAvailabilityDto } from './dto/query-availability.dto';
 import { QueryRoomMapDto } from './dto/query-room-map.dto';
 import { RoomStatus } from 'src/common/enums/room-status.enum';
 import { BookingStatus } from 'src/common/enums/booking-status.enum';
@@ -39,71 +38,6 @@ export class RoomService {
     private readonly roomTypeService: RoomTypeService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
-
-  // Phòng "trống" theo khoảng ngày = status khác MAINTENANCE (đang sửa chữa, không gắn
-  // với 1 booking cụ thể nên không thể suy ra bằng ngày) VÀ không có booking đang hoạt
-  // động (PENDING/CONFIRMED/CHECKED_IN) giao với [checkIn, checkOut) — dùng đúng logic
-  // overlap như getRoomMap(), KHÔNG dựa vào room.status tức thời (OCCUPIED/CLEANING hôm
-  // nay không có nghĩa phòng bận vào ngày khách yêu cầu).
-  async checkAvailability(query: QueryAvailabilityDto) {
-    const checkIn = new Date(query.checkIn);
-    const checkOut = new Date(query.checkOut);
-    if (checkIn >= checkOut) {
-      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
-    }
-
-    const qb = this.roomRepo
-      .createQueryBuilder('room')
-      .innerJoinAndSelect('room.roomType', 'roomType')
-      .where('room.status != :maintenance', {
-        maintenance: RoomStatus.MAINTENANCE,
-      })
-      .andWhere('roomType.capacity >= :guests', { guests: query.guests });
-
-    if (query.roomTypeId) {
-      qb.andWhere('roomType.roomTypeId = :roomTypeId', {
-        roomTypeId: query.roomTypeId,
-      });
-    }
-
-    const rooms = await qb.getMany();
-
-    const overlapping = await this.bookingRepo
-      .createQueryBuilder('booking')
-      .innerJoin('booking.room', 'bookedRoom')
-      .select('bookedRoom.roomId', 'roomId')
-      .where('booking.status IN (:...statuses)', {
-        statuses: ACTIVE_BOOKING_STATUSES,
-      })
-      .andWhere('booking.checkInDate < :checkOut', { checkOut: query.checkOut })
-      .andWhere('booking.checkOutDate > :checkIn', { checkIn: query.checkIn })
-      .getRawMany<{ roomId: string }>();
-    const bookedRoomIds = new Set(overlapping.map((r) => r.roomId));
-
-    const availableByType = new Map<
-      string,
-      { roomType: Room['roomType']; availableCount: number }
-    >();
-    for (const room of rooms) {
-      if (bookedRoomIds.has(room.roomId)) continue;
-      const existing = availableByType.get(room.roomType.roomTypeId);
-      if (existing) {
-        existing.availableCount += 1;
-      } else {
-        availableByType.set(room.roomType.roomTypeId, {
-          roomType: room.roomType,
-          availableCount: 1,
-        });
-      }
-    }
-
-    return Array.from(availableByType.values()).map(
-      ({ roomType, availableCount }) => ({
-        ...roomType,
-        availableCount,
-      }),
-    );
-  }
 
   async getRoomMap(query: QueryRoomMapDto): Promise<RoomMapItem[]> {
     const qb = this.roomRepo
