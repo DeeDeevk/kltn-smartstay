@@ -36,6 +36,10 @@ export default function useAdminRealtimeNotifications() {
       toast.success(`Đơn${payload?.guestName ? ` của ${payload.guestName}` : ''} đã thanh toán thành công!`);
       refreshBookingList();
     };
+    const handleBookingCancelled = (payload) => {
+      toast.warn(`Đơn${payload?.guestName ? ` của ${payload.guestName}` : ''} đã bị huỷ`);
+      refreshBookingList();
+    };
     // Tin nhắn của khách không bật toast — chỉ làm mới danh sách hội thoại để số chưa đọc
     // (trang chat + mục "Chat với khách" ở Sidebar) tự nhảy, như các ứng dụng nhắn tin.
     const handleConversationUpdated = () => {
@@ -44,10 +48,12 @@ export default function useAdminRealtimeNotifications() {
 
     socket.on('booking:created', handleBookingCreated);
     socket.on('booking:paid', handleBookingPaid);
+    socket.on('booking:cancelled', handleBookingCancelled);
     socket.on('chat:conversation-updated', handleConversationUpdated);
     return () => {
       socket.off('booking:created', handleBookingCreated);
       socket.off('booking:paid', handleBookingPaid);
+      socket.off('booking:cancelled', handleBookingCancelled);
       socket.off('chat:conversation-updated', handleConversationUpdated);
     };
   }, [socket, dispatch, navigate]);

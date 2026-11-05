@@ -12,7 +12,11 @@ import {
   RefreshCw,
   SearchX,
 } from 'lucide-react';
-import { adminRoomApi, useGetRoomMapQuery } from '../../../services/adminRoom';
+import {
+  adminRoomApi,
+  useGetRoomMapQuery,
+  useGetRoomMapSummaryQuery,
+} from '../../../services/adminRoom';
 import EmptyState from '../../common/EmptyState';
 import { Skeleton } from '../../common/Skeleton';
 import { useSocket } from '../../../context/SocketContext';
@@ -25,6 +29,8 @@ import {
 import RoomStatusCard from './RoomStatusCard';
 import FloorSidebar from './FloorSidebar';
 import RoomMapFilterBar from './RoomMapFilterBar';
+import RoomTypeSummaryBar from './RoomTypeSummaryBar';
+import UnassignedBookingsPanel from './UnassignedBookingsPanel';
 import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 import Modal from '../../common/Modal';
@@ -125,17 +131,30 @@ export default function RoomMapPage() {
     checkOut: applied.checkOut,
   });
 
-  // Phòng đổi trạng thái ở tab/máy khác (check-in, check-out, đổi trạng thái tay...)
-  // -> bắn cache 'LIST' để mọi admin/staff đang mở Sơ đồ phòng tự thấy, khỏi bấm
-  // "Làm mới" thủ công.
+  // Không lọc ngày -> backend tự lấy đêm hôm nay.
+  const { data: summary, refetch: refetchSummary } = useGetRoomMapSummaryQuery(
+    hasRangeFilter ? { checkIn: applied.checkIn, checkOut: applied.checkOut } : {},
+  );
+
+  // Bấm ô loại phòng trên dải thống kê = chọn đúng bộ lọc "Loại phòng" đã có sẵn.
+  const selectRoomType = (name) => {
+    setDraft((d) => ({ ...d, roomType: name }));
+    setApplied((a) => ({ ...a, roomType: name }));
+  };
+
+  // Có thay đổi ở tab/máy khác -> bắn cache 'LIST' để mọi admin/staff đang mở Sơ đồ
+  // phòng tự thấy, khỏi bấm "Làm mới". Đơn online chỉ giữ chỗ theo loại phòng (chưa có
+  // phòng vật lý) nên không bắn room:status-changed — phải nghe thêm sự kiện đơn đặt để
+  // dải thống kê và "Đơn chờ xếp phòng" cập nhật ngay khi khách đặt/thanh toán/huỷ.
   const dispatch = useDispatch();
   const socket = useSocket();
   useEffect(() => {
-    const handleRoomStatusChanged = () => {
+    const events = ['room:status-changed', 'booking:created', 'booking:paid', 'booking:cancelled'];
+    const refresh = () => {
       dispatch(adminRoomApi.util.invalidateTags([{ type: 'AdminRoom', id: 'LIST' }]));
     };
-    socket.on('room:status-changed', handleRoomStatusChanged);
-    return () => socket.off('room:status-changed', handleRoomStatusChanged);
+    events.forEach((e) => socket.on(e, refresh));
+    return () => events.forEach((e) => socket.off(e, refresh));
   }, [socket, dispatch]);
 
   const floors = useMemo(
@@ -284,7 +303,10 @@ export default function RoomMapPage() {
 
           <button
             type="button"
-            onClick={() => refetch()}
+            onClick={() => {
+              refetch();
+              refetchSummary();
+            }}
             disabled={isFetching}
             title="Làm mới"
             className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
@@ -317,6 +339,18 @@ export default function RoomMapPage() {
             onReset={resetFilter}
             roomTypeNames={roomTypeNames}
             isFetching={isFetching}
+          />
+
+          <RoomTypeSummaryBar
+            summary={summary}
+            selectedRoomType={applied.roomType}
+            onSelectRoomType={selectRoomType}
+          />
+
+          {/* Bấm 1 đơn = mở đúng modal check-in như khi quét QR vé (QrCheckInModal bên dưới). */}
+          <UnassignedBookingsPanel
+            bookings={summary?.unassignedBookings}
+            onSelect={setScannedBookingId}
           />
 
           {isFetching && rooms.length === 0 && (

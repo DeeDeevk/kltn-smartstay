@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { RoomStatus } from '../common/enums/room-status.enum';
 import { Repository } from 'typeorm';
 import { BookingService } from './booking.service';
 import { Booking } from './entities/booking.entity';
@@ -73,6 +78,8 @@ function buildService(overrides?: {
   const realtimeGateway = {
     emitBookingPaid: jest.fn(),
     emitBookingUpdatedForCustomer: jest.fn(),
+    emitBookingCancelled: jest.fn(),
+    emitRoomStatusChanged: jest.fn(),
   } as unknown as RealtimeGateway;
 
   const notifyAdmins = jest.fn().mockResolvedValue(undefined);
@@ -645,5 +652,173 @@ describe('BookingService.notifyStaffOfNewBooking (private) — báo đơn mới 
       callNotifyStaffOfNewBooking(service, 'user-1', booking),
     ).resolves.toBeUndefined();
     expect(notifyStaffNewBooking).toHaveBeenCalled();
+  });
+});
+
+describe('BookingService.cancel — báo lễ tân qua socket', () => {
+  it('huỷ đơn -> bắn booking:cancelled cho nhân viên', async () => {
+    const { service, realtimeGateway } = buildService();
+    await service.cancel(
+      'booking-1',
+      { userId: 'user-1', role: 'CUSTOMER' },
+      { reason: 'Đổi lịch' },
+    );
+    expect(realtimeGateway.emitBookingCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: 'booking-1', guestName: 'Khách A' }),
+    );
+  });
+});
+
+describe('BookingService.checkIn — 2 lễ tân cùng xếp 1 phòng', () => {
+  function setup(
+    updateAffected: number,
+    roomStatus = RoomStatus.AVAILABLE,
+    bookingRoomId?: string,
+  ) {
+    const { service, bookingRepo, bookingSave } = buildService({
+      booking: {
+        bookingId: 'booking-1',
+        status: BookingStatus.CONFIRMED,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.UNPAID,
+        paidAmount: 0,
+        roomAmount: 500000,
+        lateCheckoutFee: 0,
+        discountAmount: 0,
+        serviceItems: [],
+        user: { userId: 'user-1' },
+        roomType: { roomTypeId: 'rt-1', name: 'Deluxe' },
+        room: bookingRoomId ? { roomId: bookingRoomId } : null,
+        guestInfo: { fullName: 'Khách A' },
+      } as unknown as Booking,
+    });
+    const roomUpdate = jest
+      .fn()
+      .mockResolvedValue({ affected: updateAffected });
+    // roomRepo/userService được buildService() truyền stub rỗng — gắn mock riêng cho checkIn.
+    const svc = service as unknown as Record<string, unknown>;
+    svc.roomRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        roomId: 'room-1',
+        status: roomStatus,
+        roomType: { roomTypeId: 'rt-1' },
+      }),
+    };
+    svc.userService = {
+      findById: jest.fn().mockResolvedValue({ userId: 'staff-1' }),
+    };
+    (bookingRepo.manager.transaction as jest.Mock).mockImplementation(
+      (cb: (m: unknown) => unknown) =>
+        cb({
+          getRepository: (entity: unknown) =>
+            entity === Booking ? { save: bookingSave } : { update: roomUpdate },
+        }),
+    );
+    return { service, roomUpdate, bookingSave };
+  }
+  const staff = { userId: 'staff-1', role: 'STAFF' };
+
+  it('UPDATE có điều kiện trả 0 dòng (người khác vừa lấy phòng) -> ConflictException, không lưu đơn', async () => {
+    const { service, bookingSave } = setup(0);
+    await expect(
+      service.checkIn('booking-1', { roomId: 'room-1' }, staff),
+    ).rejects.toThrow(ConflictException);
+    expect(bookingSave).not.toHaveBeenCalled();
+  });
+
+  it('UPDATE thành công -> check-in bình thường', async () => {
+    const { service, roomUpdate, bookingSave } = setup(1);
+    await service.checkIn('booking-1', { roomId: 'room-1' }, staff);
+    expect(roomUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'room-1' }),
+      { status: RoomStatus.OCCUPIED },
+    );
+    expect(bookingSave).toHaveBeenCalledWith(
+      expect.objectContaining({ status: BookingStatus.CHECKED_IN }),
+    );
+  });
+
+  it('phòng RESERVED giữ cho đơn KHÁC -> không cho check-in', async () => {
+    const { service, roomUpdate } = setup(1, RoomStatus.RESERVED, 'room-OTHER');
+    await expect(
+      service.checkIn('booking-1', { roomId: 'room-1' }, staff),
+    ).rejects.toThrow(BadRequestException);
+    expect(roomUpdate).not.toHaveBeenCalled();
+  });
+
+  it('phòng RESERVED giữ cho CHÍNH đơn này (walk-in) -> cho check-in', async () => {
+    const { service, roomUpdate } = setup(1, RoomStatus.RESERVED, 'room-1');
+    await service.checkIn('booking-1', { roomId: 'room-1' }, staff);
+    expect(roomUpdate).toHaveBeenCalled();
+  });
+});
+
+describe('BookingService.getRoomMapSummary — thống kê sơ đồ phòng', () => {
+  it('đếm đã đặt/còn trống/chưa xếp theo loại phòng, trả danh sách đơn chưa xếp', async () => {
+    const { service } = buildService();
+    const svc = service as unknown as Record<string, unknown>;
+    svc.roomTypeService = {
+      findAllActive: jest.fn().mockResolvedValue([
+        { roomTypeId: 'rt-1', name: 'Deluxe' },
+        { roomTypeId: 'rt-2', name: 'Standard' },
+      ]),
+    };
+    // Tổng phòng (đã bỏ MAINTENANCE) và số đơn trùng ngày (gồm cả đơn đã/chưa gắn phòng).
+    svc.countRoomsByRoomType = jest.fn().mockResolvedValue(
+      new Map([
+        ['rt-1', 3],
+        ['rt-2', 2],
+      ]),
+    );
+    svc.countOverlappingBookingsByRoomType = jest
+      .fn()
+      .mockResolvedValue(new Map([['rt-1', 2], ['rt-2', 2]]));
+    const unassignedRow = {
+      bookingId: 'b-1',
+      guestInfo: { fullName: 'Khách A' },
+      roomType: { roomTypeId: 'rt-1', name: 'Deluxe' },
+      checkInDate: '2026-11-10',
+      checkOutDate: '2026-11-12',
+      status: BookingStatus.CONFIRMED,
+      paymentMethod: PaymentMethod.PAYOS,
+      paymentStatus: PaymentStatus.PAID,
+    };
+    const qb = {
+      leftJoin: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([unassignedRow]),
+    };
+    svc.overlappingBookingsQuery = jest.fn().mockReturnValue(qb);
+
+    const result = await service.getRoomMapSummary('2026-11-10', '2026-11-12');
+
+    expect(result.roomTypes).toEqual([
+      { roomTypeId: 'rt-1', name: 'Deluxe', total: 3, booked: 2, available: 1, unassigned: 1 },
+      { roomTypeId: 'rt-2', name: 'Standard', total: 2, booked: 2, available: 0, unassigned: 0 },
+    ]);
+    expect(result.unassignedBookings).toEqual([
+      expect.objectContaining({ bookingId: 'b-1', guestName: 'Khách A', roomTypeName: 'Deluxe' }),
+    ]);
+  });
+
+  it('không truyền ngày -> mặc định đêm hôm nay (checkOut = checkIn + 1 ngày)', async () => {
+    const { service } = buildService();
+    const svc = service as unknown as Record<string, unknown>;
+    svc.roomTypeService = { findAllActive: jest.fn().mockResolvedValue([]) };
+
+    const result = await service.getRoomMapSummary();
+
+    const next = new Date(`${result.checkIn}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    expect(result.checkOut).toBe(next.toISOString().slice(0, 10));
+  });
+
+  it('checkIn >= checkOut -> BadRequestException', async () => {
+    const { service } = buildService();
+    await expect(
+      service.getRoomMapSummary('2026-11-12', '2026-11-10'),
+    ).rejects.toThrow(BadRequestException);
   });
 });

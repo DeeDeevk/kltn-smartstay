@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   Brackets,
   EntityManager,
+  In,
   Repository,
   SelectQueryBuilder,
 } from 'typeorm';
@@ -144,9 +145,7 @@ export class BookingService {
 
     const lockKeys = await this.acquireLocks(dto.roomTypeId, stayDates);
     try {
-      const totalRooms = await this.roomRepo.count({
-        where: { roomType: { roomTypeId: dto.roomTypeId } },
-      });
+      const totalRooms = await this.countRoomsOfType(dto.roomTypeId);
       const overlapping = await this.countOverlappingBookings(
         dto.roomTypeId,
         dto.checkIn,
@@ -439,9 +438,7 @@ export class BookingService {
     }
 
     const roomType = await this.roomTypeService.findActiveById(roomTypeId);
-    const totalRooms = await this.roomRepo.count({
-      where: { roomType: { roomTypeId } },
-    });
+    const totalRooms = await this.countRoomsOfType(roomTypeId);
     const overlapping = await this.countOverlappingBookings(
       roomTypeId,
       checkIn,
@@ -449,6 +446,85 @@ export class BookingService {
     );
     const availableCount = Math.max(0, totalRooms - overlapping);
     return { roomType, availableCount, available: availableCount > 0 };
+  }
+
+  // Dữ liệu cho dải thống kê + khung "Đơn chờ xếp phòng" trên Sơ đồ phòng. Đơn online
+  // chỉ giữ chỗ theo LOẠI phòng (chưa gắn phòng vật lý tới lúc check-in), nên sơ đồ
+  // từng phòng không thấy được — phần này hiển thị chúng theo loại phòng. Dùng lại
+  // đúng countRoomsByRoomType + overlappingBookingsQuery của luồng tạo đơn, để số
+  // "còn trống" ở đây khớp với số mà khoá Redis ở create() kiểm tra.
+  async getRoomMapSummary(checkIn?: string, checkOut?: string) {
+    // Không truyền đủ khoảng ngày -> mặc định đêm hôm nay.
+    const from = checkIn && checkOut ? checkIn : todayInHotelTz();
+    const to = checkIn && checkOut ? checkOut : this.addDays(from, 1);
+    if (from >= to) {
+      throw new BadRequestException('Ngày check-in phải trước ngày check-out');
+    }
+
+    const roomTypes = await this.roomTypeService.findAllActive({});
+    const roomTypeIds = roomTypes.map((roomType) => roomType.roomTypeId);
+    if (roomTypeIds.length === 0) {
+      return {
+        checkIn: from,
+        checkOut: to,
+        roomTypes: [],
+        unassignedBookings: [],
+      };
+    }
+
+    // shortcut: lấy toàn bộ đơn chưa xếp phòng trong khoảng (không phân trang) — đủ cho
+    // 1 khách sạn; nếu khoảng ngày dài cho ra hàng trăm đơn thì thêm phân trang.
+    const [totals, booked, unassigned] = await Promise.all([
+      this.countRoomsByRoomType(roomTypeIds),
+      this.countOverlappingBookingsByRoomType(roomTypeIds, from, to),
+      this.overlappingBookingsQuery(from, to)
+        .leftJoin('booking.room', 'assignedRoom')
+        .andWhere('assignedRoom.roomId IS NULL')
+        .addSelect(['roomType.roomTypeId', 'roomType.name'])
+        .orderBy('booking.checkInDate', 'ASC')
+        .getMany(),
+    ]);
+
+    const unassignedByType = new Map<string, number>();
+    for (const b of unassigned) {
+      const id = b.roomType.roomTypeId;
+      unassignedByType.set(id, (unassignedByType.get(id) ?? 0) + 1);
+    }
+
+    return {
+      checkIn: from,
+      checkOut: to,
+      roomTypes: roomTypes.map((roomType) => {
+        const total = totals.get(roomType.roomTypeId) ?? 0;
+        const bookedCount = booked.get(roomType.roomTypeId) ?? 0;
+        return {
+          roomTypeId: roomType.roomTypeId,
+          name: roomType.name,
+          total,
+          booked: bookedCount,
+          available: Math.max(0, total - bookedCount),
+          unassigned: unassignedByType.get(roomType.roomTypeId) ?? 0,
+        };
+      }),
+      unassignedBookings: unassigned.map((b) => ({
+        bookingId: b.bookingId,
+        guestName: b.guestInfo?.fullName ?? null,
+        roomTypeId: b.roomType.roomTypeId,
+        roomTypeName: b.roomType.name,
+        checkIn: b.checkInDate,
+        checkOut: b.checkOutDate,
+        status: b.status,
+        paymentMethod: b.paymentMethod,
+        paymentStatus: b.paymentStatus,
+      })),
+    };
+  }
+
+  // 'YYYY-MM-DD' + n ngày, tính theo UTC để không lệch múi giờ.
+  private addDays(date: string, days: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
   }
 
   async findAll(query: QueryBookingDto) {
@@ -710,11 +786,13 @@ export class BookingService {
     if (room.roomType.roomTypeId !== booking.roomType.roomTypeId) {
       throw new BadRequestException('Phòng không thuộc loại phòng của đơn đặt');
     }
-    // RESERVED = phòng đã được giữ cho chính đơn này (walk-in) -> vẫn cho check-in.
-    if (
-      room.status !== RoomStatus.AVAILABLE &&
-      room.status !== RoomStatus.RESERVED
-    ) {
+    // RESERVED chỉ hợp lệ khi phòng đang được giữ cho CHÍNH đơn này (walk-in) — phòng
+    // RESERVED của đơn khác thì không được lấy.
+    const allowedStatuses =
+      booking.room?.roomId === room.roomId
+        ? [RoomStatus.AVAILABLE, RoomStatus.RESERVED]
+        : [RoomStatus.AVAILABLE];
+    if (!allowedStatuses.includes(room.status)) {
       throw new BadRequestException('Phòng không sẵn sàng');
     }
 
@@ -727,8 +805,19 @@ export class BookingService {
       const bookingRepo = manager.getRepository(Booking);
       const roomRepo = manager.getRepository(Room);
 
+      // UPDATE có điều kiện thay cho save(): kiểm tra ở trên nằm ngoài transaction nên 2
+      // lễ tân cùng chọn 1 phòng đều qua được. Câu UPDATE này nguyên tử ở DB — chỉ người
+      // đầu tiên đổi được trạng thái, người sau nhận affected = 0 và cả transaction rollback.
+      const { affected } = await roomRepo.update(
+        { roomId: room.roomId, status: In(allowedStatuses) },
+        { status: RoomStatus.OCCUPIED },
+      );
+      if (!affected) {
+        throw new ConflictException(
+          'Phòng vừa được xếp cho khách khác, vui lòng chọn phòng khác',
+        );
+      }
       room.status = RoomStatus.OCCUPIED;
-      await roomRepo.save(room);
       this.realtimeGateway.emitRoomStatusChanged({
         roomId: room.roomId,
         status: room.status,
@@ -940,6 +1029,15 @@ export class BookingService {
         status: booking.room.status,
       });
     }
+    // Lễ tân/admin đang mở Sơ đồ phòng cần biết để số "còn trống" của loại phòng tăng
+    // lại và đơn biến khỏi "Đơn chờ xếp phòng" (đơn online chưa gắn phòng nên không có
+    // room:status-changed nào được bắn).
+    this.realtimeGateway.emitBookingCancelled({
+      bookingId: booking.bookingId,
+      roomTypeId: booking.roomType?.roomTypeId,
+      guestName: booking.guestInfo?.fullName,
+    });
+
     this.realtimeGateway.emitBookingUpdatedForCustomer(booking.user.userId, {
       bookingId: booking.bookingId,
       status: booking.status,
@@ -1350,7 +1448,9 @@ export class BookingService {
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
   }
 
-  // Tổng số phòng vật lý (mọi trạng thái) của từng loại phòng, 1 query GROUP BY.
+  // Tổng số phòng BÁN ĐƯỢC của từng loại phòng (bỏ phòng MAINTENANCE — phòng đang sửa
+  // không nhận khách). Mọi chỗ đếm "còn bao nhiêu phòng" (tạo đơn, AI, tìm phòng, sơ
+  // đồ phòng) đều phải đi qua hàm này để các con số không lệch nhau.
   private async countRoomsByRoomType(
     roomTypeIds: string[],
   ): Promise<Map<string, number>> {
@@ -1358,11 +1458,18 @@ export class BookingService {
       .createQueryBuilder('room')
       .innerJoin('room.roomType', 'roomType')
       .where('roomType.roomTypeId IN (:...roomTypeIds)', { roomTypeIds })
+      .andWhere('room.status != :maintenance', {
+        maintenance: RoomStatus.MAINTENANCE,
+      })
       .select('roomType.roomTypeId', 'roomTypeId')
       .addSelect('COUNT(*)', 'count')
       .groupBy('roomType.roomTypeId')
       .getRawMany<{ roomTypeId: string; count: string }>();
     return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
+  }
+
+  private async countRoomsOfType(roomTypeId: string): Promise<number> {
+    return (await this.countRoomsByRoomType([roomTypeId])).get(roomTypeId) ?? 0;
   }
 
   // Chỉ gọi từ create() — đơn khách tự đặt (web, app, trợ lý AI). Báo cho nhân viên lễ

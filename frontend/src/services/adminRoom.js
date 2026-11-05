@@ -28,6 +28,18 @@ export const adminRoomApi = createApi({
         ...(result ?? []).map((r) => ({ type: 'AdminRoom', id: r.roomId })),
       ],
     }),
+    // Thống kê theo loại phòng + danh sách đơn chưa xếp phòng (đơn online chỉ giữ chỗ
+    // theo loại phòng). Dùng chung tag LIST với getRoomMap: mọi chỗ đang làm mới sơ đồ
+    // (socket, check-in, check-out, huỷ, đổi trạng thái) tự làm mới luôn phần này.
+    getRoomMapSummary: builder.query({
+      query: (params = {}) => {
+        const clean = Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== '' && v != null),
+        );
+        return { url: '/rooms/map/summary', method: 'get', params: clean };
+      },
+      providesTags: [{ type: 'AdminRoom', id: 'LIST' }],
+    }),
     getRoom: builder.query({
       query: (roomId) => ({ url: `/rooms/${roomId}`, method: 'get' }),
       providesTags: (result, error, roomId) => [
@@ -54,6 +66,7 @@ export const adminRoomApi = createApi({
 export const {
   useCreateRoomMutation,
   useGetRoomMapQuery,
+  useGetRoomMapSummaryQuery,
   useGetRoomQuery,
   useUpdateRoomStatusMutation,
 } = adminRoomApi;
