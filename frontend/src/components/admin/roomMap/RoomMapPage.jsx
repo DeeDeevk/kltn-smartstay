@@ -30,7 +30,6 @@ import RoomStatusCard from './RoomStatusCard';
 import FloorSidebar from './FloorSidebar';
 import RoomMapFilterBar from './RoomMapFilterBar';
 import RoomTypeSummaryBar from './RoomTypeSummaryBar';
-import UnassignedBookingsPanel from './UnassignedBookingsPanel';
 import QrCheckInModal from './QrCheckInModal';
 import QRScannerModal from '../Model/QRScannerModal';
 import Modal from '../../common/Modal';
@@ -145,7 +144,7 @@ export default function RoomMapPage() {
   // Có thay đổi ở tab/máy khác -> bắn cache 'LIST' để mọi admin/staff đang mở Sơ đồ
   // phòng tự thấy, khỏi bấm "Làm mới". Đơn online chỉ giữ chỗ theo loại phòng (chưa có
   // phòng vật lý) nên không bắn room:status-changed — phải nghe thêm sự kiện đơn đặt để
-  // dải thống kê và "Đơn chờ xếp phòng" cập nhật ngay khi khách đặt/thanh toán/huỷ.
+  // dải thống kê cập nhật ngay khi khách đặt/thanh toán/huỷ.
   const dispatch = useDispatch();
   const socket = useSocket();
   useEffect(() => {
@@ -345,12 +344,6 @@ export default function RoomMapPage() {
             summary={summary}
             selectedRoomType={applied.roomType}
             onSelectRoomType={selectRoomType}
-          />
-
-          {/* Bấm 1 đơn = mở đúng modal check-in như khi quét QR vé (QrCheckInModal bên dưới). */}
-          <UnassignedBookingsPanel
-            bookings={summary?.unassignedBookings}
-            onSelect={setScannedBookingId}
           />
 
           {isFetching && rooms.length === 0 && (
